@@ -6,9 +6,12 @@ responses, and applies state transitions per Figure 4.
 """
 
 import json
+import logging
 import os
 from anthropic import Anthropic
 from dialectical_state import DialecticalState
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
@@ -55,9 +58,40 @@ RULES:
 
 class Opponent:
 
-    def __init__(self, model: str = 'claude-sonnet-4-20250514'):
-        self.client = Anthropic()
+    def __init__(self, model: str = 'claude-sonnet-4-20250514',
+                 api_key: str | None = None,
+                 base_url: str | None = None):
+        client_kwargs = {}
+        if api_key:
+            client_kwargs['api_key'] = api_key
+        if base_url:
+            client_kwargs['base_url'] = base_url
+        self.client = Anthropic(**client_kwargs)
         self.model = model
+        self.base_url = base_url
+        self._has_api_key = bool(api_key or os.environ.get('ANTHROPIC_API_KEY'))
+        logger.info("Opponent initialized: model=%s, base_url=%s, api_key_set=%s",
+                     model, base_url or "(default)", self._has_api_key)
+
+    def reconfigure(self, model: str | None = None,
+                    api_key: str | None = None,
+                    base_url: str | None = None):
+        """Recreate the Anthropic client with new settings."""
+        if model:
+            self.model = model
+        client_kwargs = {}
+        if api_key:
+            client_kwargs['api_key'] = api_key
+            self._has_api_key = True
+        if base_url is not None:
+            self.base_url = base_url if base_url else None
+            if base_url:
+                client_kwargs['base_url'] = base_url
+        elif self.base_url:
+            client_kwargs['base_url'] = self.base_url
+        self.client = Anthropic(**client_kwargs)
+        logger.info("Opponent reconfigured: model=%s, base_url=%s, api_key_updated=%s",
+                     self.model, self.base_url or "(default)", bool(api_key))
 
     def respond(self, user_message: str, state: DialecticalState,
                 context_turns: int = 6) -> dict:
@@ -73,9 +107,10 @@ class Opponent:
         """
         # Build the formal state block (always complete, always compact)
         s = state.to_dict()
-        tid = state.base.con.execute(
-            "SELECT last_value FROM tension_seq"
-        ).fetchone()[0]
+        row = state.base.con.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM tensions"
+        ).fetchone()
+        tid = row[0]
 
         formal_state = f"""CURRENT DIALECTICAL STATE:
 Topic: {s['name']}

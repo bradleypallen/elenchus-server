@@ -11,6 +11,7 @@ Run: uvicorn server:app --reload
 Or:  python server.py
 """
 
+import logging
 import os
 import json
 import glob
@@ -21,6 +22,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 from dialectical_state import DialecticalState
 from opponent import Opponent
 
@@ -30,7 +33,11 @@ DATA_DIR = os.environ.get('ELENCHUS_DATA', './dialectics')
 os.makedirs(DATA_DIR, exist_ok=True)
 
 app = FastAPI(title="Elenchus", version="0.1.0")
-opponent = Opponent(model=os.environ.get('ELENCHUS_MODEL', 'claude-sonnet-4-20250514'))
+opponent = Opponent(
+    model=os.environ.get('ELENCHUS_MODEL', 'claude-sonnet-4-20250514'),
+    api_key=os.environ.get('ANTHROPIC_API_KEY'),
+    base_url=os.environ.get('ANTHROPIC_BASE_URL'),
+)
 
 # Cache open states
 _states: dict[str, DialecticalState] = {}
@@ -70,8 +77,35 @@ class DeriveRequest(BaseModel):
     gamma: list[str]
     delta: list[str]
 
+class SettingsUpdate(BaseModel):
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+
 
 # ── API Routes ──
+
+@app.get("/api/settings")
+def get_settings():
+    """Return current LLM settings (never exposes the API key value)."""
+    return {
+        "model": opponent.model,
+        "base_url": opponent.base_url or "",
+        "has_api_key": opponent._has_api_key,
+    }
+
+
+@app.put("/api/settings")
+def update_settings(req: SettingsUpdate):
+    """Update LLM settings at runtime."""
+    opponent.reconfigure(
+        model=req.model,
+        api_key=req.api_key,
+        base_url=req.base_url,
+    )
+    logger.info("Settings updated via API: model=%s, base_url=%s, api_key_provided=%s",
+                req.model, req.base_url, bool(req.api_key))
+    return get_settings()
 
 @app.post("/api/dialectics")
 def create_dialectic(req: CreateRequest):

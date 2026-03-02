@@ -67,16 +67,49 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [newName, setNewName] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState({ model: '', base_url: '', has_api_key: false });
+  const [settingsForm, setSettingsForm] = useState({ api_key: '', base_url: '', model: '' });
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const msgEnd = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { loadDialectics(); }, []);
+  useEffect(() => { loadDialectics(); loadSettings(); }, []);
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
 
   const loadDialectics = async () => {
     try { setDialectics(await api('/api/dialectics')); }
     catch (e) { /* server may not be running yet */ }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const s = await api('/api/settings');
+      setSettings(s);
+      setSettingsForm({ api_key: '', base_url: s.base_url || '', model: s.model || '' });
+    } catch (e) { /* server may not be running yet */ }
+  };
+
+  const openSettingsPanel = () => {
+    setSettingsForm({ api_key: '', base_url: settings.base_url || '', model: settings.model || '' });
+    setShowSettings(true);
+  };
+
+  const saveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      const body = {};
+      if (settingsForm.api_key) body.api_key = settingsForm.api_key;
+      if (settingsForm.base_url !== undefined) body.base_url = settingsForm.base_url;
+      if (settingsForm.model) body.model = settingsForm.model;
+      const s = await api('/api/settings', {
+        method: 'PUT', body: JSON.stringify(body)
+      });
+      setSettings(s);
+      setShowSettings(false);
+    } catch (e) { setError(e.message); }
+    setSettingsSaving(false);
   };
 
   const createDialectic = async () => {
@@ -195,7 +228,16 @@ function App() {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
-          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <div style={{ textAlign: 'center', marginBottom: 48, position: 'relative' }}>
+            <button
+              onClick={openSettingsPanel}
+              title="Settings"
+              style={{
+                position: 'absolute', top: 0, right: 0,
+                background: 'none', border: 'none', color: 'var(--text-muted)',
+                cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1,
+              }}
+            >&#9881;</button>
             <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
               ἜΛΕΓΧΟΣ
             </div>
@@ -206,6 +248,87 @@ function App() {
               Develop bilateral positions through prover-skeptic dialogue.
             </p>
           </div>
+
+          {/* Settings modal */}
+          {showSettings && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+            }} onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+              <div style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 10, padding: 28, width: 420, maxWidth: '90vw',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    LLM SETTINGS
+                  </div>
+                  <button onClick={() => setShowSettings(false)} style={{
+                    background: 'none', border: 'none', color: 'var(--text-muted)',
+                    cursor: 'pointer', fontSize: 16, padding: '0 4px',
+                  }}>&times;</button>
+                </div>
+
+                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  API KEY {settings.has_api_key && <span style={{ color: 'var(--commit)', fontSize: 9 }}>(set)</span>}
+                </label>
+                <input
+                  type="password"
+                  value={settingsForm.api_key}
+                  onChange={e => setSettingsForm(f => ({ ...f, api_key: e.target.value }))}
+                  placeholder={settings.has_api_key ? '••••••••  (leave blank to keep current)' : 'sk-ant-...'}
+                  style={{
+                    width: '100%', padding: '10px 12px', marginBottom: 14,
+                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+                    color: 'var(--text)', fontSize: 12, outline: 'none',
+                  }}
+                />
+
+                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  API BASE URL
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.base_url}
+                  onChange={e => setSettingsForm(f => ({ ...f, base_url: e.target.value }))}
+                  placeholder="https://api.anthropic.com (default)"
+                  style={{
+                    width: '100%', padding: '10px 12px', marginBottom: 14,
+                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+                    color: 'var(--text)', fontSize: 12, outline: 'none',
+                  }}
+                />
+
+                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  MODEL
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.model}
+                  onChange={e => setSettingsForm(f => ({ ...f, model: e.target.value }))}
+                  placeholder="claude-sonnet-4-20250514"
+                  style={{
+                    width: '100%', padding: '10px 12px', marginBottom: 20,
+                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+                    color: 'var(--text)', fontSize: 12, outline: 'none',
+                  }}
+                />
+
+                <button
+                  onClick={saveSettings}
+                  disabled={settingsSaving}
+                  style={{
+                    width: '100%', padding: '10px 0',
+                    background: settingsSaving ? 'var(--surface2)' : 'var(--opp)',
+                    border: 'none', borderRadius: 6, color: 'var(--bg)',
+                    fontSize: 12, cursor: settingsSaving ? 'default' : 'pointer',
+                    letterSpacing: 1, fontWeight: 500,
+                    opacity: settingsSaving ? 0.5 : 1,
+                  }}
+                >{settingsSaving ? 'SAVING...' : 'SAVE'}</button>
+              </div>
+            </div>
+          )}
 
           {/* New dialectic */}
           <div style={{ marginBottom: 32 }}>
