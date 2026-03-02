@@ -1,0 +1,203 @@
+"""
+material_base.py — DuckDB-backed material bases for NMMS
+
+A material base B = ⟨L_B, |∼_B⟩ consists of an atomic language
+and a base consequence relation. This module stores both in DuckDB
+and implements derivability via the Projection theorem.
+"""
+
+import duckdb
+from datetime import datetime
+
+
+def set_to_str(s):
+    return ','.join(sorted(s)) if s else ''
+
+def str_to_set(s):
+    return frozenset(s.split(',')) if s else frozenset()
+
+def fmt_set(s):
+    if not s: return '∅'
+    return '{' + ', '.join(sorted(s)) + '}'
+
+
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS meta (
+    key VARCHAR PRIMARY KEY,
+    value VARCHAR
+);
+CREATE SEQUENCE IF NOT EXISTS assessment_seq START 1;
+CREATE TABLE IF NOT EXISTS atoms (
+    sentence VARCHAR PRIMARY KEY,
+    added_by VARCHAR DEFAULT 'system',
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    description VARCHAR DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS assessments (
+    id INTEGER DEFAULT nextval('assessment_seq'),
+    premises VARCHAR NOT NULL,
+    conclusions VARCHAR NOT NULL,
+    judgment VARCHAR NOT NULL,
+    contributor VARCHAR NOT NULL,
+    assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reason VARCHAR DEFAULT '',
+    domain VARCHAR DEFAULT '',
+    CHECK(judgment IN ('holds', 'rejected'))
+);
+CREATE OR REPLACE VIEW current_assessments AS
+WITH ranked AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY premises, conclusions, contributor
+            ORDER BY assessed_at DESC
+        ) as rn
+    FROM assessments
+)
+SELECT premises, conclusions, judgment, contributor,
+       assessed_at, reason, domain
+FROM ranked WHERE rn = 1;
+
+CREATE OR REPLACE VIEW base_sequents AS
+SELECT premises, conclusions,
+       COUNT(*) as n_assessors,
+       MIN(assessed_at) as first_assessed
+FROM current_assessments
+WHERE judgment = 'holds'
+GROUP BY premises, conclusions
+HAVING COUNT(*) = (
+    SELECT COUNT(DISTINCT contributor)
+    FROM current_assessments ca2
+    WHERE ca2.premises = current_assessments.premises
+      AND ca2.conclusions = current_assessments.conclusions
+);
+"""
+
+
+class MaterialBase:
+
+    def __init__(self, con, name):
+        self.con = con
+        self.name = name
+
+    @classmethod
+    def create(cls, db_path, name):
+        con = duckdb.connect(db_path)
+        con.execute(_SCHEMA_SQL)
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('name', ?)", [name])
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('version', '5')")
+        return cls(con, name)
+
+    @classmethod
+    def open(cls, db_path):
+        con = duckdb.connect(db_path)
+        r = con.execute("SELECT value FROM meta WHERE key='name'").fetchone()
+        name = r[0] if r else 'unnamed'
+        return cls(con, name)
+
+    @classmethod
+    def in_memory(cls, name='unnamed'):
+        con = duckdb.connect(':memory:')
+        con.execute(_SCHEMA_SQL)
+        con.execute("INSERT INTO meta VALUES ('name', ?)", [name])
+        con.execute("INSERT INTO meta VALUES ('version', '5')")
+        return cls(con, name)
+
+    @property
+    def atoms(self):
+        rows = self.con.execute("SELECT sentence FROM atoms").fetchall()
+        return frozenset(r[0] for r in rows)
+
+    def add_atoms(self, atoms, contributor='system', description=''):
+        for a in atoms:
+            try:
+                self.con.execute(
+                    "INSERT INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
+                    [a, contributor, description])
+            except:
+                pass
+
+    def accept(self, premises, conclusions, contributor, reason='', domain=''):
+        self.con.execute(
+            "INSERT INTO assessments (premises, conclusions, judgment, "
+            "contributor, reason, domain) VALUES (?,?,'holds',?,?,?)",
+            [set_to_str(premises), set_to_str(conclusions),
+             contributor, reason, domain])
+
+    def reject(self, premises, conclusions, contributor, reason='', domain=''):
+        self.con.execute(
+            "INSERT INTO assessments (premises, conclusions, judgment, "
+            "contributor, reason, domain) VALUES (?,?,'rejected',?,?,?)",
+            [set_to_str(premises), set_to_str(conclusions),
+             contributor, reason, domain])
+
+    def derives(self, premises, conclusions):
+        p, c = frozenset(premises), frozenset(conclusions)
+        if p & c:
+            return True  # Containment
+        return self._proof_search(p, c)
+
+    def _proof_search(self, prem, conc):
+        p_str = set_to_str(prem)
+        c_str = set_to_str(conc)
+        r = self.con.execute(
+            "SELECT 1 FROM base_sequents WHERE premises=? AND conclusions=?",
+            [p_str, c_str]).fetchone()
+        if r:
+            return True
+        # Projection: check if any subset of prem ∼ any subset of conc is in base
+        rows = self.con.execute("SELECT premises, conclusions FROM base_sequents").fetchall()
+        for bp, bc in rows:
+            bp_set = str_to_set(bp)
+            bc_set = str_to_set(bc)
+            if bp_set <= prem and bc_set <= conc:
+                return True
+        return False
+
+    def gaps_for(self, premises, conclusions):
+        """Unassessed weakenings of a sequent."""
+        gaps = []
+        all_atoms = self.atoms
+        assessed = set()
+        rows = self.con.execute(
+            "SELECT premises, conclusions FROM current_assessments"
+        ).fetchall()
+        for p, c in rows:
+            assessed.add((p, c))
+
+        p_str = set_to_str(premises)
+        c_str = set_to_str(conclusions)
+
+        for a in all_atoms:
+            if a not in premises and a not in conclusions:
+                # Weaken left
+                wp = set_to_str(premises | {a})
+                if (wp, c_str) not in assessed:
+                    gaps.append({'premises': premises | {a},
+                                 'conclusions': conclusions})
+                # Weaken right
+                wc = set_to_str(conclusions | {a})
+                if (p_str, wc) not in assessed:
+                    gaps.append({'premises': premises,
+                                 'conclusions': conclusions | {a}})
+        return gaps
+
+    def completeness(self):
+        assessed = self.con.execute(
+            "SELECT COUNT(*) FROM current_assessments").fetchone()[0]
+        n = len(self.atoms)
+        total = max(1, n * (n - 1))  # rough estimate
+        return {'assessed': assessed, 'total': total,
+                'pct': assessed / total if total else 0}
+
+    def report(self):
+        lines = [f"═══ Material Base: {self.name} ═══", ""]
+        lines.append(f"L_B: {len(self.atoms)} atoms")
+        rows = self.con.execute(
+            "SELECT premises, conclusions, n_assessors FROM base_sequents"
+        ).fetchall()
+        lines.append(f"|∼_B|: {len(rows)} sequents")
+        for p, c, n in rows:
+            lines.append(f"  {fmt_set(str_to_set(p))} ∼ {fmt_set(str_to_set(c))}")
+        cr = self.completeness()
+        lines.append(f"\nCompleteness: {cr['pct']:.0%} ({cr['assessed']}/{cr['total']})")
+        return '\n'.join(lines)

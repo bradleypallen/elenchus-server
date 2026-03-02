@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Elenchus</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #08080d; --surface: #10101a; --surface2: #161622;
+    --border: #222235; --border-focus: #3a3a5a;
+    --text: #d8d8e8; --text-dim: #8a8aa0; --text-muted: #505068;
+    --commit: #34d4a4; --commit-bg: #34d4a415;
+    --deny: #f472b6; --deny-bg: #f472b615;
+    --tension: #facc15; --tension-bg: #facc1510;
+    --imp: #60a5fa; --imp-bg: #60a5fa10;
+    --contested: #64748b;
+    --opp: #c4b5fd; --opp-bg: #c4b5fd08;
+    --accent: #818cf8;
+    --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+  html, body, #root { height: 100%; background: var(--bg); color: var(--text); }
+  body { font-family: var(--mono); font-size: 12px; }
+  input, textarea, button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const API = '';  // Same origin
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── API helpers ──
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+// ── App ──
+
+function App() {
+  const [view, setView] = useState('home'); // home | positum | dialogue
+  const [dialectics, setDialectics] = useState([]);
+  const [current, setCurrent] = useState(null); // dialectic name
+  const [state, setState] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [newName, setNewName] = useState('');
+  const msgEnd = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { loadDialectics(); }, []);
+  useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
+
+  const loadDialectics = async () => {
+    try { setDialectics(await api('/api/dialectics')); }
+    catch (e) { /* server may not be running yet */ }
+  };
+
+  const createDialectic = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const res = await api('/api/dialectics', {
+        method: 'POST', body: JSON.stringify({ name, topic: name })
+      });
+      setCurrent(name);
+      setState(res.state);
+      setMessages([]);
+      setView('positum');
+      setNewName('');
+      loadDialectics();
+    } catch (e) { setError(e.message); }
+  };
+
+  const openDialectic = async (name) => {
+    try {
+      const s = await api(`/api/dialectics/${name}`);
+      setCurrent(name);
+      setState(s);
+      setMessages([{ role: 'system', content: `Resumed dialectic: ${s.name}` }]);
+      setView('dialogue');
+    } catch (e) { setError(e.message); }
+  };
+
+  const deleteDialectic = async (name) => {
+    try {
+      await api(`/api/dialectics/${name}`, { method: 'DELETE' });
+      loadDialectics();
+      if (current === name) { setCurrent(null); setState(null); setView('home'); }
+    } catch (e) { setError(e.message); }
+  };
+
+  const sendMessage = async (msg) => {
+    if (!msg?.trim() || loading) return;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'respondent', content: msg }]);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api(`/api/dialectics/${current}/message`, {
+        method: 'POST', body: JSON.stringify({ message: msg })
+      });
+      setState(res.state);
+      if (res.response) {
+        setMessages(prev => [...prev, {
+          role: 'opponent', content: res.response,
+          acts: res.speech_acts, tensions: res.new_tensions
+        }]);
+      }
+    } catch (e) {
+      setError(e.message);
+      setMessages(prev => [...prev, { role: 'error', content: e.message }]);
+    }
+    setLoading(false);
+  };
+
+  const submitPositum = async () => {
+    const msg = input.trim();
+    if (!msg || loading) return;
+    setInput('');
+    setView('dialogue');
+    await sendMessage(msg);
+  };
+
+  const acceptTension = async (tid) => {
+    try {
+      const res = await api(`/api/dialectics/${current}/tensions/${tid}`, {
+        method: 'POST', body: JSON.stringify({ action: 'accept' })
+      });
+      setState(res.state);
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: `Accepted tension #${tid} → material implication`
+      }]);
+    } catch (e) { setError(e.message); }
+  };
+
+  const contestTension = async (tid) => {
+    try {
+      const res = await api(`/api/dialectics/${current}/tensions/${tid}`, {
+        method: 'POST', body: JSON.stringify({ action: 'contest' })
+      });
+      setState(res.state);
+      setMessages(prev => [...prev, {
+        role: 'system', content: `Contested tension #${tid}`
+      }]);
+    } catch (e) { setError(e.message); }
+  };
+
+  const retractProp = async (prop) => {
+    try {
+      const res = await api(`/api/dialectics/${current}/retract`, {
+        method: 'POST', body: JSON.stringify({ proposition: prop })
+      });
+      setState(res.state);
+      setMessages(prev => [...prev, {
+        role: 'system', content: `Retracted: "${prop}"`
+      }]);
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (view === 'positum') submitPositum();
+      else sendMessage(input);
+    }
+  };
+
+  // ── Home ──
+  if (view === 'home') {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
+              ἜΛΕΓΧΟΣ
+            </div>
+            <h1 style={{ fontSize: 32, fontWeight: 300, letterSpacing: -1, marginBottom: 8 }}>
+              Elenchus
+            </h1>
+            <p style={{ color: 'var(--text-dim)', fontSize: 13, fontFamily: 'var(--sans)', lineHeight: 1.8 }}>
+              Develop bilateral positions through prover-skeptic dialogue.
+            </p>
+          </div>
+
+          {/* New dialectic */}
+          <div style={{ marginBottom: 32 }}>
+            <label style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
+              NEW DIALECTIC
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') createDialectic(); }}
+                placeholder="Topic of inquiry..."
+                style={{
+                  flex: 1, padding: '12px 14px', background: 'var(--surface)',
+                  border: '1px solid var(--border)', borderRadius: 6,
+                  color: 'var(--text)', fontSize: 13, outline: 'none',
+                  fontFamily: 'var(--sans)',
+                }}
+                autoFocus
+              />
+              <button
+                onClick={createDialectic}
+                disabled={!newName.trim()}
+                style={{
+                  padding: '12px 20px', background: newName.trim() ? 'var(--opp)' : 'var(--surface)',
+                  border: 'none', borderRadius: 6, color: 'var(--bg)',
+                  fontSize: 12, cursor: newName.trim() ? 'pointer' : 'default',
+                  letterSpacing: 1, fontWeight: 500,
+                  opacity: newName.trim() ? 1 : 0.3,
+                }}
+              >BEGIN</button>
+            </div>
+          </div>
+
+          {/* Existing dialectics */}
+          {dialectics.length > 0 && (
+            <div>
+              <label style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
+                RESUME
+              </label>
+              {dialectics.map(d => (
+                <div key={d.name} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', marginBottom: 4, borderRadius: 6,
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }} onClick={() => openDialectic(d.name)}>
+                  <div>
+                    <div style={{ fontSize: 13, fontFamily: 'var(--sans)', marginBottom: 2 }}>{d.topic}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      C:{d.commitments} · D:{d.denials} · T:{d.tensions} · I:{d.implications}
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); deleteDialectic(d.name); }}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)',
+                             cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <div style={{ marginTop: 16, padding: 12, borderRadius: 6,
+                          background: '#ef444420', border: '1px solid #ef444440',
+                          color: '#ef4444', fontSize: 12, fontFamily: 'var(--sans)' }}>
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Positum ──
+  if (view === 'positum') {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 620, width: '100%', padding: 48 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+            POSITUM · {current}
+          </div>
+          <p style={{
+            color: 'var(--text-dim)', fontSize: 14, fontFamily: 'var(--sans)',
+            lineHeight: 1.8, marginBottom: 24,
+          }}>
+            State your initial position in your own words. The opponent will extract
+            commitments and begin the dialectic.
+          </p>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitPositum(); }}
+            placeholder="State your position..."
+            rows={8}
+            style={{
+              width: '100%', padding: 16, background: 'var(--surface)',
+              border: '1px solid var(--border)', borderRadius: 6,
+              color: 'var(--text)', fontSize: 14, outline: 'none', resize: 'vertical',
+              fontFamily: 'var(--sans)', lineHeight: 1.7,
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>⌘+Enter to submit</span>
+            <button
+              onClick={submitPositum}
+              disabled={!input.trim() || loading}
+              style={{
+                padding: '10px 24px',
+                background: input.trim() && !loading ? 'var(--opp)' : 'var(--surface)',
+                border: 'none', borderRadius: 6, color: 'var(--bg)',
+                fontSize: 12, cursor: input.trim() ? 'pointer' : 'default',
+                letterSpacing: 1, opacity: input.trim() && !loading ? 1 : 0.3,
+              }}
+            >{loading ? 'THINKING...' : 'SUBMIT POSITUM'}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Dialogue ──
+  const s = state || { commitments: [], denials: [], tensions: [], implications: [], retracted: [], contested: [] };
+
+  return (
+    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: '260px 1fr 280px', gridTemplateRows: 'auto 1fr auto' }}>
+      {/* Header */}
+      <div style={{
+        gridColumn: '1 / -1', padding: '10px 20px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
+                onClick={() => setView('home')}>Elenchus</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'var(--sans)' }}>{s.name || current}</span>
+        </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          C:{s.commitments.length} · D:{s.denials.length} · T:{s.tensions.length} · I:{s.implications.length}
+        </div>
+      </div>
+
+      {/* Left: Position */}
+      <div style={{ borderRight: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
+        <PositionList title="Commitments" color="var(--commit)" items={s.commitments} onRetract={retractProp} />
+        <PositionList title="Denials" color="var(--deny)" items={s.denials} onRetract={retractProp} />
+        {s.retracted?.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+              Retracted
+            </div>
+            {s.retracted.map((p, i) => (
+              <div key={i} style={{
+                padding: '3px 6px', fontSize: 10, color: 'var(--text-muted)',
+                textDecoration: 'line-through', lineHeight: 1.4, marginBottom: 2,
+              }}>{p}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Center: Messages */}
+      <div style={{ overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+        {loading && (
+          <div style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic', padding: '8px 0' }}>
+            Opponent is considering...
+          </div>
+        )}
+        <div ref={msgEnd} />
+      </div>
+
+      {/* Right: T and I */}
+      <div style={{ borderLeft: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--tension)', marginBottom: 8, textTransform: 'uppercase' }}>
+            Open tensions (T)
+          </div>
+          {s.tensions.length === 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>No open tensions</div>
+          )}
+          {s.tensions.map(t => (
+            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t.id)} onContest={() => contestTension(t.id)} />
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--imp)', marginBottom: 8, textTransform: 'uppercase' }}>
+            Material implications (I)
+          </div>
+          {s.implications.length === 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>No implications yet</div>
+          )}
+          {s.implications.map((imp, i) => (
+            <div key={i} style={{
+              padding: '5px 8px', marginBottom: 4, borderRadius: 4,
+              background: 'var(--imp-bg)', borderLeft: '2px solid var(--imp)',
+              fontSize: 10, lineHeight: 1.5, color: 'var(--text-dim)',
+              fontFamily: 'var(--sans)',
+            }}>
+              <div style={{ color: 'var(--imp)', fontSize: 9, fontFamily: 'var(--mono)', marginBottom: 2 }}>
+                &#123;{imp.gamma.join(', ')}&#125; |∼ &#123;{imp.delta.join(', ')}&#125;
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {s.contested?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--contested)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Contested
+            </div>
+            {s.contested.map((t, i) => (
+              <div key={i} style={{
+                padding: '4px 8px', marginBottom: 3, fontSize: 10,
+                color: 'var(--text-muted)', textDecoration: 'line-through', lineHeight: 1.4,
+              }}>#{t.id}: {(t.reason || '').slice(0, 80)}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div style={{
+        gridColumn: '1 / -1', padding: '12px 20px',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', gap: 10, alignItems: 'flex-end',
+      }}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={loading}
+          placeholder="Speak naturally — commit, deny, respond to tensions, refine your position..."
+          rows={2}
+          style={{
+            flex: 1, padding: '10px 14px', background: 'var(--surface)',
+            border: '1px solid var(--border)', borderRadius: 6,
+            color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none',
+            fontFamily: 'var(--sans)', lineHeight: 1.6,
+          }}
+        />
+        <button
+          onClick={() => sendMessage(input)}
+          disabled={!input.trim() || loading}
+          style={{
+            padding: '10px 20px', height: 44,
+            background: input.trim() && !loading ? 'var(--opp)' : 'var(--surface2)',
+            border: 'none', borderRadius: 6,
+            color: input.trim() && !loading ? 'var(--bg)' : 'var(--text-muted)',
+            fontSize: 12, cursor: input.trim() ? 'pointer' : 'default',
+            letterSpacing: 1, fontWeight: 500, flexShrink: 0,
+          }}
+        >{loading ? '...' : 'SEND'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Components ──
+
+function PositionList({ title, color, items, onRetract }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 9, letterSpacing: 2, color, marginBottom: 6, textTransform: 'uppercase' }}>
+        {title}
+      </div>
+      {items.length === 0 && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>∅</div>
+      )}
+      {items.map((p, i) => (
+        <div key={i} style={{
+          padding: '4px 7px', marginBottom: 3, borderRadius: 3,
+          background: color.replace(')', ', 0.08)').replace('var(', 'var('),
+          borderLeft: `2px solid ${color}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          fontSize: 10, lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
+        }}>
+          <span style={{ wordBreak: 'break-word' }}>{p}</span>
+          <button onClick={() => onRetract(p)} style={{
+            background: 'none', border: 'none', color: 'var(--text-muted)',
+            cursor: 'pointer', fontSize: 9, padding: '0 2px', flexShrink: 0, lineHeight: 1,
+          }} title="Retract">×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TensionCard({ t, onAccept, onContest }) {
+  return (
+    <div style={{
+      padding: 8, marginBottom: 8, borderRadius: 5,
+      background: 'var(--tension-bg)', border: '1px solid #facc1520',
+    }}>
+      <div style={{ fontSize: 9, color: 'var(--tension)', marginBottom: 3 }}>#{t.id}</div>
+      <div style={{
+        fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6,
+        fontFamily: 'var(--sans)',
+      }}>{t.reason}</div>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 6 }}>
+        &#123;{t.gamma.join(', ')}&#125; |∼ &#123;{t.delta.join(', ')}&#125;
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onAccept} style={{
+          padding: '3px 12px', background: '#34d4a420', border: '1px solid #34d4a440',
+          borderRadius: 3, color: 'var(--commit)', fontSize: 10, cursor: 'pointer',
+        }}>accept</button>
+        <button onClick={onContest} style={{
+          padding: '3px 12px', background: '#64748b15', border: '1px solid #64748b40',
+          borderRadius: 3, color: 'var(--contested)', fontSize: 10, cursor: 'pointer',
+        }}>contest</button>
+      </div>
+    </div>
+  );
+}
+
+function Message({ msg }) {
+  if (msg.role === 'system' || msg.role === 'error') {
+    return (
+      <div style={{
+        fontSize: 11, padding: '4px 0', textAlign: 'center', fontStyle: 'italic',
+        color: msg.role === 'error' ? '#ef4444' : 'var(--text-muted)',
+      }}>{msg.content}</div>
+    );
+  }
+
+  const isOpp = msg.role === 'opponent';
+  return (
+    <div style={{ display: 'flex', justifyContent: isOpp ? 'flex-start' : 'flex-end' }}>
+      <div style={{
+        maxWidth: '82%', padding: '10px 14px', borderRadius: 10,
+        background: isOpp ? 'var(--opp-bg)' : 'var(--surface2)',
+        border: `1px solid ${isOpp ? '#c4b5fd20' : 'var(--border)'}`,
+        fontFamily: 'var(--sans)',
+      }}>
+        <div style={{
+          fontSize: 9, marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase',
+          fontFamily: 'var(--mono)',
+          color: isOpp ? 'var(--opp)' : 'var(--text-muted)',
+        }}>{isOpp ? 'Opponent' : 'Respondent'}</div>
+        <div style={{
+          fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap',
+          color: isOpp ? 'var(--text)' : '#94a3b8',
+        }}>{msg.content}</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+"""
+opponent.py — The LLM opponent / derivability oracle
+
+Sends the dialectical state to the Anthropic API, parses structured
+responses, and applies state transitions per Figure 4.
+"""
+
+import json
+import os
+from anthropic import Anthropic
+from dialectical_state import DialecticalState
+
+
+SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
+
+YOUR ROLE:
+- Parse the respondent's natural language into formal speech acts
+- Maintain the bilateral state [C : D] (commitments and denials)
+- Detect and propose tensions (incoherences in the position)
+- Be charitable: interpret claims in their strongest plausible form
+- Be relentless but patient
+
+SPEECH ACT RECOGNITION:
+When the respondent speaks, classify their utterances:
+- COMMIT: asserting/endorsing a proposition
+- DENY: rejecting a proposition
+- ACCEPT_TENSION: agreeing a tension is genuine (by number)
+- CONTEST_TENSION: rejecting a tension (by number)
+- RETRACT: withdrawing a previous commitment or denial
+- REFINE: replacing a commitment with a more precise version
+
+RESPONSE FORMAT — respond ONLY with this JSON, no markdown:
+{
+  "speech_acts": [
+    {"type": "COMMIT"|"DENY"|"ACCEPT_TENSION"|"CONTEST_TENSION"|"RETRACT"|"REFINE",
+     "proposition": "the natural language proposition",
+     "target_tension_id": null,
+     "old_proposition": null}
+  ],
+  "new_tensions": [
+    {"gamma": ["premise from C"], "delta": ["conclusion"], "reason": "why incoherent"}
+  ],
+  "response": "Your natural language response. Be conversational, Socratic, probing."
+}
+
+RULES:
+- gamma must draw from existing commitments C
+- delta may be from D or NEW propositions
+- Use SINGLETON conclusions (one per tension)
+- For ACCEPT_TENSION, include target_tension_id
+- For CONTEST_TENSION, include target_tension_id
+- For REFINE, include old_proposition (what's replaced) and proposition (the new version)
+- Your "response" is what the respondent reads — make it a real philosophical conversation"""
+
+
+class Opponent:
+
+    def __init__(self, model: str = 'claude-sonnet-4-20250514'):
+        self.client = Anthropic()
+        self.model = model
+
+    def respond(self, user_message: str, state: DialecticalState,
+                context_turns: int = 6) -> dict:
+        """
+        Send the respondent's message + dialectical state to the LLM.
+        
+        The formal state (C, D, T, I) is always sent in full — it's
+        compact. Conversation history is windowed to the last N turns
+        for continuity, plus a summary of earlier discussion.
+        
+        Parse the structured response. Apply state transitions.
+        Return the result.
+        """
+        # Build the formal state block (always complete, always compact)
+        s = state.to_dict()
+        tid = state.base.con.execute(
+            "SELECT last_value FROM tension_seq"
+        ).fetchone()[0]
+
+        formal_state = f"""CURRENT DIALECTICAL STATE:
+Topic: {s['name']}
+Next tension ID: {tid + 1}
+
+Commitments (C):{self._fmt_list(s['commitments'])}
+Denials (D):{self._fmt_list(s['denials'])}
+Open tensions (T):{self._fmt_tensions(s['tensions'])}
+Material implications (I):{self._fmt_implications(s['implications'])}
+Retracted:{self._fmt_list(s['retracted'])}"""
+
+        # Build message with respondent's input
+        user_content = f"""{formal_state}
+
+RESPONDENT SAYS: "{user_message}" """
+
+        # Get windowed conversation history
+        # The formal state above makes the full history unnecessary —
+        # we only need recent turns for conversational continuity
+        history = state.get_conversation()
+
+        # If history is longer than the window, prepend a summary
+        messages = []
+        if len(history) > context_turns * 2:
+            summary = state.get_summary()
+            if summary:
+                messages.append({
+                    'role': 'user',
+                    'content': f"[SUMMARY OF EARLIER DISCUSSION]\n{summary}"
+                })
+                messages.append({
+                    'role': 'assistant',
+                    'content': "Understood. I have the dialectical context."
+                })
+            # Take only the last N exchanges
+            history = history[-(context_turns * 2):]
+
+        messages.extend(history)
+        messages.append({'role': 'user', 'content': user_content})
+
+        # Call API
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2000,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+        )
+
+        raw_text = response.content[0].text
+
+        # Store in conversation history (full, for the record)
+        state.add_conversation('user', user_message)
+        state.add_conversation('assistant', raw_text)
+
+        # Periodically update the summary (every 10 turns)
+        total_turns = len(state.get_conversation())
+        if total_turns > 0 and total_turns % 20 == 0:
+            self._update_summary(state)
+
+        # Parse
+        parsed = self._parse_response(raw_text)
+
+        # Apply state transitions
+        self._apply(parsed, state)
+
+        return parsed
+
+    def _update_summary(self, state: DialecticalState):
+        """Ask the LLM to summarize the dialectic so far."""
+        s = state.to_dict()
+        history = state.get_conversation()
+        # Take a sample of the history for summarization
+        sample = history[:20] if len(history) > 20 else history
+
+        prompt = f"""Summarize this Elenchus dialectic concisely (3-5 sentences).
+Focus on: the main commitments, key tensions that were resolved,
+any retractions or refinements, and the current trajectory.
+
+Topic: {s['name']}
+Current commitments: {len(s['commitments'])}
+Material implications: {len(s['implications'])}
+
+Recent exchanges:
+""" + '\n'.join(f"{m['role']}: {m['content'][:200]}" for m in sample[-10:])
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=500,
+                messages=[{'role': 'user', 'content': prompt}],
+            )
+            summary = response.content[0].text
+            state.set_summary(summary)
+        except:
+            pass  # Non-critical
+
+    def _parse_response(self, text: str) -> dict:
+        """Parse JSON from the LLM response."""
+        try:
+            clean = text.strip()
+            if clean.startswith('```'):
+                clean = clean.split('\n', 1)[1]
+                if clean.endswith('```'):
+                    clean = clean[:-3]
+                clean = clean.strip()
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            # If the model responded conversationally, wrap it
+            return {
+                'speech_acts': [],
+                'new_tensions': [],
+                'response': text
+            }
+
+    def _apply(self, parsed: dict, state: DialecticalState):
+        """Apply speech acts and tensions to state."""
+        for act in parsed.get('speech_acts', []):
+            atype = act.get('type', '')
+            prop = act.get('proposition', '')
+
+            if atype == 'COMMIT' and prop:
+                state.commit(prop)
+            elif atype == 'DENY' and prop:
+                state.deny(prop)
+            elif atype == 'RETRACT' and prop:
+                state.retract_prop(prop)
+            elif atype == 'REFINE':
+                old = act.get('old_proposition', '')
+                if old:
+                    state.retract_prop(old)
+                if prop:
+                    state.commit(prop)
+            elif atype == 'ACCEPT_TENSION':
+                tid = act.get('target_tension_id')
+                if tid is not None:
+                    state.accept_tension(int(tid))
+            elif atype == 'CONTEST_TENSION':
+                tid = act.get('target_tension_id')
+                if tid is not None:
+                    state.contest_tension(int(tid))
+
+        for t in parsed.get('new_tensions', []):
+            gamma = t.get('gamma', [])
+            delta = t.get('delta', [])
+            reason = t.get('reason', '')
+            if gamma or delta:
+                # Ensure atoms exist
+                for a in gamma + delta:
+                    state.base.add_atoms({a}, contributor='oracle')
+                state.add_tension(gamma, delta, reason)
+
+    def _fmt_list(self, items):
+        if not items:
+            return ' (none)'
+        return ''.join(f'\n  - "{item}"' for item in items)
+
+    def _fmt_tensions(self, tensions):
+        if not tensions:
+            return ' (none)'
+        lines = []
+        for t in tensions:
+            g = ', '.join(f'"{x}"' for x in t['gamma'])
+            d = ', '.join(f'"{x}"' for x in t['delta'])
+            lines.append(f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}')
+        return ''.join(lines)
+
+    def _fmt_implications(self, imps):
+        if not imps:
+            return ' (none)'
+        lines = []
+        for imp in imps:
+            g = ', '.join(f'"{x}"' for x in imp['gamma'])
+            d = ', '.join(f'"{x}"' for x in imp['delta'])
+            lines.append(f'\n  {{{g}}} |~ {{{d}}}')
+        return ''.join(lines)
