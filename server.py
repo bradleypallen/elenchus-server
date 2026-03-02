@@ -18,7 +18,7 @@ import glob
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 from dialectical_state import DialecticalState
 from opponent import Opponent
+from pdf_report import generate_pdf_report
 
 # ── Config ──
 
@@ -149,9 +150,11 @@ def list_dialectics():
 
 @app.get("/api/dialectics/{name}")
 def get_dialectic(name: str):
-    """Get the current state of a dialectic."""
+    """Get the current state of a dialectic, including conversation history."""
     state = _get_state(name)
-    return state.to_dict()
+    result = state.to_dict()
+    result['conversation'] = state.get_conversation()
+    return result
 
 
 @app.post("/api/dialectics/{name}/message")
@@ -212,6 +215,23 @@ def report(name: str):
     """Get the material base report."""
     state = _get_state(name)
     return {"report": state.base.report()}
+
+
+@app.get("/api/dialectics/{name}/report.pdf")
+def download_report_pdf(name: str):
+    """Generate and download a PDF report of the dialectic."""
+    state = _get_state(name)
+    logger.info("Generating PDF report for dialectic '%s'", name)
+    summary = opponent.generate_summary(state)
+    pdf_bytes = generate_pdf_report(state, summary)
+    safe_name = "".join(c if c.isalnum() or c in '-_ ' else '_' for c in name)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name} - Elenchus Report.pdf"'
+        },
+    )
 
 
 @app.delete("/api/dialectics/{name}")

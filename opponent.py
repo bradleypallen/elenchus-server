@@ -41,15 +41,31 @@ RESPONSE FORMAT — respond ONLY with this JSON, no markdown:
      "old_proposition": null}
   ],
   "new_tensions": [
-    {"gamma": ["premise from C"], "delta": ["conclusion"], "reason": "why incoherent"}
+    {"gamma": ["premise from C", "another premise from C"], "delta": ["conclusion", "optional further conclusion"], "reason": "why incoherent"}
   ],
   "response": "Your natural language response. Be conversational, Socratic, probing."
 }
 
+PROPOSITION QUALITY:
+- Every proposition must be a clean, atomic, declarative sentence
+- NEVER include metadata annotations like "(DENIED)", "(COMMITTED)", "(from C)" etc.
+- NEVER include justifications, conjunctions, or multiple claims in one proposition
+- BAD: "Since anyone can die, no one should start collecting" (contains justification)
+- GOOD: "No one of any age should start a bonsai collection"
+- For RETRACT/REFINE: old_proposition must EXACTLY match the wording in C or D
+
+TENSION CONSTRUCTION — {gamma} |~ {delta}:
+A tension means: "If you accept ALL of gamma, you are materially committed to ALL of delta — which conflicts with your position."
+
+Both gamma and delta are SETS of propositions. A sequent may have multiple premises and multiple conclusions.
+
+- gamma: Each element must be COPIED VERBATIM from the current commitments (C). Do not paraphrase, abridge, or annotate. Use the exact strings shown in the state.
+- delta: One or more clean propositions that LOGICALLY FOLLOW from the gamma premises taken together. Each element of delta is a genuine material consequence — something the gamma premises commit the respondent to, which creates a problem for their overall position (e.g., it contradicts a denial, or is something they would not want to accept). Use multiple conclusions when the premises jointly entail several distinct problematic consequences.
+- reason: A brief explanation of WHY gamma entails delta and why that is problematic.
+- Do NOT put justifications or causal connectives in delta. The "reason" field is where you explain the inference.
+- Do NOT propose tensions where delta does not actually follow from gamma. The inference must be defensible.
+
 RULES:
-- gamma must draw from existing commitments C
-- delta may be from D or NEW propositions
-- Use SINGLETON conclusions (one per tension)
 - For ACCEPT_TENSION, include target_tension_id
 - For CONTEST_TENSION, include target_tension_id
 - For REFINE, include old_proposition (what's replaced) and proposition (the new version)
@@ -69,6 +85,7 @@ class Opponent:
         self.client = Anthropic(**client_kwargs)
         self.model = model
         self.base_url = base_url
+        self._api_key = api_key
         self._has_api_key = bool(api_key or os.environ.get('ANTHROPIC_API_KEY'))
         logger.info("Opponent initialized: model=%s, base_url=%s, api_key_set=%s",
                      model, base_url or "(default)", self._has_api_key)
@@ -79,15 +96,16 @@ class Opponent:
         """Recreate the Anthropic client with new settings."""
         if model:
             self.model = model
-        client_kwargs = {}
         if api_key:
-            client_kwargs['api_key'] = api_key
+            self._api_key = api_key
             self._has_api_key = True
         if base_url is not None:
             self.base_url = base_url if base_url else None
-            if base_url:
-                client_kwargs['base_url'] = base_url
-        elif self.base_url:
+        # Rebuild client, preserving existing credentials
+        client_kwargs = {}
+        if getattr(self, '_api_key', None):
+            client_kwargs['api_key'] = self._api_key
+        if self.base_url:
             client_kwargs['base_url'] = self.base_url
         self.client = Anthropic(**client_kwargs)
         logger.info("Opponent reconfigured: model=%s, base_url=%s, api_key_updated=%s",
@@ -177,6 +195,97 @@ RESPONDENT SAYS: "{user_message}" """
         self._apply(parsed, state)
 
         return parsed
+
+    def generate_summary(self, state: DialecticalState) -> str:
+        """Generate a substantive analytical summary of the dialectic.
+
+        Returns the summary text without storing it. Used for PDF reports.
+        """
+        s = state.to_dict()
+        history = state.get_conversation()
+
+        # Build a rich prompt with full formal state
+        commitments_block = '\n'.join(f'  - "{c}"' for c in s['commitments']) or '  (none)'
+        denials_block = '\n'.join(f'  - "{d}"' for d in s['denials']) or '  (none)'
+        retracted_block = '\n'.join(f'  - "{r}"' for r in s['retracted']) or '  (none)'
+
+        tensions_block = ''
+        for t in s['tensions']:
+            g = ', '.join(f'"{x}"' for x in t['gamma'])
+            d = ', '.join(f'"{x}"' for x in t['delta'])
+            tensions_block += f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}'
+        if not tensions_block:
+            tensions_block = '  (none)'
+
+        implications_block = ''
+        for imp in s['implications']:
+            g = ', '.join(f'"{x}"' for x in imp['gamma'])
+            d = ', '.join(f'"{x}"' for x in imp['delta'])
+            implications_block += f'\n  {{{g}}} |~ {{{d}}}'
+        if not implications_block:
+            implications_block = '  (none)'
+
+        contested_block = ''
+        for t in s.get('contested', []):
+            g = ', '.join(f'"{x}"' for x in t['gamma'])
+            d = ', '.join(f'"{x}"' for x in t['delta'])
+            contested_block += f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}'
+        if not contested_block:
+            contested_block = '  (none)'
+
+        # Include a sample of recent conversation for context
+        recent = history[-20:] if len(history) > 20 else history
+        conv_sample = '\n'.join(
+            f"{m['role'].upper()}: {m['content'][:300]}" for m in recent
+        )
+
+        prompt = f"""Write a substantive analytical summary of this Elenchus dialectic. Cover:
+
+1. The respondent's starting position — what they initially committed to
+2. Key arguments and counter-arguments — the main tensions that were proposed
+3. How the position evolved — retractions, refinements, and new commitments
+4. The current state of the bilateral position — what is now committed and denied
+5. The status of open tensions — any unresolved challenges
+
+DIALECTICAL STATE:
+Topic: {s['name']}
+
+Commitments (C):
+{commitments_block}
+
+Denials (D):
+{denials_block}
+
+Open tensions (T):
+{tensions_block}
+
+Contested tensions:
+{contested_block}
+
+Material implications (I):
+{implications_block}
+
+Retracted propositions:
+{retracted_block}
+
+RECENT CONVERSATION:
+{conv_sample}
+
+Write 3-6 paragraphs. Be analytical, not merely descriptive. Focus on the philosophical substance and the dialectical dynamics."""
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                messages=[{'role': 'user', 'content': prompt}],
+            )
+            summary = response.content[0].text
+            logger.info("Generated analytical summary for dialectic '%s' (%d chars)",
+                        s['name'], len(summary))
+            return summary
+        except Exception as e:
+            logger.error("Failed to generate summary for '%s': %s", s['name'], e)
+            return f"Summary generation failed: {e}"
 
     def _update_summary(self, state: DialecticalState):
         """Ask the LLM to summarize the dialectic so far."""

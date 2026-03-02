@@ -53,9 +53,12 @@ class DialecticalState:
                 CHECK(status IN ('open', 'accepted', 'contested'))
             )
         """)
-        self.base.con.execute("""
-            CREATE SEQUENCE IF NOT EXISTS tension_seq START 1
-        """)
+        # Re-seed tension sequence from max existing id to survive reconnects
+        self.base.con.execute("DROP SEQUENCE IF EXISTS tension_seq")
+        max_tid = self.base.con.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM tensions"
+        ).fetchone()[0]
+        self.base.con.execute(f"CREATE SEQUENCE tension_seq START {max_tid + 1}")
         # Conversation history for multi-turn oracle
         self.base.con.execute("""
             CREATE TABLE IF NOT EXISTS conversation (
@@ -65,9 +68,12 @@ class DialecticalState:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        self.base.con.execute("""
-            CREATE SEQUENCE IF NOT EXISTS conv_seq START 1
-        """)
+        # Re-seed conversation sequence from max existing id to survive reconnects
+        self.base.con.execute("DROP SEQUENCE IF EXISTS conv_seq")
+        max_cid = self.base.con.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM conversation"
+        ).fetchone()[0]
+        self.base.con.execute(f"CREATE SEQUENCE conv_seq START {max_cid + 1}")
 
     # ── Position [C : D] ──
 

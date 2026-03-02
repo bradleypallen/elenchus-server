@@ -7,14 +7,27 @@ and implements derivability via the Projection theorem.
 """
 
 import duckdb
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+_DELIM = '\x1e'  # ASCII Record Separator — safe delimiter for natural-language propositions
 
 
 def set_to_str(s):
-    return ','.join(sorted(s)) if s else ''
+    if not s:
+        return ''
+    # Trailing _DELIM ensures even single-element sets are marked as new format
+    return _DELIM.join(sorted(s)) + _DELIM
 
 def str_to_set(s):
-    return frozenset(s.split(',')) if s else frozenset()
+    if not s:
+        return frozenset()
+    # New format uses \x1e; legacy data uses comma
+    if _DELIM in s:
+        return frozenset(p for p in s.split(_DELIM) if p)
+    return frozenset(s.split(','))
 
 def fmt_set(s):
     if not s: return '∅'
@@ -201,3 +214,27 @@ class MaterialBase:
         cr = self.completeness()
         lines.append(f"\nCompleteness: {cr['pct']:.0%} ({cr['assessed']}/{cr['total']})")
         return '\n'.join(lines)
+
+    def _migrate_delimiter(self):
+        """Re-serialize all assessments from comma to \\x1e delimiter.
+
+        Already-shattered propositions (those containing commas that were
+        split on ingest) cannot be automatically reconstructed — those
+        need manual repair. This only re-writes the stored delimiter so
+        that future reads use the new format.
+        """
+        rows = self.con.execute(
+            "SELECT rowid, premises, conclusions FROM assessments"
+        ).fetchall()
+        migrated = 0
+        for rowid, p, c in rows:
+            if _DELIM not in p and _DELIM not in c:
+                new_p = set_to_str(str_to_set(p))
+                new_c = set_to_str(str_to_set(c))
+                if new_p != p or new_c != c:
+                    self.con.execute(
+                        "UPDATE assessments SET premises=?, conclusions=? "
+                        "WHERE rowid=?", [new_p, new_c, rowid])
+                    migrated += 1
+        logger.info("_migrate_delimiter: re-serialized %d assessment rows", migrated)
+        return migrated

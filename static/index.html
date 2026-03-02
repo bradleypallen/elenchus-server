@@ -4,24 +4,62 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Elenchus</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23818cf8'>&#x0395;</text></svg>" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+<script>
+  // Prevent flash on light theme — runs synchronously before React
+  (function() {
+    try {
+      var prefs = JSON.parse(localStorage.getItem('elenchus-display'));
+      if (prefs && prefs.theme === 'light') {
+        var s = document.documentElement.style;
+        s.setProperty('--bg', '#f5f5f7');
+        s.setProperty('--surface', '#ffffff');
+        s.setProperty('--surface2', '#eeeef2');
+        s.setProperty('--border', '#d4d4dc');
+        s.setProperty('--border-focus', '#b4b4c4');
+        s.setProperty('--text', '#1a1a2e');
+        s.setProperty('--text-dim', '#4a4a68');
+        s.setProperty('--text-muted', '#8888a0');
+        s.setProperty('--respondent-text', '#4a5568');
+      }
+    } catch(e) {}
+  })();
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #08080d; --surface: #10101a; --surface2: #161622;
     --border: #222235; --border-focus: #3a3a5a;
     --text: #d8d8e8; --text-dim: #8a8aa0; --text-muted: #505068;
-    --commit: #34d4a4; --commit-bg: #34d4a415;
-    --deny: #f472b6; --deny-bg: #f472b615;
-    --tension: #facc15; --tension-bg: #facc1510;
-    --imp: #60a5fa; --imp-bg: #60a5fa10;
+    --commit: #34d4a4;
+    --commit-bg: rgba(52,212,164,0.08);
+    --commit-bg-strong: rgba(52,212,164,0.25);
+    --commit-border: rgba(52,212,164,0.12);
+    --deny: #f472b6;
+    --deny-bg: rgba(244,114,182,0.08);
+    --deny-bg-strong: rgba(244,114,182,0.25);
+    --deny-border: rgba(244,114,182,0.12);
+    --tension: #facc15;
+    --tension-bg: rgba(250,204,21,0.06);
+    --tension-bg-strong: rgba(250,204,21,0.25);
+    --tension-border: rgba(250,204,21,0.12);
+    --imp: #60a5fa;
+    --imp-bg: rgba(96,165,250,0.06);
+    --imp-bg-strong: rgba(96,165,250,0.25);
+    --imp-border: rgba(96,165,250,0.12);
     --contested: #64748b;
-    --opp: #c4b5fd; --opp-bg: #c4b5fd08;
+    --opp: #c4b5fd;
+    --opp-bg: rgba(196,181,253,0.03);
+    --opp-bg-strong: rgba(196,181,253,0.25);
+    --opp-border: rgba(196,181,253,0.12);
     --accent: #818cf8;
+    --respondent-text: #94a3b8;
     --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
     --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
   }
@@ -31,6 +69,13 @@
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  /* Markdown inside opponent messages */
+  .msg-md p { margin: 0 0 0.5em; }
+  .msg-md p:last-child { margin-bottom: 0; }
+  .msg-md ul, .msg-md ol { margin: 0.3em 0; padding-left: 1.4em; }
+  .msg-md li { margin-bottom: 0.2em; }
+  .msg-md strong { font-weight: 500; }
+  .msg-md h1, .msg-md h2, .msg-md h3, .msg-md h4 { font-size: inherit; font-weight: 500; margin: 0.6em 0 0.3em; }
 </style>
 </head>
 <body>
@@ -40,6 +85,74 @@
 const API = '';  // Same origin
 
 const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Display preferences ──
+
+const DEFAULT_DISPLAY = {
+  theme: 'dark',
+  fontScale: 1.0,
+  colors: {
+    commit: '#34d4a4',
+    deny: '#f472b6',
+    tension: '#facc15',
+    imp: '#60a5fa',
+    opp: '#c4b5fd',
+  }
+};
+
+const THEMES = {
+  dark: {
+    '--bg': '#08080d', '--surface': '#10101a', '--surface2': '#161622',
+    '--border': '#222235', '--border-focus': '#3a3a5a',
+    '--text': '#d8d8e8', '--text-dim': '#8a8aa0', '--text-muted': '#505068',
+    '--contested': '#64748b', '--accent': '#818cf8',
+    '--respondent-text': '#94a3b8',
+  },
+  light: {
+    '--bg': '#f5f5f7', '--surface': '#ffffff', '--surface2': '#eeeef2',
+    '--border': '#d4d4dc', '--border-focus': '#b4b4c4',
+    '--text': '#1a1a2e', '--text-dim': '#4a4a68', '--text-muted': '#8888a0',
+    '--contested': '#64748b', '--accent': '#818cf8',
+    '--respondent-text': '#4a5568',
+  }
+};
+
+const FONT_SCALES = [
+  { label: 'S', value: 0.85 },
+  { label: 'M', value: 1.0 },
+  { label: 'L', value: 1.15 },
+  { label: 'XL', value: 1.3 },
+];
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyDisplayPrefs(prefs) {
+  const root = document.documentElement;
+  const theme = THEMES[prefs.theme] || THEMES.dark;
+
+  // Set theme structural CSS vars
+  Object.entries(theme).forEach(([k, v]) => root.style.setProperty(k, v));
+
+  // Set semantic color vars + derived alpha variants
+  const colors = prefs.colors || DEFAULT_DISPLAY.colors;
+  const alphas = { bg: 0.08, 'bg-strong': 0.25, border: 0.12 };
+  Object.entries(colors).forEach(([key, hex]) => {
+    root.style.setProperty(`--${key}`, hex);
+    Object.entries(alphas).forEach(([suffix, a]) => {
+      root.style.setProperty(`--${key}-${suffix}`, hexToRgba(hex, a));
+    });
+  });
+
+  // Set body font size
+  document.body.style.fontSize = `${12 * (prefs.fontScale || 1.0)}px`;
+
+  console.log('[elenchus] Display prefs applied:', JSON.stringify(prefs));
+}
 
 // ── API helpers ──
 
@@ -71,8 +184,26 @@ function App() {
   const [settings, setSettings] = useState({ model: '', base_url: '', has_api_key: false });
   const [settingsForm, setSettingsForm] = useState({ api_key: '', base_url: '', model: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [displayPrefs, setDisplayPrefs] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('elenchus-display'));
+      if (saved) {
+        return { ...DEFAULT_DISPLAY, ...saved, colors: { ...DEFAULT_DISPLAY.colors, ...(saved.colors || {}) } };
+      }
+    } catch (e) {}
+    return DEFAULT_DISPLAY;
+  });
   const msgEnd = useRef(null);
   const inputRef = useRef(null);
+
+  // Display preferences — persist and apply on every change (including initial)
+  useEffect(() => {
+    localStorage.setItem('elenchus-display', JSON.stringify(displayPrefs));
+    applyDisplayPrefs(displayPrefs);
+  }, [displayPrefs]);
+
+  // Scaled font size helper
+  const fs = useCallback((px) => Math.round(px * displayPrefs.fontScale), [displayPrefs.fontScale]);
 
   useEffect(() => { loadDialectics(); loadSettings(); }, []);
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -88,6 +219,24 @@ function App() {
       const s = await api('/api/settings');
       setSettings(s);
       setSettingsForm({ api_key: '', base_url: s.base_url || '', model: s.model || '' });
+
+      // Re-send locally saved model/base_url if server lost them (restart)
+      try {
+        const saved = JSON.parse(localStorage.getItem('elenchus-llm') || '{}');
+        const needsSync = (saved.model && saved.model !== s.model)
+                       || (saved.base_url && saved.base_url !== s.base_url);
+        if (needsSync) {
+          const body = {};
+          if (saved.model) body.model = saved.model;
+          if (saved.base_url) body.base_url = saved.base_url;
+          const updated = await api('/api/settings', {
+            method: 'PUT', body: JSON.stringify(body)
+          });
+          setSettings(updated);
+          setSettingsForm(f => ({ ...f, base_url: updated.base_url || '', model: updated.model || '' }));
+          console.log('[elenchus] Restored LLM settings from localStorage:', JSON.stringify(body));
+        }
+      } catch (e2) { /* localStorage read failed, no big deal */ }
     } catch (e) { /* server may not be running yet */ }
   };
 
@@ -107,6 +256,12 @@ function App() {
         method: 'PUT', body: JSON.stringify(body)
       });
       setSettings(s);
+      // Persist non-secret settings to localStorage for server restart recovery
+      const llmLocal = {};
+      if (s.model) llmLocal.model = s.model;
+      if (s.base_url) llmLocal.base_url = s.base_url;
+      localStorage.setItem('elenchus-llm', JSON.stringify(llmLocal));
+      console.log('[elenchus] LLM settings saved to localStorage:', JSON.stringify(llmLocal));
       setShowSettings(false);
     } catch (e) { setError(e.message); }
     setSettingsSaving(false);
@@ -133,7 +288,25 @@ function App() {
       const s = await api(`/api/dialectics/${name}`);
       setCurrent(name);
       setState(s);
-      setMessages([{ role: 'system', content: `Resumed dialectic: ${s.name}` }]);
+      // Restore conversation history from DB
+      const roleMap = { user: 'respondent', assistant: 'opponent' };
+      const history = (s.conversation || []).map(m => {
+        let content = m.content;
+        // Assistant messages are stored as raw LLM output; extract the response field
+        if (m.role === 'assistant') {
+          try {
+            // Strip markdown code fence if present (```json ... ```)
+            const stripped = content.replace(/^[\s\S]*?```json\s*\n?/i, '').replace(/\n?\s*```[\s\S]*$/, '');
+            const parsed = JSON.parse(stripped);
+            content = parsed.response || content;
+          } catch (e) { /* not parseable, use as-is */ }
+        }
+        return { role: roleMap[m.role] || m.role, content };
+      });
+      setMessages([
+        { role: 'system', content: `Resumed dialectic: ${s.name}` },
+        ...history,
+      ]);
       setView('dialogue');
     } catch (e) { setError(e.message); }
   };
@@ -223,6 +396,170 @@ function App() {
     }
   };
 
+  // ── Settings modal (rendered in all views) ──
+  const settingsModal = showSettings ? (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }} onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+      <div style={{
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 10, padding: 28, width: 420, maxWidth: '90vw',
+        maxHeight: '80vh', overflowY: 'auto',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            Settings
+          </div>
+          <button onClick={() => setShowSettings(false)} style={{
+            background: 'none', border: 'none', color: 'var(--text-muted)',
+            cursor: 'pointer', fontSize: fs(16), padding: '0 4px',
+          }}>&times;</button>
+        </div>
+
+        {/* LLM section */}
+        <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-dim)', marginBottom: 12, textTransform: 'uppercase' }}>
+          LLM
+        </div>
+
+        <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+          API KEY {settings.has_api_key && <span style={{ color: 'var(--commit)', fontSize: fs(9) }}>(set)</span>}
+        </label>
+        <input
+          type="password"
+          value={settingsForm.api_key}
+          onChange={e => setSettingsForm(f => ({ ...f, api_key: e.target.value }))}
+          placeholder={settings.has_api_key ? '••••••••  (leave blank to keep current)' : 'sk-ant-...'}
+          style={{
+            width: '100%', padding: '10px 12px', marginBottom: 14,
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+            color: 'var(--text)', fontSize: fs(12), outline: 'none',
+          }}
+        />
+
+        <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+          API BASE URL
+        </label>
+        <input
+          type="text"
+          value={settingsForm.base_url}
+          onChange={e => setSettingsForm(f => ({ ...f, base_url: e.target.value }))}
+          placeholder="https://api.anthropic.com (default)"
+          style={{
+            width: '100%', padding: '10px 12px', marginBottom: 14,
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+            color: 'var(--text)', fontSize: fs(12), outline: 'none',
+          }}
+        />
+
+        <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+          MODEL
+        </label>
+        <input
+          type="text"
+          value={settingsForm.model}
+          onChange={e => setSettingsForm(f => ({ ...f, model: e.target.value }))}
+          placeholder="claude-sonnet-4-20250514"
+          style={{
+            width: '100%', padding: '10px 12px', marginBottom: 20,
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+            color: 'var(--text)', fontSize: fs(12), outline: 'none',
+          }}
+        />
+
+        <button
+          onClick={saveSettings}
+          disabled={settingsSaving}
+          style={{
+            width: '100%', padding: '10px 0',
+            background: settingsSaving ? 'var(--surface2)' : 'var(--accent)',
+            border: 'none', borderRadius: 6, color: '#111',
+            fontSize: fs(11), cursor: settingsSaving ? 'default' : 'pointer',
+            letterSpacing: 1, fontWeight: 500,
+            opacity: settingsSaving ? 0.5 : 1,
+          }}
+        >{settingsSaving ? 'SAVING...' : 'SAVE LLM SETTINGS'}</button>
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+        {/* Display section */}
+        <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-dim)', marginBottom: 16, textTransform: 'uppercase' }}>
+          Display
+        </div>
+
+        {/* Theme toggle */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+            THEME
+          </label>
+          <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {['dark', 'light'].map(t => (
+              <button key={t} onClick={() => setDisplayPrefs(p => ({ ...p, theme: t }))}
+                style={{
+                  flex: 1, padding: `${fs(6)}px ${fs(14)}px`, border: 'none', cursor: 'pointer',
+                  background: displayPrefs.theme === t ? 'var(--accent)' : 'var(--surface2)',
+                  color: displayPrefs.theme === t ? '#fff' : 'var(--text-dim)',
+                  fontSize: fs(10), letterSpacing: 1, textTransform: 'uppercase',
+                  fontFamily: 'var(--mono)',
+                }}>{t}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Font size */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+            FONT SIZE
+          </label>
+          <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {FONT_SCALES.map(sc => (
+              <button key={sc.value} onClick={() => setDisplayPrefs(p => ({ ...p, fontScale: sc.value }))}
+                style={{
+                  flex: 1, padding: `${fs(6)}px 0`, border: 'none', cursor: 'pointer',
+                  background: displayPrefs.fontScale === sc.value ? 'var(--accent)' : 'var(--surface2)',
+                  color: displayPrefs.fontScale === sc.value ? '#fff' : 'var(--text-dim)',
+                  fontSize: fs(10), letterSpacing: 1,
+                  fontFamily: 'var(--mono)',
+                }}>{sc.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Colors */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
+            COLORS
+          </label>
+          {[
+            { key: 'commit', label: 'Commitments' },
+            { key: 'deny', label: 'Denials' },
+            { key: 'tension', label: 'Tensions' },
+            { key: 'imp', label: 'Implications' },
+            { key: 'opp', label: 'Opponent' },
+          ].map(({ key, label }) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <input type="color" value={displayPrefs.colors[key]}
+                onChange={e => setDisplayPrefs(p => ({ ...p, colors: { ...p.colors, [key]: e.target.value } }))}
+                style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 1, cursor: 'pointer', background: 'var(--surface2)' }}
+              />
+              <span style={{ fontSize: fs(11), color: 'var(--text-dim)', fontFamily: 'var(--sans)' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Reset */}
+        <button onClick={() => setDisplayPrefs(DEFAULT_DISPLAY)}
+          style={{
+            background: 'none', border: 'none', color: 'var(--text-muted)',
+            cursor: 'pointer', fontSize: fs(10), textDecoration: 'underline',
+            padding: 0, fontFamily: 'var(--mono)',
+          }}>reset to defaults</button>
+      </div>
+    </div>
+  ) : null;
+
   // ── Home ──
   if (view === 'home') {
     return (
@@ -235,104 +572,25 @@ function App() {
               style={{
                 position: 'absolute', top: 0, right: 0,
                 background: 'none', border: 'none', color: 'var(--text-muted)',
-                cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1,
+                cursor: 'pointer', fontSize: fs(18), padding: 4, lineHeight: 1,
               }}
             >&#9881;</button>
-            <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
+            <div style={{ fontSize: fs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
               ἜΛΕΓΧΟΣ
             </div>
-            <h1 style={{ fontSize: 32, fontWeight: 300, letterSpacing: -1, marginBottom: 8 }}>
+            <h1 style={{ fontSize: fs(32), fontWeight: 300, letterSpacing: -1, marginBottom: 8 }}>
               Elenchus
             </h1>
-            <p style={{ color: 'var(--text-dim)', fontSize: 13, fontFamily: 'var(--sans)', lineHeight: 1.8 }}>
+            <p style={{ color: 'var(--text-dim)', fontSize: fs(13), fontFamily: 'var(--sans)', lineHeight: 1.8 }}>
               Develop bilateral positions through prover-skeptic dialogue.
             </p>
           </div>
 
-          {/* Settings modal */}
-          {showSettings && (
-            <div style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-            }} onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
-              <div style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 10, padding: 28, width: 420, maxWidth: '90vw',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                  <div style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    LLM SETTINGS
-                  </div>
-                  <button onClick={() => setShowSettings(false)} style={{
-                    background: 'none', border: 'none', color: 'var(--text-muted)',
-                    cursor: 'pointer', fontSize: 16, padding: '0 4px',
-                  }}>&times;</button>
-                </div>
-
-                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                  API KEY {settings.has_api_key && <span style={{ color: 'var(--commit)', fontSize: 9 }}>(set)</span>}
-                </label>
-                <input
-                  type="password"
-                  value={settingsForm.api_key}
-                  onChange={e => setSettingsForm(f => ({ ...f, api_key: e.target.value }))}
-                  placeholder={settings.has_api_key ? '••••••••  (leave blank to keep current)' : 'sk-ant-...'}
-                  style={{
-                    width: '100%', padding: '10px 12px', marginBottom: 14,
-                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
-                    color: 'var(--text)', fontSize: 12, outline: 'none',
-                  }}
-                />
-
-                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                  API BASE URL
-                </label>
-                <input
-                  type="text"
-                  value={settingsForm.base_url}
-                  onChange={e => setSettingsForm(f => ({ ...f, base_url: e.target.value }))}
-                  placeholder="https://api.anthropic.com (default)"
-                  style={{
-                    width: '100%', padding: '10px 12px', marginBottom: 14,
-                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
-                    color: 'var(--text)', fontSize: 12, outline: 'none',
-                  }}
-                />
-
-                <label style={{ fontSize: 10, letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                  MODEL
-                </label>
-                <input
-                  type="text"
-                  value={settingsForm.model}
-                  onChange={e => setSettingsForm(f => ({ ...f, model: e.target.value }))}
-                  placeholder="claude-sonnet-4-20250514"
-                  style={{
-                    width: '100%', padding: '10px 12px', marginBottom: 20,
-                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
-                    color: 'var(--text)', fontSize: 12, outline: 'none',
-                  }}
-                />
-
-                <button
-                  onClick={saveSettings}
-                  disabled={settingsSaving}
-                  style={{
-                    width: '100%', padding: '10px 0',
-                    background: settingsSaving ? 'var(--surface2)' : 'var(--opp)',
-                    border: 'none', borderRadius: 6, color: 'var(--bg)',
-                    fontSize: 12, cursor: settingsSaving ? 'default' : 'pointer',
-                    letterSpacing: 1, fontWeight: 500,
-                    opacity: settingsSaving ? 0.5 : 1,
-                  }}
-                >{settingsSaving ? 'SAVING...' : 'SAVE'}</button>
-              </div>
-            </div>
-          )}
+          {settingsModal}
 
           {/* New dialectic */}
           <div style={{ marginBottom: 32 }}>
-            <label style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
+            <label style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
               NEW DIALECTIC
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -344,7 +602,7 @@ function App() {
                 style={{
                   flex: 1, padding: '12px 14px', background: 'var(--surface)',
                   border: '1px solid var(--border)', borderRadius: 6,
-                  color: 'var(--text)', fontSize: 13, outline: 'none',
+                  color: 'var(--text)', fontSize: fs(13), outline: 'none',
                   fontFamily: 'var(--sans)',
                 }}
                 autoFocus
@@ -353,9 +611,9 @@ function App() {
                 onClick={createDialectic}
                 disabled={!newName.trim()}
                 style={{
-                  padding: '12px 20px', background: newName.trim() ? 'var(--opp)' : 'var(--surface)',
-                  border: 'none', borderRadius: 6, color: 'var(--bg)',
-                  fontSize: 12, cursor: newName.trim() ? 'pointer' : 'default',
+                  padding: '12px 20px', background: newName.trim() ? 'var(--accent)' : 'var(--surface)',
+                  border: 'none', borderRadius: 6, color: '#111',
+                  fontSize: fs(12), cursor: newName.trim() ? 'pointer' : 'default',
                   letterSpacing: 1, fontWeight: 500,
                   opacity: newName.trim() ? 1 : 0.3,
                 }}
@@ -366,7 +624,7 @@ function App() {
           {/* Existing dialectics */}
           {dialectics.length > 0 && (
             <div>
-              <label style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
+              <label style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
                 RESUME
               </label>
               {dialectics.map(d => (
@@ -377,14 +635,14 @@ function App() {
                   cursor: 'pointer',
                 }} onClick={() => openDialectic(d.name)}>
                   <div>
-                    <div style={{ fontSize: 13, fontFamily: 'var(--sans)', marginBottom: 2 }}>{d.topic}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: fs(13), fontFamily: 'var(--sans)', marginBottom: 2 }}>{d.topic}</div>
+                    <div style={{ fontSize: fs(10), color: 'var(--text-muted)' }}>
                       C:{d.commitments} · D:{d.denials} · T:{d.tensions} · I:{d.implications}
                     </div>
                   </div>
                   <button onClick={e => { e.stopPropagation(); deleteDialectic(d.name); }}
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)',
-                             cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}>×</button>
+                             cursor: 'pointer', fontSize: fs(11), padding: '4px 8px' }}>×</button>
                 </div>
               ))}
             </div>
@@ -393,7 +651,7 @@ function App() {
           {error && (
             <div style={{ marginTop: 16, padding: 12, borderRadius: 6,
                           background: '#ef444420', border: '1px solid #ef444440',
-                          color: '#ef4444', fontSize: 12, fontFamily: 'var(--sans)' }}>
+                          color: '#ef4444', fontSize: fs(12), fontFamily: 'var(--sans)' }}>
               {error}
             </div>
           )}
@@ -407,11 +665,11 @@ function App() {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ maxWidth: 620, width: '100%', padding: 48 }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
             POSITUM · {current}
           </div>
           <p style={{
-            color: 'var(--text-dim)', fontSize: 14, fontFamily: 'var(--sans)',
+            color: 'var(--text-dim)', fontSize: fs(14), fontFamily: 'var(--sans)',
             lineHeight: 1.8, marginBottom: 24,
           }}>
             State your initial position in your own words. The opponent will extract
@@ -427,24 +685,25 @@ function App() {
             style={{
               width: '100%', padding: 16, background: 'var(--surface)',
               border: '1px solid var(--border)', borderRadius: 6,
-              color: 'var(--text)', fontSize: 14, outline: 'none', resize: 'vertical',
+              color: 'var(--text)', fontSize: fs(14), outline: 'none', resize: 'vertical',
               fontFamily: 'var(--sans)', lineHeight: 1.7,
             }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>⌘+Enter to submit</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>⌘+Enter to submit</span>
             <button
               onClick={submitPositum}
               disabled={!input.trim() || loading}
               style={{
                 padding: '10px 24px',
-                background: input.trim() && !loading ? 'var(--opp)' : 'var(--surface)',
-                border: 'none', borderRadius: 6, color: 'var(--bg)',
-                fontSize: 12, cursor: input.trim() ? 'pointer' : 'default',
+                background: input.trim() && !loading ? 'var(--accent)' : 'var(--surface)',
+                border: 'none', borderRadius: 6, color: '#111',
+                fontSize: fs(12), cursor: input.trim() ? 'pointer' : 'default',
                 letterSpacing: 1, opacity: input.trim() && !loading ? 1 : 0.3,
               }}
             >{loading ? 'THINKING...' : 'SUBMIT POSITUM'}</button>
           </div>
+          {settingsModal}
         </div>
       </div>
     );
@@ -462,27 +721,54 @@ function App() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
+          <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
                 onClick={() => setView('home')}>Elenchus</span>
-          <span style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'var(--sans)' }}>{s.name || current}</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{s.name || current}</span>
         </div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-          C:{s.commitments.length} · D:{s.denials.length} · T:{s.tensions.length} · I:{s.implications.length}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>
+            C:{s.commitments.length} · D:{s.denials.length} · T:{s.tensions.length} · I:{s.implications.length}
+          </span>
+          <button
+            onClick={() => {
+              const a = document.createElement('a');
+              a.href = `${API}/api/dialectics/${encodeURIComponent(current)}/report.pdf`;
+              a.download = '';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }}
+            title="Download PDF report"
+            style={{
+              background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+              padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1,
+              fontFamily: 'var(--mono)',
+            }}
+          >PDF</button>
+          <button
+            onClick={openSettingsPanel}
+            title="Settings"
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              cursor: 'pointer', fontSize: fs(14), padding: 2, lineHeight: 1,
+            }}
+          >&#9881;</button>
         </div>
       </div>
 
       {/* Left: Position */}
       <div style={{ borderRight: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
-        <PositionList title="Commitments" color="var(--commit)" items={s.commitments} onRetract={retractProp} />
-        <PositionList title="Denials" color="var(--deny)" items={s.denials} onRetract={retractProp} />
+        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} fs={fs} />
+        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} fs={fs} />
         {s.retracted?.length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
               Retracted
             </div>
             {s.retracted.map((p, i) => (
               <div key={i} style={{
-                padding: '3px 6px', fontSize: 10, color: 'var(--text-muted)',
+                padding: '3px 6px', fontSize: fs(10), color: 'var(--text-muted)',
                 textDecoration: 'line-through', lineHeight: 1.4, marginBottom: 2,
               }}>{p}</div>
             ))}
@@ -492,9 +778,9 @@ function App() {
 
       {/* Center: Messages */}
       <div style={{ overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+        {messages.map((msg, i) => <Message key={i} msg={msg} fs={fs} />)}
         {loading && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic', padding: '8px 0' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontStyle: 'italic', padding: '8px 0' }}>
             Opponent is considering...
           </div>
         )}
@@ -504,32 +790,32 @@ function App() {
       {/* Right: T and I */}
       <div style={{ borderLeft: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--tension)', marginBottom: 8, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--tension)', marginBottom: 8, textTransform: 'uppercase' }}>
             Open tensions (T)
           </div>
           {s.tensions.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>No open tensions</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No open tensions</div>
           )}
           {s.tensions.map(t => (
-            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t.id)} onContest={() => contestTension(t.id)} />
+            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t.id)} onContest={() => contestTension(t.id)} fs={fs} />
           ))}
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--imp)', marginBottom: 8, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--imp)', marginBottom: 8, textTransform: 'uppercase' }}>
             Material implications (I)
           </div>
           {s.implications.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>No implications yet</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No implications yet</div>
           )}
           {s.implications.map((imp, i) => (
             <div key={i} style={{
               padding: '5px 8px', marginBottom: 4, borderRadius: 4,
               background: 'var(--imp-bg)', borderLeft: '2px solid var(--imp)',
-              fontSize: 10, lineHeight: 1.5, color: 'var(--text-dim)',
+              fontSize: fs(10), lineHeight: 1.5, color: 'var(--text-dim)',
               fontFamily: 'var(--sans)',
             }}>
-              <div style={{ color: 'var(--imp)', fontSize: 9, fontFamily: 'var(--mono)', marginBottom: 2 }}>
+              <div style={{ color: 'var(--imp)', fontSize: fs(9), fontFamily: 'var(--mono)', marginBottom: 2 }}>
                 &#123;{imp.gamma.join(', ')}&#125; |∼ &#123;{imp.delta.join(', ')}&#125;
               </div>
             </div>
@@ -538,12 +824,12 @@ function App() {
 
         {s.contested?.length > 0 && (
           <div>
-            <div style={{ fontSize: 9, letterSpacing: 2, color: 'var(--contested)', marginBottom: 8, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--contested)', marginBottom: 8, textTransform: 'uppercase' }}>
               Contested
             </div>
             {s.contested.map((t, i) => (
               <div key={i} style={{
-                padding: '4px 8px', marginBottom: 3, fontSize: 10,
+                padding: '4px 8px', marginBottom: 3, fontSize: fs(10),
                 color: 'var(--text-muted)', textDecoration: 'line-through', lineHeight: 1.4,
               }}>#{t.id}: {(t.reason || '').slice(0, 80)}</div>
             ))}
@@ -568,7 +854,7 @@ function App() {
           style={{
             flex: 1, padding: '10px 14px', background: 'var(--surface)',
             border: '1px solid var(--border)', borderRadius: 6,
-            color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none',
+            color: 'var(--text)', fontSize: fs(13), outline: 'none', resize: 'none',
             fontFamily: 'var(--sans)', lineHeight: 1.6,
           }}
         />
@@ -577,41 +863,43 @@ function App() {
           disabled={!input.trim() || loading}
           style={{
             padding: '10px 20px', height: 44,
-            background: input.trim() && !loading ? 'var(--opp)' : 'var(--surface2)',
+            background: input.trim() && !loading ? 'var(--accent)' : 'var(--surface2)',
             border: 'none', borderRadius: 6,
-            color: input.trim() && !loading ? 'var(--bg)' : 'var(--text-muted)',
-            fontSize: 12, cursor: input.trim() ? 'pointer' : 'default',
+            color: input.trim() && !loading ? '#111' : 'var(--text-muted)',
+            fontSize: fs(12), cursor: input.trim() ? 'pointer' : 'default',
             letterSpacing: 1, fontWeight: 500, flexShrink: 0,
           }}
         >{loading ? '...' : 'SEND'}</button>
       </div>
+
+      {settingsModal}
     </div>
   );
 }
 
 // ── Components ──
 
-function PositionList({ title, color, items, onRetract }) {
+function PositionList({ title, color, bgColor, items, onRetract, fs }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 9, letterSpacing: 2, color, marginBottom: 6, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: fs(9), letterSpacing: 2, color, marginBottom: 6, textTransform: 'uppercase' }}>
         {title}
       </div>
       {items.length === 0 && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>∅</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>∅</div>
       )}
       {items.map((p, i) => (
         <div key={i} style={{
           padding: '4px 7px', marginBottom: 3, borderRadius: 3,
-          background: color.replace(')', ', 0.08)').replace('var(', 'var('),
+          background: bgColor,
           borderLeft: `2px solid ${color}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          fontSize: 10, lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
+          fontSize: fs(10), lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
         }}>
           <span style={{ wordBreak: 'break-word' }}>{p}</span>
           <button onClick={() => onRetract(p)} style={{
             background: 'none', border: 'none', color: 'var(--text-muted)',
-            cursor: 'pointer', fontSize: 9, padding: '0 2px', flexShrink: 0, lineHeight: 1,
+            cursor: 'pointer', fontSize: fs(9), padding: '0 2px', flexShrink: 0, lineHeight: 1,
           }} title="Retract">×</button>
         </div>
       ))}
@@ -619,39 +907,39 @@ function PositionList({ title, color, items, onRetract }) {
   );
 }
 
-function TensionCard({ t, onAccept, onContest }) {
+function TensionCard({ t, onAccept, onContest, fs }) {
   return (
     <div style={{
       padding: 8, marginBottom: 8, borderRadius: 5,
-      background: 'var(--tension-bg)', border: '1px solid #facc1520',
+      background: 'var(--tension-bg)', border: '1px solid var(--tension-border)',
     }}>
-      <div style={{ fontSize: 9, color: 'var(--tension)', marginBottom: 3 }}>#{t.id}</div>
+      <div style={{ fontSize: fs(9), color: 'var(--tension)', marginBottom: 3 }}>#{t.id}</div>
       <div style={{
-        fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6,
+        fontSize: fs(11), color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6,
         fontFamily: 'var(--sans)',
       }}>{t.reason}</div>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 6 }}>
+      <div style={{ fontSize: fs(9), color: 'var(--text-muted)', marginBottom: 6 }}>
         &#123;{t.gamma.join(', ')}&#125; |∼ &#123;{t.delta.join(', ')}&#125;
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={onAccept} style={{
-          padding: '3px 12px', background: '#34d4a420', border: '1px solid #34d4a440',
-          borderRadius: 3, color: 'var(--commit)', fontSize: 10, cursor: 'pointer',
+          padding: '3px 12px', background: 'var(--commit-bg)', border: '1px solid var(--commit-bg-strong)',
+          borderRadius: 3, color: 'var(--commit)', fontSize: fs(10), cursor: 'pointer',
         }}>accept</button>
         <button onClick={onContest} style={{
           padding: '3px 12px', background: '#64748b15', border: '1px solid #64748b40',
-          borderRadius: 3, color: 'var(--contested)', fontSize: 10, cursor: 'pointer',
+          borderRadius: 3, color: 'var(--contested)', fontSize: fs(10), cursor: 'pointer',
         }}>contest</button>
       </div>
     </div>
   );
 }
 
-function Message({ msg }) {
+function Message({ msg, fs }) {
   if (msg.role === 'system' || msg.role === 'error') {
     return (
       <div style={{
-        fontSize: 11, padding: '4px 0', textAlign: 'center', fontStyle: 'italic',
+        fontSize: fs(11), padding: '4px 0', textAlign: 'center', fontStyle: 'italic',
         color: msg.role === 'error' ? '#ef4444' : 'var(--text-muted)',
       }}>{msg.content}</div>
     );
@@ -663,18 +951,25 @@ function Message({ msg }) {
       <div style={{
         maxWidth: '82%', padding: '10px 14px', borderRadius: 10,
         background: isOpp ? 'var(--opp-bg)' : 'var(--surface2)',
-        border: `1px solid ${isOpp ? '#c4b5fd20' : 'var(--border)'}`,
+        border: `1px solid ${isOpp ? 'var(--opp-border)' : 'var(--border)'}`,
         fontFamily: 'var(--sans)',
       }}>
         <div style={{
-          fontSize: 9, marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase',
+          fontSize: fs(9), marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase',
           fontFamily: 'var(--mono)',
           color: isOpp ? 'var(--opp)' : 'var(--text-muted)',
         }}>{isOpp ? 'Opponent' : 'Respondent'}</div>
-        <div style={{
-          fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap',
-          color: isOpp ? 'var(--text)' : '#94a3b8',
-        }}>{msg.content}</div>
+        {isOpp ? (
+          <div className="msg-md" style={{
+            fontSize: fs(13), lineHeight: 1.7,
+            color: 'var(--text)',
+          }} dangerouslySetInnerHTML={{ __html: marked.parse(msg.content || '') }} />
+        ) : (
+          <div style={{
+            fontSize: fs(13), lineHeight: 1.7, whiteSpace: 'pre-wrap',
+            color: 'var(--respondent-text)',
+          }}>{msg.content}</div>
+        )}
       </div>
     </div>
   );
