@@ -60,7 +60,8 @@ A tension means: "If you accept ALL of gamma, you are materially committed to AL
 Both gamma and delta are SETS of propositions. A sequent may have multiple premises and multiple conclusions.
 
 - gamma: Each element must be COPIED VERBATIM from the current commitments (C). Do not paraphrase, abridge, or annotate. Use the exact strings shown in the state.
-- delta: One or more clean propositions that LOGICALLY FOLLOW from the gamma premises taken together. Each element of delta is a genuine material consequence — something the gamma premises commit the respondent to, which creates a problem for their overall position (e.g., it contradicts a denial, or is something they would not want to accept). Use multiple conclusions when the premises jointly entail several distinct problematic consequences.
+- delta: One or more clean propositions that LOGICALLY FOLLOW from the gamma premises taken together. Each element of delta is a genuine material consequence — something the gamma premises commit the respondent to, which creates a problem for their overall position. Use multiple conclusions when the premises jointly entail several distinct problematic consequences.
+- PREFER tensions where delta contains or entails a proposition the respondent has DENIED (in D). These are the sharpest tensions: they show that the respondent's commitments materially entail something they explicitly reject. If D is non-empty, actively look for such C-vs-D incoherences before proposing tensions with novel delta propositions.
 - reason: A brief explanation of WHY gamma entails delta and why that is problematic.
 - Do NOT put justifications or causal connectives in delta. The "reason" field is where you explain the inference.
 - Do NOT propose tensions where delta does not actually follow from gamma. The inference must be defensible.
@@ -69,7 +70,23 @@ RULES:
 - For ACCEPT_TENSION, include target_tension_id
 - For CONTEST_TENSION, include target_tension_id
 - For REFINE, include old_proposition (what's replaced) and proposition (the new version)
-- Your "response" is what the respondent reads — make it a real philosophical conversation"""
+- Your "response" is what the respondent reads — make it a real philosophical conversation
+
+UI-DRIVEN ACTIONS (CRITICAL — read carefully):
+The respondent can accept tensions, contest tensions, and retract propositions via buttons in the UI. The state is updated BEFORE you receive the message. This means:
+- An accepted tension will already appear in Material Implications, not Open Tensions.
+- A contested tension will already appear in the Contested list.
+- A retracted proposition will already appear in the Retracted list.
+
+You MUST treat these as decisions the respondent JUST made right now. NEVER say "that has already been done", "that's already been retracted", "I don't see that tension", or any variation. The state reflects the action they are telling you about — that is expected and correct.
+
+Do NOT emit ACCEPT_TENSION, CONTEST_TENSION, or RETRACT speech_acts for these — the state change is already applied.
+
+Instead, respond as a philosophical interlocutor:
+- For accepted tensions: discuss what this new material implication means for their position, what further consequences or pressures it creates
+- For contested tensions: probe WHY they reject the inference, ask what they think is wrong with it, explore the philosophical stakes
+- For retractions: discuss what retracting this proposition changes in their overall position, what commitments remain that depended on it, what new space opens up
+- You may propose new_tensions if the updated position warrants them"""
 
 
 class Opponent:
@@ -141,9 +158,21 @@ Material implications (I):{self._fmt_implications(s['implications'])}
 Retracted:{self._fmt_list(s['retracted'])}"""
 
         # Build message with respondent's input
+        # Detect UI-driven actions and inject a reminder so the model
+        # doesn't say "that's already been done" (the state was updated
+        # before this message was sent — that's by design).
+        ui_action_note = ''
+        msg_lower = user_message.lower()
+        if (msg_lower.startswith('i accept tension')
+            or msg_lower.startswith('i contest tension')
+            or msg_lower.startswith('i retract')):
+            ui_action_note = """
+[NOTE: This action was applied via the UI — the state above already reflects it. This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.]
+"""
+
         user_content = f"""{formal_state}
 
-RESPONDENT SAYS: "{user_message}" """
+RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
         # Get windowed conversation history
         # The formal state above makes the full history unnecessary —
@@ -239,13 +268,11 @@ RESPONDENT SAYS: "{user_message}" """
             f"{m['role'].upper()}: {m['content'][:300]}" for m in recent
         )
 
-        prompt = f"""Write a substantive analytical summary of this Elenchus dialectic. Cover:
+        prompt = f"""Write a brief summary of the current state of this Elenchus dialectic. Describe:
 
-1. The respondent's starting position — what they initially committed to
-2. Key arguments and counter-arguments — the main tensions that were proposed
-3. How the position evolved — retractions, refinements, and new commitments
-4. The current state of the bilateral position — what is now committed and denied
-5. The status of open tensions — any unresolved challenges
+- The topic and the respondent's final bilateral position (what is committed, what is denied)
+- The key material implications that have been established
+- Any open tensions that remain unresolved
 
 DIALECTICAL STATE:
 Topic: {s['name']}
@@ -259,24 +286,18 @@ Denials (D):
 Open tensions (T):
 {tensions_block}
 
-Contested tensions:
-{contested_block}
-
 Material implications (I):
 {implications_block}
 
 Retracted propositions:
 {retracted_block}
 
-RECENT CONVERSATION:
-{conv_sample}
-
-Write 3-6 paragraphs. Be analytical, not merely descriptive. Focus on the philosophical substance and the dialectical dynamics."""
+Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here."""
 
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1500,
+                max_tokens=800,
                 messages=[{'role': 'user', 'content': prompt}],
             )
             summary = response.content[0].text
@@ -355,11 +376,15 @@ Recent exchanges:
             elif atype == 'ACCEPT_TENSION':
                 tid = act.get('target_tension_id')
                 if tid is not None:
-                    state.accept_tension(int(tid))
+                    result = state.accept_tension(int(tid))
+                    if not result:
+                        logger.info("Skipped ACCEPT_TENSION #%s (already resolved or not found)", tid)
             elif atype == 'CONTEST_TENSION':
                 tid = act.get('target_tension_id')
                 if tid is not None:
-                    state.contest_tension(int(tid))
+                    result = state.contest_tension(int(tid))
+                    if not result:
+                        logger.info("Skipped CONTEST_TENSION #%s (already resolved or not found)", tid)
 
         for t in parsed.get('new_tensions', []):
             gamma = t.get('gamma', [])

@@ -76,6 +76,10 @@
   .msg-md li { margin-bottom: 0.2em; }
   .msg-md strong { font-weight: 500; }
   .msg-md h1, .msg-md h2, .msg-md h3, .msg-md h4 { font-size: inherit; font-weight: 500; margin: 0.6em 0 0.3em; }
+  @keyframes pdf-pulse {
+    0%, 100% { border-color: var(--border); color: var(--text-muted); }
+    50% { border-color: var(--accent); color: var(--accent); }
+  }
 </style>
 </head>
 <body>
@@ -184,6 +188,7 @@ function App() {
   const [settings, setSettings] = useState({ model: '', base_url: '', has_api_key: false });
   const [settingsForm, setSettingsForm] = useState({ api_key: '', base_url: '', model: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [displayPrefs, setDisplayPrefs] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('elenchus-display'));
@@ -351,40 +356,100 @@ function App() {
     await sendMessage(msg);
   };
 
-  const acceptTension = async (tid) => {
+  const acceptTension = async (t) => {
+    if (loading) return;
     try {
-      const res = await api(`/api/dialectics/${current}/tensions/${tid}`, {
+      const res = await api(`/api/dialectics/${current}/tensions/${t.id}`, {
         method: 'POST', body: JSON.stringify({ action: 'accept' })
       });
       setState(res.state);
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: `Accepted tension #${tid} → material implication`
-      }]);
+      // Phase 2: notify opponent (include substance so opponent can engage with the decision)
+      const gammaStr = t.gamma.join(', ');
+      const deltaStr = t.delta.join(', ');
+      const followUp = `I accept tension #${t.id}: {${gammaStr}} |~ {${deltaStr}}. This is now a material implication in my position.`;
+      setMessages(prev => [...prev, { role: 'respondent', content: `I accept tension #${t.id}.` }]);
+      setLoading(true);
+      setError(null);
+      try {
+        const oppRes = await api(`/api/dialectics/${current}/message`, {
+          method: 'POST', body: JSON.stringify({ message: followUp })
+        });
+        setState(oppRes.state);
+        if (oppRes.response) {
+          setMessages(prev => [...prev, {
+            role: 'opponent', content: oppRes.response,
+            acts: oppRes.speech_acts, tensions: oppRes.new_tensions
+          }]);
+        }
+      } catch (e2) {
+        setError(e2.message);
+        setMessages(prev => [...prev, { role: 'error', content: e2.message }]);
+      }
+      setLoading(false);
     } catch (e) { setError(e.message); }
   };
 
-  const contestTension = async (tid) => {
+  const contestTension = async (t) => {
+    if (loading) return;
     try {
-      const res = await api(`/api/dialectics/${current}/tensions/${tid}`, {
+      const res = await api(`/api/dialectics/${current}/tensions/${t.id}`, {
         method: 'POST', body: JSON.stringify({ action: 'contest' })
       });
       setState(res.state);
-      setMessages(prev => [...prev, {
-        role: 'system', content: `Contested tension #${tid}`
-      }]);
+      // Phase 2: notify opponent (include substance so opponent can engage with the decision)
+      const gammaStr = t.gamma.join(', ');
+      const deltaStr = t.delta.join(', ');
+      const followUp = `I contest tension #${t.id}: {${gammaStr}} |~ {${deltaStr}}. I reject this inference.`;
+      setMessages(prev => [...prev, { role: 'respondent', content: `I contest tension #${t.id}.` }]);
+      setLoading(true);
+      setError(null);
+      try {
+        const oppRes = await api(`/api/dialectics/${current}/message`, {
+          method: 'POST', body: JSON.stringify({ message: followUp })
+        });
+        setState(oppRes.state);
+        if (oppRes.response) {
+          setMessages(prev => [...prev, {
+            role: 'opponent', content: oppRes.response,
+            acts: oppRes.speech_acts, tensions: oppRes.new_tensions
+          }]);
+        }
+      } catch (e2) {
+        setError(e2.message);
+        setMessages(prev => [...prev, { role: 'error', content: e2.message }]);
+      }
+      setLoading(false);
     } catch (e) { setError(e.message); }
   };
 
   const retractProp = async (prop) => {
+    if (loading) return;
     try {
       const res = await api(`/api/dialectics/${current}/retract`, {
         method: 'POST', body: JSON.stringify({ proposition: prop })
       });
       setState(res.state);
-      setMessages(prev => [...prev, {
-        role: 'system', content: `Retracted: "${prop}"`
-      }]);
+      // Phase 2: notify opponent
+      const followUp = `I retract: "${prop}".`;
+      setMessages(prev => [...prev, { role: 'respondent', content: `I retract: "${prop}".` }]);
+      setLoading(true);
+      setError(null);
+      try {
+        const oppRes = await api(`/api/dialectics/${current}/message`, {
+          method: 'POST', body: JSON.stringify({ message: followUp })
+        });
+        setState(oppRes.state);
+        if (oppRes.response) {
+          setMessages(prev => [...prev, {
+            role: 'opponent', content: oppRes.response,
+            acts: oppRes.speech_acts, tensions: oppRes.new_tensions
+          }]);
+        }
+      } catch (e2) {
+        setError(e2.message);
+        setMessages(prev => [...prev, { role: 'error', content: e2.message }]);
+      }
+      setLoading(false);
     } catch (e) { setError(e.message); }
   };
 
@@ -730,22 +795,40 @@ function App() {
             C:{s.commitments.length} · D:{s.denials.length} · T:{s.tensions.length} · I:{s.implications.length}
           </span>
           <button
-            onClick={() => {
-              const a = document.createElement('a');
-              a.href = `${API}/api/dialectics/${encodeURIComponent(current)}/report.pdf`;
-              a.download = '';
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
+            onClick={async () => {
+              setPdfLoading(true);
+              try {
+                const res = await fetch(`${API}/api/dialectics/${encodeURIComponent(current)}/report.pdf`);
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({ detail: res.statusText }));
+                  throw new Error(err.detail || res.statusText);
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${current} - Elenchus Report.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              } catch (e) {
+                setMessages(prev => [...prev, { role: 'error', content: `PDF generation failed: ${e.message}` }]);
+              }
+              setPdfLoading(false);
             }}
+            disabled={pdfLoading}
             title="Download PDF report"
+            className={pdfLoading ? 'pdf-loading' : ''}
             style={{
               background: 'none', border: '1px solid var(--border)', borderRadius: 4,
-              color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+              color: 'var(--text-muted)',
+              cursor: pdfLoading ? 'default' : 'pointer', fontSize: fs(10),
               padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1,
               fontFamily: 'var(--mono)',
+              animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
-          >PDF</button>
+          >{pdfLoading ? 'PDF \u25CE' : 'PDF'}</button>
           <button
             onClick={openSettingsPanel}
             title="Settings"
@@ -759,8 +842,8 @@ function App() {
 
       {/* Left: Position */}
       <div style={{ borderRight: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
-        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} fs={fs} />
-        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} fs={fs} />
+        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} />
+        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} />
         {s.retracted?.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
@@ -797,7 +880,7 @@ function App() {
             <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No open tensions</div>
           )}
           {s.tensions.map(t => (
-            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t.id)} onContest={() => contestTension(t.id)} fs={fs} />
+            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} />
           ))}
         </div>
 
@@ -879,7 +962,7 @@ function App() {
 
 // ── Components ──
 
-function PositionList({ title, color, bgColor, items, onRetract, fs }) {
+function PositionList({ title, color, bgColor, items, onRetract, loading, fs }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: fs(9), letterSpacing: 2, color, marginBottom: 6, textTransform: 'uppercase' }}>
@@ -897,9 +980,10 @@ function PositionList({ title, color, bgColor, items, onRetract, fs }) {
           fontSize: fs(10), lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
         }}>
           <span style={{ wordBreak: 'break-word' }}>{p}</span>
-          <button onClick={() => onRetract(p)} style={{
+          <button onClick={() => onRetract(p)} disabled={loading} style={{
             background: 'none', border: 'none', color: 'var(--text-muted)',
-            cursor: 'pointer', fontSize: fs(9), padding: '0 2px', flexShrink: 0, lineHeight: 1,
+            cursor: loading ? 'default' : 'pointer', fontSize: fs(9), padding: '0 2px', flexShrink: 0, lineHeight: 1,
+            opacity: loading ? 0.3 : 1,
           }} title="Retract">×</button>
         </div>
       ))}
@@ -907,7 +991,7 @@ function PositionList({ title, color, bgColor, items, onRetract, fs }) {
   );
 }
 
-function TensionCard({ t, onAccept, onContest, fs }) {
+function TensionCard({ t, onAccept, onContest, loading, fs }) {
   return (
     <div style={{
       padding: 8, marginBottom: 8, borderRadius: 5,
@@ -922,13 +1006,15 @@ function TensionCard({ t, onAccept, onContest, fs }) {
         &#123;{t.gamma.join(', ')}&#125; |∼ &#123;{t.delta.join(', ')}&#125;
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={onAccept} style={{
+        <button onClick={onAccept} disabled={loading} style={{
           padding: '3px 12px', background: 'var(--commit-bg)', border: '1px solid var(--commit-bg-strong)',
-          borderRadius: 3, color: 'var(--commit)', fontSize: fs(10), cursor: 'pointer',
+          borderRadius: 3, color: 'var(--commit)', fontSize: fs(10),
+          cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.4 : 1,
         }}>accept</button>
-        <button onClick={onContest} style={{
+        <button onClick={onContest} disabled={loading} style={{
           padding: '3px 12px', background: '#64748b15', border: '1px solid #64748b40',
-          borderRadius: 3, color: 'var(--contested)', fontSize: fs(10), cursor: 'pointer',
+          borderRadius: 3, color: 'var(--contested)', fontSize: fs(10),
+          cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.4 : 1,
         }}>contest</button>
       </div>
     </div>

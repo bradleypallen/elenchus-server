@@ -181,14 +181,17 @@ def send_message(name: str, req: MessageRequest):
 def resolve_tension(name: str, tid: int, req: TensionAction):
     """Accept or contest a tension directly (bypassing the oracle)."""
     state = _get_state(name)
+    logger.info("Tension action: dialectic=%s, tension=#%d, action=%s", name, tid, req.action)
     if req.action == 'accept':
         result = state.accept_tension(tid)
         if not result:
             raise HTTPException(404, f"Tension #{tid} not found or not open")
+        logger.info("Tension #%d accepted in '%s' → material implication", tid, name)
         return {"accepted": result, "state": state.to_dict()}
     elif req.action == 'contest':
         if not state.contest_tension(tid):
             raise HTTPException(404, f"Tension #{tid} not found or not open")
+        logger.info("Tension #%d contested in '%s'", tid, name)
         return {"contested": tid, "state": state.to_dict()}
     else:
         raise HTTPException(400, "Action must be 'accept' or 'contest'")
@@ -198,6 +201,7 @@ def resolve_tension(name: str, tid: int, req: TensionAction):
 def retract(name: str, req: RetractRequest):
     """Retract a proposition directly."""
     state = _get_state(name)
+    logger.info("Retract: dialectic=%s, proposition=%r", name, req.proposition)
     state.retract_prop(req.proposition)
     return {"retracted": req.proposition, "state": state.to_dict()}
 
