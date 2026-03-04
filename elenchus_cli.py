@@ -172,9 +172,12 @@ def _derive(msg, state):
             left, right = rest.split(sep, 1)
             gamma = [x.strip() for x in left.split(",") if x.strip()]
             delta = [x.strip() for x in right.split(",") if x.strip()]
-            result = state.derives(gamma, delta)
-            sym = "✓" if result else "✗"
+            result = state.derive_with_trace(gamma, delta)
+            sym = "✓" if result.derivable else "✗"
             print(f"  {sym} {{{', '.join(gamma)}}} |~ {{{', '.join(delta)}}}")
+            if result.trace:
+                for step in result.trace:
+                    print(f"    {step}")
             return
     print("  Usage: /derive premise ~ conclusion")
 

@@ -231,8 +231,14 @@ def retract(name: str, req: RetractRequest):
 def derive(name: str, req: DeriveRequest):
     """Check derivability in the material base."""
     state = _get_state(name)
-    result = state.derives(req.gamma, req.delta)
-    return {"gamma": req.gamma, "delta": req.delta, "derives": result}
+    result = state.derive_with_trace(req.gamma, req.delta)
+    return {
+        "gamma": req.gamma,
+        "delta": req.delta,
+        "derives": result.derivable,
+        "trace": result.trace,
+        "depth": result.depth_reached,
+    }
 
 
 @app.get("/api/dialectics/{name}/report")

@@ -247,6 +247,10 @@ class DialecticalState:
     def derives(self, gamma: list, delta: list) -> bool:
         return self.base.derives(set(gamma), set(delta))
 
+    def derive_with_trace(self, gamma: list, delta: list):
+        """Return full ProofResult including trace."""
+        return self.base.derive_with_trace(set(gamma), set(delta))
+
     # ── Full state as dict (for API) ──
 
     def to_dict(self) -> dict:

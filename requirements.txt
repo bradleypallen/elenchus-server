@@ -3,3 +3,4 @@ duckdb>=1.0.0
 fastapi>=0.115.0
 uvicorn>=0.30.0
 fpdf2>=2.7.0
+pyNMMS>=0.6.0

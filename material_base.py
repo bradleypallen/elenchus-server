@@ -10,6 +10,8 @@ import contextlib
 import logging
 
 import duckdb
+from pynmms import MaterialBase as NMMSBase
+from pynmms import NMMSReasoner
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,8 @@ class MaterialBase:
     def __init__(self, con, name):
         self.con = con
         self.name = name
+        self._nmms_base: NMMSBase | None = None
+        self._reasoner: NMMSReasoner | None = None
 
     @classmethod
     def create(cls, db_path, name):
@@ -130,6 +134,8 @@ class MaterialBase:
                     "INSERT INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
                     [a, contributor, description],
                 )
+            if self._nmms_base is not None:
+                self._nmms_base.add_atom(a)
 
     def accept(self, premises, conclusions, contributor, reason="", domain=""):
         self.con.execute(
@@ -137,6 +143,9 @@ class MaterialBase:
             "contributor, reason, domain) VALUES (?,?,'holds',?,?,?)",
             [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
         )
+        if self._nmms_base is not None:
+            self._nmms_base.add_consequence(frozenset(premises), frozenset(conclusions))
+            self._reasoner = None  # rebuild reasoner with updated base
 
     def reject(self, premises, conclusions, contributor, reason="", domain=""):
         self.con.execute(
@@ -144,29 +153,48 @@ class MaterialBase:
             "contributor, reason, domain) VALUES (?,?,'rejected',?,?,?)",
             [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
         )
+        self._invalidate_reasoner()  # full rebuild needed — most-recent-wins logic
+
+    # ── pyNMMS reasoner (in-memory mirror of DuckDB base) ──
+
+    def _ensure_reasoner(self):
+        """Build or rebuild the pyNMMS reasoner from DuckDB state."""
+        if self._reasoner is not None:
+            return
+        base = NMMSBase()
+        for (atom,) in self.con.execute("SELECT sentence FROM atoms").fetchall():
+            base.add_atom(atom)
+        for p, c in self.con.execute("SELECT premises, conclusions FROM base_sequents").fetchall():
+            base.add_consequence(str_to_set(p), str_to_set(c))
+        self._nmms_base = base
+        self._reasoner = NMMSReasoner(base)
+        logger.info(
+            "Built pyNMMS reasoner: %d atoms, %d consequences",
+            len(base.language),
+            len(base.consequences),
+        )
+
+    def _invalidate_reasoner(self):
+        """Force full rebuild on next query (e.g. after reject)."""
+        self._nmms_base = None
+        self._reasoner = None
 
     def derives(self, premises, conclusions):
-        p, c = frozenset(premises), frozenset(conclusions)
-        if p & c:
-            return True  # Containment
-        return self._proof_search(p, c)
+        self._ensure_reasoner()
+        result = self._reasoner.derives(frozenset(premises), frozenset(conclusions))
+        logger.info(
+            "derives %s |~ %s → %s (depth=%d)",
+            fmt_set(premises),
+            fmt_set(conclusions),
+            result.derivable,
+            result.depth_reached,
+        )
+        return result.derivable
 
-    def _proof_search(self, prem, conc):
-        p_str = set_to_str(prem)
-        c_str = set_to_str(conc)
-        r = self.con.execute(
-            "SELECT 1 FROM base_sequents WHERE premises=? AND conclusions=?", [p_str, c_str]
-        ).fetchone()
-        if r:
-            return True
-        # Projection: check if any subset of prem ∼ any subset of conc is in base
-        rows = self.con.execute("SELECT premises, conclusions FROM base_sequents").fetchall()
-        for bp, bc in rows:
-            bp_set = str_to_set(bp)
-            bc_set = str_to_set(bc)
-            if bp_set <= prem and bc_set <= conc:
-                return True
-        return False
+    def derive_with_trace(self, premises, conclusions):
+        """Return full ProofResult including trace."""
+        self._ensure_reasoner()
+        return self._reasoner.derives(frozenset(premises), frozenset(conclusions))
 
     def gaps_for(self, premises, conclusions):
         """Unassessed weakenings of a sequent."""

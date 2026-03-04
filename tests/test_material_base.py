@@ -102,19 +102,29 @@ class TestDerivability:
         base.accept({"p"}, {"q"}, "tester", reason="test")
         assert base.derives({"p"}, {"q"}) is True
 
-    def test_projection_superset_premises(self):
-        """Projection: {p} |~ {q} in base implies {p, r} |~ {q}."""
+    def test_no_weakening_premises(self):
+        """NMMS rejects Weakening: {p} |~ {q} does NOT imply {p, r} |~ {q}."""
         base = MaterialBase.in_memory("test")
         base.add_atoms({"p", "q", "r"})
         base.accept({"p"}, {"q"}, "tester")
-        assert base.derives({"p", "r"}, {"q"}) is True
+        assert base.derives({"p", "r"}, {"q"}) is False
 
-    def test_projection_superset_conclusions(self):
-        """Projection: {p} |~ {q} in base implies {p} |~ {q, r}."""
+    def test_no_weakening_conclusions(self):
+        """NMMS rejects Weakening: {p} |~ {q} does NOT imply {p} |~ {q, r}."""
         base = MaterialBase.in_memory("test")
         base.add_atoms({"p", "q", "r"})
         base.accept({"p"}, {"q"}, "tester")
-        assert base.derives({"p"}, {"q", "r"}) is True
+        assert base.derives({"p"}, {"q", "r"}) is False
+
+    def test_derive_with_trace(self):
+        """derive_with_trace returns ProofResult with trace and depth."""
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({"p", "q"})
+        base.accept({"p"}, {"q"}, "tester")
+        result = base.derive_with_trace({"p"}, {"q"})
+        assert result.derivable is True
+        assert len(result.trace) >= 1
+        assert result.depth_reached >= 0
 
     def test_rejected_sequent_does_not_derive(self):
         """A rejected assessment should not appear in base_sequents."""
