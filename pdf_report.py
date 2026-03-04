@@ -9,6 +9,7 @@ material base report, and conversation transcript.
 import json
 import logging
 import os
+import re
 from datetime import datetime
 
 from fpdf import FPDF
@@ -63,6 +64,73 @@ def _parse_assistant_content(content: str) -> str:
         return content
 
 
+def _inline_md(text):
+    """Convert inline Markdown (bold, italic) to HTML."""
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'(?<!\w)_(.+?)_(?!\w)', r'<i>\1</i>', text)
+    return text
+
+
+def _md_to_html(text):
+    """Convert Markdown text to simple HTML for fpdf2's write_html."""
+    lines = text.split('\n')
+    html_parts = []
+    in_list = False
+    list_type = None
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Headings
+        for level in (4, 3, 2, 1):
+            prefix = '#' * level + ' '
+            if stripped.startswith(prefix):
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                html_parts.append(f'<b>{_inline_md(stripped[len(prefix):])}</b><br><br>')
+                break
+        else:
+            # Unordered list
+            if stripped.startswith('- ') or stripped.startswith('* '):
+                if not in_list or list_type != 'ul':
+                    if in_list:
+                        html_parts.append(f'</{list_type}>')
+                    html_parts.append('<ul>')
+                    in_list = True
+                    list_type = 'ul'
+                html_parts.append(f'<li>{_inline_md(stripped[2:])}</li>')
+            # Ordered list
+            elif re.match(r'^\d+\.\s+', stripped):
+                content = re.sub(r'^\d+\.\s+', '', stripped)
+                if not in_list or list_type != 'ol':
+                    if in_list:
+                        html_parts.append(f'</{list_type}>')
+                    html_parts.append('<ol>')
+                    in_list = True
+                    list_type = 'ol'
+                html_parts.append(f'<li>{_inline_md(content)}</li>')
+            # Empty line
+            elif stripped == '':
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                html_parts.append('<br>')
+            # Regular text
+            else:
+                if in_list:
+                    html_parts.append(f'</{list_type}>')
+                    in_list = False
+                html_parts.append(f'{_inline_md(stripped)}<br>')
+
+    if in_list:
+        html_parts.append(f'</{list_type}>')
+
+    return '\n'.join(html_parts)
+
+
 def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     """Build a PDF report of the dialectic state.
 
@@ -87,7 +155,9 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     use_unicode = False
     if body_font_path:
         pdf.add_font('Body', '', body_font_path)
-        pdf.add_font('Body', 'B', body_font_path)  # fake bold via same file
+        pdf.add_font('Body', 'B', body_font_path)
+        pdf.add_font('Body', 'I', body_font_path)
+        pdf.add_font('Body', 'BI', body_font_path)
         use_unicode = True
         logger.info("PDF using Unicode body font: %s", body_font_path)
     if mono_font_path:
@@ -175,7 +245,7 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
 
     section_title(1, "SUMMARY")
     set_body(10)
-    pdf.multi_cell(w=0, text=summary)
+    pdf.write_html(_md_to_html(summary))
     pdf.ln(4)
 
     # ── Section 2: Bilateral Position [C : D] ──
@@ -251,8 +321,7 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
                 set_body(9)
                 pdf.set_x(pdf.get_x() + 12)
                 pdf.set_text_color(100, 100, 120)
-                pdf.multi_cell(w=pdf.w - pdf.get_x() - 20,
-                               text=f"Reason: {t['reason']}")
+                pdf.write_html(_md_to_html(f"Reason: {t['reason']}"))
                 pdf.set_text_color(0, 0, 0)
             pdf.ln(2)
     else:
@@ -280,8 +349,7 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
                 set_body(9)
                 pdf.set_x(pdf.get_x() + 12)
                 pdf.set_text_color(100, 100, 120)
-                pdf.multi_cell(w=pdf.w - pdf.get_x() - 20,
-                               text=f"Reason: {t['reason']}")
+                pdf.write_html(_md_to_html(f"Reason: {t['reason']}"))
                 pdf.set_text_color(0, 0, 0)
             pdf.ln(2)
     else:
@@ -363,10 +431,13 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
             pdf.set_text_color(0, 0, 0)
             pdf.ln(4)
 
-            # Message content
+            # Message content — render Markdown for opponent, plain text for respondent
             set_body(10)
             pdf.set_x(pdf.get_x() + 4)
-            pdf.multi_cell(w=pdf.w - pdf.get_x() - 20, text=content)
+            if role == 'OPPONENT':
+                pdf.write_html(_md_to_html(content))
+            else:
+                pdf.multi_cell(w=pdf.w - pdf.get_x() - 20, text=content)
             pdf.ln(4)
     else:
         set_body(10)
