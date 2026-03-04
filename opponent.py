@@ -8,7 +8,9 @@ responses, and applies state transitions per Figure 4.
 import json
 import logging
 import os
+
 from anthropic import Anthropic
+
 from dialectical_state import DialecticalState
 
 logger = logging.getLogger(__name__)
@@ -90,26 +92,32 @@ Instead, respond as a philosophical interlocutor:
 
 
 class Opponent:
-
-    def __init__(self, model: str = 'claude-sonnet-4-20250514',
-                 api_key: str | None = None,
-                 base_url: str | None = None):
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-20250514",
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ):
         client_kwargs = {}
         if api_key:
-            client_kwargs['api_key'] = api_key
+            client_kwargs["api_key"] = api_key
         if base_url:
-            client_kwargs['base_url'] = base_url
+            client_kwargs["base_url"] = base_url
         self.client = Anthropic(**client_kwargs)
         self.model = model
         self.base_url = base_url
         self._api_key = api_key
-        self._has_api_key = bool(api_key or os.environ.get('ANTHROPIC_API_KEY'))
-        logger.info("Opponent initialized: model=%s, base_url=%s, api_key_set=%s",
-                     model, base_url or "(default)", self._has_api_key)
+        self._has_api_key = bool(api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        logger.info(
+            "Opponent initialized: model=%s, base_url=%s, api_key_set=%s",
+            model,
+            base_url or "(default)",
+            self._has_api_key,
+        )
 
-    def reconfigure(self, model: str | None = None,
-                    api_key: str | None = None,
-                    base_url: str | None = None):
+    def reconfigure(
+        self, model: str | None = None, api_key: str | None = None, base_url: str | None = None
+    ):
         """Recreate the Anthropic client with new settings."""
         if model:
             self.model = model
@@ -120,52 +128,55 @@ class Opponent:
             self.base_url = base_url if base_url else None
         # Rebuild client, preserving existing credentials
         client_kwargs = {}
-        if getattr(self, '_api_key', None):
-            client_kwargs['api_key'] = self._api_key
+        if getattr(self, "_api_key", None):
+            client_kwargs["api_key"] = self._api_key
         if self.base_url:
-            client_kwargs['base_url'] = self.base_url
+            client_kwargs["base_url"] = self.base_url
         self.client = Anthropic(**client_kwargs)
-        logger.info("Opponent reconfigured: model=%s, base_url=%s, api_key_updated=%s",
-                     self.model, self.base_url or "(default)", bool(api_key))
+        logger.info(
+            "Opponent reconfigured: model=%s, base_url=%s, api_key_updated=%s",
+            self.model,
+            self.base_url or "(default)",
+            bool(api_key),
+        )
 
-    def respond(self, user_message: str, state: DialecticalState,
-                context_turns: int = 6) -> dict:
+    def respond(self, user_message: str, state: DialecticalState, context_turns: int = 6) -> dict:
         """
         Send the respondent's message + dialectical state to the LLM.
-        
+
         The formal state (C, D, T, I) is always sent in full — it's
         compact. Conversation history is windowed to the last N turns
         for continuity, plus a summary of earlier discussion.
-        
+
         Parse the structured response. Apply state transitions.
         Return the result.
         """
         # Build the formal state block (always complete, always compact)
         s = state.to_dict()
-        row = state.base.con.execute(
-            "SELECT COALESCE(MAX(id), 0) FROM tensions"
-        ).fetchone()
+        row = state.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()
         tid = row[0]
 
         formal_state = f"""CURRENT DIALECTICAL STATE:
-Topic: {s['name']}
+Topic: {s["name"]}
 Next tension ID: {tid + 1}
 
-Commitments (C):{self._fmt_list(s['commitments'])}
-Denials (D):{self._fmt_list(s['denials'])}
-Open tensions (T):{self._fmt_tensions(s['tensions'])}
-Material implications (I):{self._fmt_implications(s['implications'])}
-Retracted:{self._fmt_list(s['retracted'])}"""
+Commitments (C):{self._fmt_list(s["commitments"])}
+Denials (D):{self._fmt_list(s["denials"])}
+Open tensions (T):{self._fmt_tensions(s["tensions"])}
+Material implications (I):{self._fmt_implications(s["implications"])}
+Retracted:{self._fmt_list(s["retracted"])}"""
 
         # Build message with respondent's input
         # Detect UI-driven actions and inject a reminder so the model
         # doesn't say "that's already been done" (the state was updated
         # before this message was sent — that's by design).
-        ui_action_note = ''
+        ui_action_note = ""
         msg_lower = user_message.lower()
-        if (msg_lower.startswith('i accept tension')
-            or msg_lower.startswith('i contest tension')
-            or msg_lower.startswith('i retract')):
+        if (
+            msg_lower.startswith("i accept tension")
+            or msg_lower.startswith("i contest tension")
+            or msg_lower.startswith("i retract")
+        ):
             ui_action_note = """
 [NOTE: This action was applied via the UI — the state above already reflects it. This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.]
 """
@@ -184,19 +195,17 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         if len(history) > context_turns * 2:
             summary = state.get_summary()
             if summary:
-                messages.append({
-                    'role': 'user',
-                    'content': f"[SUMMARY OF EARLIER DISCUSSION]\n{summary}"
-                })
-                messages.append({
-                    'role': 'assistant',
-                    'content': "Understood. I have the dialectical context."
-                })
+                messages.append(
+                    {"role": "user", "content": f"[SUMMARY OF EARLIER DISCUSSION]\n{summary}"}
+                )
+                messages.append(
+                    {"role": "assistant", "content": "Understood. I have the dialectical context."}
+                )
             # Take only the last N exchanges
-            history = history[-(context_turns * 2):]
+            history = history[-(context_turns * 2) :]
 
         messages.extend(history)
-        messages.append({'role': 'user', 'content': user_content})
+        messages.append({"role": "user", "content": user_content})
 
         # Call API
         response = self.client.messages.create(
@@ -209,8 +218,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         raw_text = response.content[0].text
 
         # Store in conversation history (full, for the record)
-        state.add_conversation('user', user_message)
-        state.add_conversation('assistant', raw_text)
+        state.add_conversation("user", user_message)
+        state.add_conversation("assistant", raw_text)
 
         # Periodically update the summary (every 10 turns)
         total_turns = len(state.get_conversation())
@@ -231,42 +240,35 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         Returns the summary text without storing it. Used for PDF reports.
         """
         s = state.to_dict()
-        history = state.get_conversation()
 
         # Build a rich prompt with full formal state
-        commitments_block = '\n'.join(f'  - "{c}"' for c in s['commitments']) or '  (none)'
-        denials_block = '\n'.join(f'  - "{d}"' for d in s['denials']) or '  (none)'
-        retracted_block = '\n'.join(f'  - "{r}"' for r in s['retracted']) or '  (none)'
+        commitments_block = "\n".join(f'  - "{c}"' for c in s["commitments"]) or "  (none)"
+        denials_block = "\n".join(f'  - "{d}"' for d in s["denials"]) or "  (none)"
+        retracted_block = "\n".join(f'  - "{r}"' for r in s["retracted"]) or "  (none)"
 
-        tensions_block = ''
-        for t in s['tensions']:
-            g = ', '.join(f'"{x}"' for x in t['gamma'])
-            d = ', '.join(f'"{x}"' for x in t['delta'])
-            tensions_block += f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}'
+        tensions_block = ""
+        for t in s["tensions"]:
+            g = ", ".join(f'"{x}"' for x in t["gamma"])
+            d = ", ".join(f'"{x}"' for x in t["delta"])
+            tensions_block += f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
         if not tensions_block:
-            tensions_block = '  (none)'
+            tensions_block = "  (none)"
 
-        implications_block = ''
-        for imp in s['implications']:
-            g = ', '.join(f'"{x}"' for x in imp['gamma'])
-            d = ', '.join(f'"{x}"' for x in imp['delta'])
-            implications_block += f'\n  {{{g}}} |~ {{{d}}}'
+        implications_block = ""
+        for imp in s["implications"]:
+            g = ", ".join(f'"{x}"' for x in imp["gamma"])
+            d = ", ".join(f'"{x}"' for x in imp["delta"])
+            implications_block += f"\n  {{{g}}} |~ {{{d}}}"
         if not implications_block:
-            implications_block = '  (none)'
+            implications_block = "  (none)"
 
-        contested_block = ''
-        for t in s.get('contested', []):
-            g = ', '.join(f'"{x}"' for x in t['gamma'])
-            d = ', '.join(f'"{x}"' for x in t['delta'])
-            contested_block += f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}'
+        contested_block = ""
+        for t in s.get("contested", []):
+            g = ", ".join(f'"{x}"' for x in t["gamma"])
+            d = ", ".join(f'"{x}"' for x in t["delta"])
+            contested_block += f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
         if not contested_block:
-            contested_block = '  (none)'
-
-        # Include a sample of recent conversation for context
-        recent = history[-20:] if len(history) > 20 else history
-        conv_sample = '\n'.join(
-            f"{m['role'].upper()}: {m['content'][:300]}" for m in recent
-        )
+            contested_block = "  (none)"
 
         prompt = f"""Write a brief summary of the current state of this Elenchus dialectic. Describe:
 
@@ -275,7 +277,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 - Any open tensions that remain unresolved
 
 DIALECTICAL STATE:
-Topic: {s['name']}
+Topic: {s["name"]}
 
 Commitments (C):
 {commitments_block}
@@ -298,14 +300,17 @@ Write 1-3 short paragraphs. Be concise and precise. Describe the position as it 
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=800,
-                messages=[{'role': 'user', 'content': prompt}],
+                messages=[{"role": "user", "content": prompt}],
             )
             summary = response.content[0].text
-            logger.info("Generated analytical summary for dialectic '%s' (%d chars)",
-                        s['name'], len(summary))
+            logger.info(
+                "Generated analytical summary for dialectic '%s' (%d chars)",
+                s["name"],
+                len(summary),
+            )
             return summary
         except Exception as e:
-            logger.error("Failed to generate summary for '%s': %s", s['name'], e)
+            logger.error("Failed to generate summary for '%s': %s", s["name"], e)
             return f"Summary generation failed: {e}"
 
     def _update_summary(self, state: DialecticalState):
@@ -319,104 +324,104 @@ Write 1-3 short paragraphs. Be concise and precise. Describe the position as it 
 Focus on: the main commitments, key tensions that were resolved,
 any retractions or refinements, and the current trajectory.
 
-Topic: {s['name']}
-Current commitments: {len(s['commitments'])}
-Material implications: {len(s['implications'])}
+Topic: {s["name"]}
+Current commitments: {len(s["commitments"])}
+Material implications: {len(s["implications"])}
 
 Recent exchanges:
-""" + '\n'.join(f"{m['role']}: {m['content'][:200]}" for m in sample[-10:])
+""" + "\n".join(f"{m['role']}: {m['content'][:200]}" for m in sample[-10:])
 
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=500,
-                messages=[{'role': 'user', 'content': prompt}],
+                messages=[{"role": "user", "content": prompt}],
             )
             summary = response.content[0].text
             state.set_summary(summary)
-        except:
-            pass  # Non-critical
+        except Exception:
+            logger.debug("Summary update failed (non-critical)")
 
     def _parse_response(self, text: str) -> dict:
         """Parse JSON from the LLM response."""
         try:
             clean = text.strip()
-            if clean.startswith('```'):
-                clean = clean.split('\n', 1)[1]
-                if clean.endswith('```'):
+            if clean.startswith("```"):
+                clean = clean.split("\n", 1)[1]
+                if clean.endswith("```"):
                     clean = clean[:-3]
                 clean = clean.strip()
             return json.loads(clean)
         except json.JSONDecodeError:
             # If the model responded conversationally, wrap it
-            return {
-                'speech_acts': [],
-                'new_tensions': [],
-                'response': text
-            }
+            return {"speech_acts": [], "new_tensions": [], "response": text}
 
     def _apply(self, parsed: dict, state: DialecticalState):
         """Apply speech acts and tensions to state."""
-        for act in parsed.get('speech_acts', []):
-            atype = act.get('type', '')
-            prop = act.get('proposition', '')
+        for act in parsed.get("speech_acts", []):
+            atype = act.get("type", "")
+            prop = act.get("proposition", "")
 
-            if atype == 'COMMIT' and prop:
+            if atype == "COMMIT" and prop:
                 state.commit(prop)
-            elif atype == 'DENY' and prop:
+            elif atype == "DENY" and prop:
                 state.deny(prop)
-            elif atype == 'RETRACT' and prop:
+            elif atype == "RETRACT" and prop:
                 state.retract_prop(prop)
-            elif atype == 'REFINE':
-                old = act.get('old_proposition', '')
+            elif atype == "REFINE":
+                old = act.get("old_proposition", "")
                 if old:
                     state.retract_prop(old)
                 if prop:
                     state.commit(prop)
-            elif atype == 'ACCEPT_TENSION':
-                tid = act.get('target_tension_id')
+            elif atype == "ACCEPT_TENSION":
+                tid = act.get("target_tension_id")
                 if tid is not None:
                     result = state.accept_tension(int(tid))
                     if not result:
-                        logger.info("Skipped ACCEPT_TENSION #%s (already resolved or not found)", tid)
-            elif atype == 'CONTEST_TENSION':
-                tid = act.get('target_tension_id')
+                        logger.info(
+                            "Skipped ACCEPT_TENSION #%s (already resolved or not found)", tid
+                        )
+            elif atype == "CONTEST_TENSION":
+                tid = act.get("target_tension_id")
                 if tid is not None:
                     result = state.contest_tension(int(tid))
                     if not result:
-                        logger.info("Skipped CONTEST_TENSION #%s (already resolved or not found)", tid)
+                        logger.info(
+                            "Skipped CONTEST_TENSION #%s (already resolved or not found)", tid
+                        )
 
-        for t in parsed.get('new_tensions', []):
-            gamma = t.get('gamma', [])
-            delta = t.get('delta', [])
-            reason = t.get('reason', '')
+        for t in parsed.get("new_tensions", []):
+            gamma = t.get("gamma", [])
+            delta = t.get("delta", [])
+            reason = t.get("reason", "")
             if gamma or delta:
                 # Ensure atoms exist
                 for a in gamma + delta:
-                    state.base.add_atoms({a}, contributor='oracle')
+                    state.base.add_atoms({a}, contributor="oracle")
                 state.add_tension(gamma, delta, reason)
 
     def _fmt_list(self, items):
         if not items:
-            return ' (none)'
-        return ''.join(f'\n  - "{item}"' for item in items)
+            return " (none)"
+        return "".join(f'\n  - "{item}"' for item in items)
 
     def _fmt_tensions(self, tensions):
         if not tensions:
-            return ' (none)'
+            return " (none)"
         lines = []
         for t in tensions:
-            g = ', '.join(f'"{x}"' for x in t['gamma'])
-            d = ', '.join(f'"{x}"' for x in t['delta'])
-            lines.append(f'\n  #{t["id"]}: {{{g}}} |~ {{{d}}}: {t["reason"]}')
-        return ''.join(lines)
+            g = ", ".join(f'"{x}"' for x in t["gamma"])
+            d = ", ".join(f'"{x}"' for x in t["delta"])
+            lines.append(f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}")
+        return "".join(lines)
 
     def _fmt_implications(self, imps):
         if not imps:
-            return ' (none)'
+            return " (none)"
         lines = []
         for imp in imps:
-            g = ', '.join(f'"{x}"' for x in imp['gamma'])
-            d = ', '.join(f'"{x}"' for x in imp['delta'])
-            lines.append(f'\n  {{{g}}} |~ {{{d}}}')
-        return ''.join(lines)
+            g = ", ".join(f'"{x}"' for x in imp["gamma"])
+            d = ", ".join(f'"{x}"' for x in imp["delta"])
+            lines.append(f"\n  {{{g}}} |~ {{{d}}}")
+        return "".join(lines)

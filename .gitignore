@@ -1,2 +1,4 @@
 __pycache__/
 dialectics/
+.pytest_cache/
+.ruff_cache/

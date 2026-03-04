@@ -9,22 +9,20 @@ Usage:
     python elenchus_cli.py --db saved.duckdb
 """
 
-import os
-import sys
 import argparse
+import os
+
 from dialectical_state import DialecticalState
 from opponent import Opponent
-from material_base import fmt_set
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Elenchus CLI')
-    parser.add_argument('--db', default=None,
-                        help='DuckDB file (creates if missing, omit for in-memory)')
-    parser.add_argument('--name', default='inquiry',
-                        help='Topic name (for new dialectics)')
-    parser.add_argument('--model', default='claude-sonnet-4-20250514',
-                        help='Anthropic model')
+    parser = argparse.ArgumentParser(description="Elenchus CLI")
+    parser.add_argument(
+        "--db", default=None, help="DuckDB file (creates if missing, omit for in-memory)"
+    )
+    parser.add_argument("--name", default="inquiry", help="Topic name (for new dialectics)")
+    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Anthropic model")
     args = parser.parse_args()
 
     # Load or create state
@@ -58,21 +56,21 @@ def main():
             continue
 
         # Meta-commands
-        if msg.startswith('/'):
+        if msg.startswith("/"):
             cmd = msg[1:].lower().split()[0]
-            if cmd in ('quit', 'exit', 'q'):
+            if cmd in ("quit", "exit", "q"):
                 break
-            elif cmd == 'state':
+            elif cmd == "state":
                 _show_state(state)
-            elif cmd in ('tensions', 't'):
+            elif cmd in ("tensions", "t"):
                 _show_tensions(state)
-            elif cmd in ('implications', 'i'):
+            elif cmd in ("implications", "i"):
                 _show_implications(state)
-            elif cmd == 'derive':
+            elif cmd == "derive":
                 _derive(msg, state)
-            elif cmd == 'report':
+            elif cmd == "report":
                 print(state.base.report())
-            elif cmd == 'help':
+            elif cmd == "help":
                 print("Commands: /state /tensions /implications /derive /report /quit")
             else:
                 print(f"Unknown command: {msg}")
@@ -83,20 +81,20 @@ def main():
         print()
         try:
             result = opp.respond(msg, state)
-            response = result.get('response', '')
+            response = result.get("response", "")
             if response:
                 print(f"Opponent: {response}")
 
             # Show state changes
-            acts = result.get('speech_acts', [])
-            new_t = result.get('new_tensions', [])
+            acts = result.get("speech_acts", [])
+            new_t = result.get("new_tensions", [])
 
             if acts:
                 for a in acts:
                     _show_act(a)
 
             if new_t:
-                for t in state.T[-len(new_t):]:
+                for t in state.T[-len(new_t) :]:
                     print(f"  ⚡ #{t['id']}: {t['reason']}")
 
         except Exception as e:
@@ -114,10 +112,12 @@ def main():
 def _show_state(state):
     d = state.to_dict()
     print(f"  [{d['name']}]")
-    print(f"  C: {len(d['commitments'])} commitments, "
-          f"D: {len(d['denials'])} denials, "
-          f"T: {len(d['tensions'])} tensions, "
-          f"I: {len(d['implications'])} implications")
+    print(
+        f"  C: {len(d['commitments'])} commitments, "
+        f"D: {len(d['denials'])} denials, "
+        f"T: {len(d['tensions'])} tensions, "
+        f"I: {len(d['implications'])} implications"
+    )
 
 
 def _show_tensions(state):
@@ -126,8 +126,8 @@ def _show_tensions(state):
         print("  No open tensions.")
         return
     for t in T:
-        g = ', '.join(t['gamma'])
-        d = ', '.join(t['delta'])
+        g = ", ".join(t["gamma"])
+        d = ", ".join(t["delta"])
         print(f"  #{t['id']}: {{{g}}} |~ {{{d}}}")
         print(f"          {t['reason']}")
 
@@ -138,26 +138,26 @@ def _show_implications(state):
         print("  No material implications.")
         return
     for imp in I:
-        g = ', '.join(imp['gamma'])
-        d = ', '.join(imp['delta'])
+        g = ", ".join(imp["gamma"])
+        d = ", ".join(imp["delta"])
         print(f"  {{{g}}} |~ {{{d}}}")
 
 
 def _show_act(act):
-    t = act.get('type', '')
-    p = act.get('proposition', '')
-    if t == 'COMMIT':
+    t = act.get("type", "")
+    p = act.get("proposition", "")
+    if t == "COMMIT":
         print(f"  + {p}")
-    elif t == 'DENY':
+    elif t == "DENY":
         print(f"  − {p}")
-    elif t == 'RETRACT':
+    elif t == "RETRACT":
         print(f"  ↩ {p}")
-    elif t == 'REFINE':
-        old = act.get('old_proposition', '?')
+    elif t == "REFINE":
+        old = act.get("old_proposition", "?")
         print(f"  ↩ {old} → {p}")
-    elif t == 'ACCEPT_TENSION':
+    elif t == "ACCEPT_TENSION":
         print(f"  ✓ Accepted tension #{act.get('target_tension_id')}")
-    elif t == 'CONTEST_TENSION':
+    elif t == "CONTEST_TENSION":
         print(f"  ✗ Contested tension #{act.get('target_tension_id')}")
 
 
@@ -166,18 +166,18 @@ def _derive(msg, state):
     if len(parts) < 2:
         print("  Usage: /derive premise1,premise2 ~ conclusion1")
         return
-    rest = ' '.join(parts[1:])
-    for sep in ('|~', '~', '|∼'):
+    rest = " ".join(parts[1:])
+    for sep in ("|~", "~", "|∼"):
         if sep in rest:
             left, right = rest.split(sep, 1)
-            gamma = [x.strip() for x in left.split(',') if x.strip()]
-            delta = [x.strip() for x in right.split(',') if x.strip()]
+            gamma = [x.strip() for x in left.split(",") if x.strip()]
+            delta = [x.strip() for x in right.split(",") if x.strip()]
             result = state.derives(gamma, delta)
-            sym = '✓' if result else '✗'
+            sym = "✓" if result else "✗"
             print(f"  {sym} {{{', '.join(gamma)}}} |~ {{{', '.join(delta)}}}")
             return
     print("  Usage: /derive premise ~ conclusion")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,0 +1,31 @@
+[project]
+name = "elenchus"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long -- formatter handles what it can
+    "E741",  # ambiguous variable name -- I (implications) is standard notation
+    "E743",  # ambiguous function name -- ditto
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["material_base", "dialectical_state", "opponent", "server", "pdf_report"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

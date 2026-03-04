@@ -24,7 +24,17 @@ python elenchus_cli.py --db my_inquiry.duckdb --name "Topic"
 
 When starting the server, source `~/.zshrc` first to pick up `ANTHROPIC_API_KEY` and other env vars: `source ~/.zshrc 2>/dev/null; python server.py`
 
-There are no tests or linting configured.
+```bash
+# Install dev dependencies (includes ruff + pytest)
+pip install -r requirements-dev.txt
+
+# Lint
+ruff check .
+ruff format --check .
+
+# Run tests
+pytest -v
+```
 
 ## Environment Variables
 

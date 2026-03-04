@@ -8,25 +8,26 @@ The mapping to material base (Definition 7):
     |∼_B = I ∪ Cont
 """
 
-from material_base import MaterialBase, set_to_str, str_to_set, fmt_set
+import duckdb
+
+from material_base import MaterialBase, set_to_str, str_to_set
 
 
 class DialecticalState:
-
     def __init__(self, base: MaterialBase):
         self.base = base
         self._ensure_tables()
 
     @classmethod
-    def create(cls, db_path: str, name: str) -> 'DialecticalState':
+    def create(cls, db_path: str, name: str) -> "DialecticalState":
         return cls(MaterialBase.create(db_path, name))
 
     @classmethod
-    def open(cls, db_path: str) -> 'DialecticalState':
+    def open(cls, db_path: str) -> "DialecticalState":
         return cls(MaterialBase.open(db_path))
 
     @classmethod
-    def in_memory(cls, name: str = 'inquiry') -> 'DialecticalState':
+    def in_memory(cls, name: str = "inquiry") -> "DialecticalState":
         return cls(MaterialBase.in_memory(name))
 
     def _ensure_tables(self):
@@ -55,9 +56,7 @@ class DialecticalState:
         """)
         # Re-seed tension sequence from max existing id to survive reconnects
         self.base.con.execute("DROP SEQUENCE IF EXISTS tension_seq")
-        max_tid = self.base.con.execute(
-            "SELECT COALESCE(MAX(id), 0) FROM tensions"
-        ).fetchone()[0]
+        max_tid = self.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()[0]
         self.base.con.execute(f"CREATE SEQUENCE tension_seq START {max_tid + 1}")
         # Conversation history for multi-turn oracle
         self.base.con.execute("""
@@ -80,53 +79,55 @@ class DialecticalState:
     @property
     def C(self) -> list:
         rows = self.base.con.execute(
-            "SELECT atom FROM positions WHERE side='C' AND status='open' "
-            "ORDER BY introduced_at"
+            "SELECT atom FROM positions WHERE side='C' AND status='open' ORDER BY introduced_at"
         ).fetchall()
         return [r[0] for r in rows]
 
     @property
     def D(self) -> list:
         rows = self.base.con.execute(
-            "SELECT atom FROM positions WHERE side='D' AND status='open' "
-            "ORDER BY introduced_at"
+            "SELECT atom FROM positions WHERE side='D' AND status='open' ORDER BY introduced_at"
         ).fetchall()
         return [r[0] for r in rows]
 
     @property
     def retracted(self) -> list:
         rows = self.base.con.execute(
-            "SELECT DISTINCT atom FROM positions WHERE status='retracted' "
-            "ORDER BY introduced_at"
+            "SELECT DISTINCT atom FROM positions WHERE status='retracted' ORDER BY introduced_at"
         ).fetchall()
         return [r[0] for r in rows]
 
     def commit(self, prop: str):
-        self.base.add_atoms({prop}, contributor='respondent')
+        self.base.add_atoms({prop}, contributor="respondent")
         try:
             self.base.con.execute(
-                "INSERT INTO positions VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)",
-                [prop])
-        except:
+                "INSERT INTO positions VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)", [prop]
+            )
+        except duckdb.ConstraintException:
             self.base.con.execute(
                 "UPDATE positions SET status='open', side='C', "
-                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?", [prop])
+                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?",
+                [prop],
+            )
 
     def deny(self, prop: str):
-        self.base.add_atoms({prop}, contributor='respondent')
+        self.base.add_atoms({prop}, contributor="respondent")
         try:
             self.base.con.execute(
-                "INSERT INTO positions VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)",
-                [prop])
-        except:
+                "INSERT INTO positions VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)", [prop]
+            )
+        except duckdb.ConstraintException:
             self.base.con.execute(
                 "UPDATE positions SET status='open', side='D', "
-                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?", [prop])
+                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?",
+                [prop],
+            )
 
     def retract_prop(self, prop: str) -> bool:
         n = self.base.con.execute(
             "UPDATE positions SET status='retracted' "
-            "WHERE atom=? AND status='open' RETURNING atom", [prop]
+            "WHERE atom=? AND status='open' RETURNING atom",
+            [prop],
         ).fetchall()
         return len(n) > 0
 
@@ -135,54 +136,65 @@ class DialecticalState:
     @property
     def T(self) -> list:
         rows = self.base.con.execute(
-            "SELECT id, gamma, delta, reason FROM tensions "
-            "WHERE status='open' ORDER BY id"
+            "SELECT id, gamma, delta, reason FROM tensions WHERE status='open' ORDER BY id"
         ).fetchall()
-        return [{'id': r[0], 'gamma': list(str_to_set(r[1])),
-                 'delta': list(str_to_set(r[2])), 'reason': r[3]}
-                for r in rows]
+        return [
+            {
+                "id": r[0],
+                "gamma": list(str_to_set(r[1])),
+                "delta": list(str_to_set(r[2])),
+                "reason": r[3],
+            }
+            for r in rows
+        ]
 
     @property
     def contested_tensions(self) -> list:
         rows = self.base.con.execute(
-            "SELECT id, gamma, delta, reason FROM tensions "
-            "WHERE status='contested' ORDER BY id"
+            "SELECT id, gamma, delta, reason FROM tensions WHERE status='contested' ORDER BY id"
         ).fetchall()
-        return [{'id': r[0], 'gamma': list(str_to_set(r[1])),
-                 'delta': list(str_to_set(r[2])), 'reason': r[3]}
-                for r in rows]
+        return [
+            {
+                "id": r[0],
+                "gamma": list(str_to_set(r[1])),
+                "delta": list(str_to_set(r[2])),
+                "reason": r[3],
+            }
+            for r in rows
+        ]
 
-    def add_tension(self, gamma: list, delta: list, reason: str = '') -> int:
-        tid = self.base.con.execute(
-            "SELECT nextval('tension_seq')"
-        ).fetchone()[0]
+    def add_tension(self, gamma: list, delta: list, reason: str = "") -> int:
+        tid = self.base.con.execute("SELECT nextval('tension_seq')").fetchone()[0]
         self.base.con.execute(
             "INSERT INTO tensions VALUES (?,?,?,?,'open',CURRENT_TIMESTAMP,NULL)",
-            [tid, set_to_str(set(gamma)), set_to_str(set(delta)), reason])
+            [tid, set_to_str(set(gamma)), set_to_str(set(delta)), reason],
+        )
         return tid
 
     def accept_tension(self, tid: int) -> dict:
         row = self.base.con.execute(
-            "SELECT gamma, delta, reason FROM tensions "
-            "WHERE id=? AND status='open'", [tid]
+            "SELECT gamma, delta, reason FROM tensions WHERE id=? AND status='open'", [tid]
         ).fetchone()
         if not row:
             return None
         gamma = list(str_to_set(row[0]))
         delta = list(str_to_set(row[1]))
         reason = row[2]
-        self.base.accept(set(gamma), set(delta), 'respondent',
-                         f'Tension #{tid}: {reason}', domain='tension')
+        self.base.accept(
+            set(gamma), set(delta), "respondent", f"Tension #{tid}: {reason}", domain="tension"
+        )
         self.base.con.execute(
-            "UPDATE tensions SET status='accepted', "
-            "resolved_at=CURRENT_TIMESTAMP WHERE id=?", [tid])
-        return {'gamma': gamma, 'delta': delta, 'reason': reason}
+            "UPDATE tensions SET status='accepted', resolved_at=CURRENT_TIMESTAMP WHERE id=?",
+            [tid],
+        )
+        return {"gamma": gamma, "delta": delta, "reason": reason}
 
     def contest_tension(self, tid: int) -> bool:
         n = self.base.con.execute(
             "UPDATE tensions SET status='contested', "
             "resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='open' "
-            "RETURNING id", [tid]
+            "RETURNING id",
+            [tid],
         ).fetchall()
         return len(n) > 0
 
@@ -195,9 +207,10 @@ class DialecticalState:
             "WHERE contributor='respondent' AND domain='tension' "
             "AND judgment='holds' ORDER BY assessed_at"
         ).fetchall()
-        return [{'gamma': list(str_to_set(r[0])),
-                 'delta': list(str_to_set(r[1])),
-                 'reason': r[2]} for r in rows]
+        return [
+            {"gamma": list(str_to_set(r[0])), "delta": list(str_to_set(r[1])), "reason": r[2]}
+            for r in rows
+        ]
 
     # ── Conversation history (for multi-turn oracle) ──
 
@@ -206,31 +219,28 @@ class DialecticalState:
         rows = self.base.con.execute(
             "SELECT role, content FROM conversation ORDER BY id"
         ).fetchall()
-        return [{'role': r[0], 'content': r[1]} for r in rows]
+        return [{"role": r[0], "content": r[1]} for r in rows]
 
     def add_conversation(self, role: str, content: str):
         """Store a conversation turn. Only the natural language, not the
         full state context — the formal state is reconstructed from
         the DuckDB tables on each turn."""
         self.base.con.execute(
-            "INSERT INTO conversation (id, role, content) "
-            "VALUES (nextval('conv_seq'), ?, ?)", [role, content])
+            "INSERT INTO conversation (id, role, content) VALUES (nextval('conv_seq'), ?, ?)",
+            [role, content],
+        )
 
     def get_summary(self) -> str:
         """Get the running summary of the dialectic."""
-        r = self.base.con.execute(
-            "SELECT value FROM meta WHERE key='summary'"
-        ).fetchone()
-        return r[0] if r else ''
+        r = self.base.con.execute("SELECT value FROM meta WHERE key='summary'").fetchone()
+        return r[0] if r else ""
 
     def set_summary(self, summary: str):
         """Update the running summary."""
         try:
-            self.base.con.execute(
-                "INSERT INTO meta VALUES ('summary', ?)", [summary])
-        except:
-            self.base.con.execute(
-                "UPDATE meta SET value=? WHERE key='summary'", [summary])
+            self.base.con.execute("INSERT INTO meta VALUES ('summary', ?)", [summary])
+        except duckdb.ConstraintException:
+            self.base.con.execute("UPDATE meta SET value=? WHERE key='summary'", [summary])
 
     # ── Derivability ──
 
@@ -241,11 +251,11 @@ class DialecticalState:
 
     def to_dict(self) -> dict:
         return {
-            'name': self.base.name,
-            'commitments': self.C,
-            'denials': self.D,
-            'tensions': self.T,
-            'implications': self.I,
-            'retracted': self.retracted,
-            'contested': self.contested_tensions,
+            "name": self.base.name,
+            "commitments": self.C,
+            "denials": self.D,
+            "tensions": self.T,
+            "implications": self.I,
+            "retracted": self.retracted,
+            "contested": self.contested_tensions,
         }

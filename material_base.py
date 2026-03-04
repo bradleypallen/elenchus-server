@@ -6,20 +6,22 @@ and a base consequence relation. This module stores both in DuckDB
 and implements derivability via the Projection theorem.
 """
 
-import duckdb
+import contextlib
 import logging
-from datetime import datetime
+
+import duckdb
 
 logger = logging.getLogger(__name__)
 
-_DELIM = '\x1e'  # ASCII Record Separator — safe delimiter for natural-language propositions
+_DELIM = "\x1e"  # ASCII Record Separator — safe delimiter for natural-language propositions
 
 
 def set_to_str(s):
     if not s:
-        return ''
+        return ""
     # Trailing _DELIM ensures even single-element sets are marked as new format
     return _DELIM.join(sorted(s)) + _DELIM
+
 
 def str_to_set(s):
     if not s:
@@ -27,11 +29,13 @@ def str_to_set(s):
     # New format uses \x1e; legacy data uses comma
     if _DELIM in s:
         return frozenset(p for p in s.split(_DELIM) if p)
-    return frozenset(s.split(','))
+    return frozenset(s.split(","))
+
 
 def fmt_set(s):
-    if not s: return '∅'
-    return '{' + ', '.join(sorted(s)) + '}'
+    if not s:
+        return "∅"
+    return "{" + ", ".join(sorted(s)) + "}"
 
 
 _SCHEMA_SQL = """
@@ -87,7 +91,6 @@ HAVING COUNT(*) = (
 
 
 class MaterialBase:
-
     def __init__(self, con, name):
         self.con = con
         self.name = name
@@ -104,12 +107,12 @@ class MaterialBase:
     def open(cls, db_path):
         con = duckdb.connect(db_path)
         r = con.execute("SELECT value FROM meta WHERE key='name'").fetchone()
-        name = r[0] if r else 'unnamed'
+        name = r[0] if r else "unnamed"
         return cls(con, name)
 
     @classmethod
-    def in_memory(cls, name='unnamed'):
-        con = duckdb.connect(':memory:')
+    def in_memory(cls, name="unnamed"):
+        con = duckdb.connect(":memory:")
         con.execute(_SCHEMA_SQL)
         con.execute("INSERT INTO meta VALUES ('name', ?)", [name])
         con.execute("INSERT INTO meta VALUES ('version', '5')")
@@ -120,28 +123,27 @@ class MaterialBase:
         rows = self.con.execute("SELECT sentence FROM atoms").fetchall()
         return frozenset(r[0] for r in rows)
 
-    def add_atoms(self, atoms, contributor='system', description=''):
+    def add_atoms(self, atoms, contributor="system", description=""):
         for a in atoms:
-            try:
+            with contextlib.suppress(duckdb.ConstraintException):
                 self.con.execute(
                     "INSERT INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
-                    [a, contributor, description])
-            except:
-                pass
+                    [a, contributor, description],
+                )
 
-    def accept(self, premises, conclusions, contributor, reason='', domain=''):
+    def accept(self, premises, conclusions, contributor, reason="", domain=""):
         self.con.execute(
             "INSERT INTO assessments (premises, conclusions, judgment, "
             "contributor, reason, domain) VALUES (?,?,'holds',?,?,?)",
-            [set_to_str(premises), set_to_str(conclusions),
-             contributor, reason, domain])
+            [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
+        )
 
-    def reject(self, premises, conclusions, contributor, reason='', domain=''):
+    def reject(self, premises, conclusions, contributor, reason="", domain=""):
         self.con.execute(
             "INSERT INTO assessments (premises, conclusions, judgment, "
             "contributor, reason, domain) VALUES (?,?,'rejected',?,?,?)",
-            [set_to_str(premises), set_to_str(conclusions),
-             contributor, reason, domain])
+            [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
+        )
 
     def derives(self, premises, conclusions):
         p, c = frozenset(premises), frozenset(conclusions)
@@ -153,8 +155,8 @@ class MaterialBase:
         p_str = set_to_str(prem)
         c_str = set_to_str(conc)
         r = self.con.execute(
-            "SELECT 1 FROM base_sequents WHERE premises=? AND conclusions=?",
-            [p_str, c_str]).fetchone()
+            "SELECT 1 FROM base_sequents WHERE premises=? AND conclusions=?", [p_str, c_str]
+        ).fetchone()
         if r:
             return True
         # Projection: check if any subset of prem ∼ any subset of conc is in base
@@ -171,9 +173,7 @@ class MaterialBase:
         gaps = []
         all_atoms = self.atoms
         assessed = set()
-        rows = self.con.execute(
-            "SELECT premises, conclusions FROM current_assessments"
-        ).fetchall()
+        rows = self.con.execute("SELECT premises, conclusions FROM current_assessments").fetchall()
         for p, c in rows:
             assessed.add((p, c))
 
@@ -185,22 +185,18 @@ class MaterialBase:
                 # Weaken left
                 wp = set_to_str(premises | {a})
                 if (wp, c_str) not in assessed:
-                    gaps.append({'premises': premises | {a},
-                                 'conclusions': conclusions})
+                    gaps.append({"premises": premises | {a}, "conclusions": conclusions})
                 # Weaken right
                 wc = set_to_str(conclusions | {a})
                 if (p_str, wc) not in assessed:
-                    gaps.append({'premises': premises,
-                                 'conclusions': conclusions | {a}})
+                    gaps.append({"premises": premises, "conclusions": conclusions | {a}})
         return gaps
 
     def completeness(self):
-        assessed = self.con.execute(
-            "SELECT COUNT(*) FROM current_assessments").fetchone()[0]
+        assessed = self.con.execute("SELECT COUNT(*) FROM current_assessments").fetchone()[0]
         n = len(self.atoms)
         total = max(1, n * (n - 1))  # rough estimate
-        return {'assessed': assessed, 'total': total,
-                'pct': assessed / total if total else 0}
+        return {"assessed": assessed, "total": total, "pct": assessed / total if total else 0}
 
     def report(self):
         lines = [f"═══ Material Base: {self.name} ═══", ""]
@@ -209,11 +205,11 @@ class MaterialBase:
             "SELECT premises, conclusions, n_assessors FROM base_sequents"
         ).fetchall()
         lines.append(f"|∼_B|: {len(rows)} sequents")
-        for p, c, n in rows:
+        for p, c, _n in rows:
             lines.append(f"  {fmt_set(str_to_set(p))} ∼ {fmt_set(str_to_set(c))}")
         cr = self.completeness()
         lines.append(f"\nCompleteness: {cr['pct']:.0%} ({cr['assessed']}/{cr['total']})")
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _migrate_delimiter(self):
         """Re-serialize all assessments from comma to \\x1e delimiter.
@@ -223,9 +219,7 @@ class MaterialBase:
         need manual repair. This only re-writes the stored delimiter so
         that future reads use the new format.
         """
-        rows = self.con.execute(
-            "SELECT rowid, premises, conclusions FROM assessments"
-        ).fetchall()
+        rows = self.con.execute("SELECT rowid, premises, conclusions FROM assessments").fetchall()
         migrated = 0
         for rowid, p, c in rows:
             if _DELIM not in p and _DELIM not in c:
@@ -233,8 +227,9 @@ class MaterialBase:
                 new_c = set_to_str(str_to_set(c))
                 if new_p != p or new_c != c:
                     self.con.execute(
-                        "UPDATE assessments SET premises=?, conclusions=? "
-                        "WHERE rowid=?", [new_p, new_c, rowid])
+                        "UPDATE assessments SET premises=?, conclusions=? WHERE rowid=?",
+                        [new_p, new_c, rowid],
+                    )
                     migrated += 1
         logger.info("_migrate_delimiter: re-serialized %d assessment rows", migrated)
         return migrated
