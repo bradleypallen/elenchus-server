@@ -3,7 +3,7 @@ material_base.py — DuckDB-backed material bases for NMMS
 
 A material base B = ⟨L_B, |∼_B⟩ consists of an atomic language
 and a base consequence relation. This module stores both in DuckDB
-and implements derivability via the Projection theorem.
+and delegates derivability to pyNMMS (NMMSReasoner).
 """
 
 import contextlib

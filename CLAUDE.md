@@ -58,7 +58,7 @@ respondent ──→ server.py ──→ opponent.py ──→ Anthropic API
 
 **Five modules, layered bottom-up:**
 
-1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Implements derivability via the Projection theorem (`_proof_search`). Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to comma-separated DuckDB strings.
+1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Derivability is delegated to pyNMMS (`NMMSReasoner`), which implements correct nonmonotonic proof search (no Weakening, no Cut) per Hlobil & Brandom 2025. An in-memory pyNMMS `MaterialBase` mirrors the DuckDB state, synced incrementally on `accept()`/`add_atoms()` and rebuilt from `base_sequents` after `reject()`. Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to DuckDB strings.
 
 2. **dialectical_state.py** — Definition 4: `S = ⟨[C : D], T, I⟩`. Wraps `MaterialBase` and adds DuckDB tables for positions (commitments/denials), tensions, and conversation history. The mapping: `L_B = C ∪ D`, `|∼_B = I ∪ Cont`.
 
@@ -78,7 +78,7 @@ respondent ──→ server.py ──→ opponent.py ──→ Anthropic API
 - **Tension** — A proposed incoherence `{gamma} |~ {delta}` where gamma draws from C; stored with status open/accepted/contested
 - **Material implication** — An accepted tension becomes an assessment in the base consequence relation
 - **Speech acts** — COMMIT, DENY, RETRACT, REFINE, ACCEPT_TENSION, CONTEST_TENSION
-- **Derivability** — Checked via Containment (premises ∩ conclusions non-empty) then Projection (subset search over base sequents)
+- **Derivability** — Checked by pyNMMS's `NMMSReasoner`: backward proof search with Containment (Ax1), exact base consequence match (Ax2, no Weakening), and 8 Ketonen-style propositional rules. Returns a `ProofResult` with human-readable trace. Invoked on-demand via `/derive` (CLI and API), never automatically during the dialectic flow.
 
 ## UI Action Flow (Two-Phase Pattern)
 
