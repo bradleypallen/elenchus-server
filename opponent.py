@@ -294,7 +294,7 @@ Material implications (I):
 Retracted propositions:
 {retracted_block}
 
-Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here."""
+Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here. Do NOT include a title or heading — start directly with the substantive content."""
 
         try:
             response = self.client.messages.create(

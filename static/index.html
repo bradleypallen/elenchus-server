@@ -77,7 +77,7 @@
   .msg-md strong { font-weight: 500; }
   .msg-md h1, .msg-md h2, .msg-md h3, .msg-md h4 { font-size: inherit; font-weight: 500; margin: 0.6em 0 0.3em; }
   @keyframes pdf-pulse {
-    0%, 100% { border-color: var(--border); color: var(--text-muted); }
+    0%, 100% { border-color: var(--border-focus); color: var(--text-dim); }
     50% { border-color: var(--accent); color: var(--accent); }
   }
 </style>
@@ -862,16 +862,15 @@ function App() {
             }}
             disabled={pdfLoading}
             title="Download PDF report"
-            className={pdfLoading ? 'pdf-loading' : ''}
             style={{
               background: 'none', border: '1px solid var(--border)', borderRadius: 4,
               color: 'var(--text-muted)',
               cursor: pdfLoading ? 'default' : 'pointer', fontSize: fs(10),
               padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1,
-              fontFamily: 'var(--mono)',
+              fontFamily: 'var(--mono)', outline: 'none',
               animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
-          >{pdfLoading ? 'PDF \u25CE' : 'PDF'}</button>
+          >PDF</button>
           <button
             onClick={openSettingsPanel}
             title="Settings"
@@ -887,6 +886,26 @@ function App() {
       <div style={{ padding: 14, overflowY: 'auto' }}>
         <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
         <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
+        {s.retracted?.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+              Retracted
+            </div>
+            {s.retracted.map((p, i) => {
+              const aid = s.atom_ids && s.atom_ids[p];
+              return (
+                <div key={i} style={{
+                  padding: '3px 7px', marginBottom: 3, borderRadius: 3,
+                  fontSize: fs(10), lineHeight: 1.5, fontFamily: 'var(--sans)',
+                  color: 'var(--text-muted)', textDecoration: 'line-through',
+                }}>
+                  {aid && <span style={{ fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)', textDecoration: 'none', display: 'inline' }}>P{aid}</span>}
+                  {p}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Left drag handle */}
@@ -992,7 +1011,7 @@ function PositionList({ title, color, bgColor, items, onRetract, loading, fs, at
             fontSize: fs(10), lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
           }}>
             <span style={{ wordBreak: 'break-word' }}>
-              {aid && <span style={{ color: 'var(--text-muted)', fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)' }}>{aid}</span>}
+              {aid && <span style={{ color: 'var(--text-muted)', fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)' }}>P{aid}</span>}
               {p}
             </span>
             <button onClick={() => onRetract(p)} disabled={loading} style={{
@@ -1057,7 +1076,7 @@ function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) 
               fontFamily: 'var(--sans)', color: 'var(--text-dim)',
               display: 'flex', alignItems: 'baseline', gap: 4,
             }}>
-              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{aid}</span>}
+              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>P{aid}</span>}
               <span>{g}</span>
             </div>
           );
@@ -1075,7 +1094,7 @@ function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) 
               fontFamily: 'var(--sans)', color: 'var(--text-dim)',
               display: 'flex', alignItems: 'baseline', gap: 4,
             }}>
-              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{aid}</span>}
+              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>P{aid}</span>}
               <span>{d}</span>
             </div>
           );

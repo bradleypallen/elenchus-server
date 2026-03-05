@@ -1,9 +1,10 @@
 """
 pdf_report.py — PDF report generation for Elenchus dialectics
 
-Generates a structured PDF covering the full dialectical state:
-summary, bilateral position, tensions, material implications,
-material base report, and conversation transcript.
+Generates a structured PDF matching the UI display: summary,
+position (commitments/denials with atom IDs), sequents (tensions
+and implications as cards with numbered atoms), and conversation
+transcript.
 """
 
 import json
@@ -15,7 +16,6 @@ from datetime import datetime
 from fpdf import FPDF
 
 from dialectical_state import DialecticalState
-from material_base import str_to_set
 
 logger = logging.getLogger(__name__)
 
@@ -178,11 +178,11 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     def set_heading(size=14):
         pdf.set_font(body_family, "B", size)
 
-    def section_title(num, title):
+    def section_title(title):
         pdf.ln(6)
         set_heading(13)
         pdf.set_text_color(50, 50, 80)
-        pdf.cell(text=f"{num}. {title}")
+        pdf.cell(text=title)
         pdf.ln(7)
         # Thin rule
         pdf.set_draw_color(180, 180, 200)
@@ -190,25 +190,40 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.ln(4)
         pdf.set_text_color(0, 0, 0)
 
-    def bullet(text, indent=6):
+    def atom_line(text, atom_id=None, indent=6):
+        """Render a numbered atom."""
         set_body(10)
-        x = pdf.get_x()
-        pdf.set_x(x + indent)
-        pdf.cell(text="\u2022 ", w=6)
+        pdf.set_x(pdf.get_x() + indent)
+        if atom_id is not None:
+            set_mono(8)
+            pdf.set_text_color(120, 120, 140)
+            pdf.cell(text=f"P{atom_id} ", w=14)
+            pdf.set_text_color(0, 0, 0)
+            set_body(10)
         pdf.multi_cell(w=pdf.w - pdf.get_x() - 20, text=text)
         pdf.ln(1)
 
-    def sequent_line(gamma_list, delta_list, prefix="", indent=6):
-        """Render a sequent {gamma} |~ {delta} in monospace."""
-        g = ", ".join(gamma_list)
-        d = ", ".join(delta_list)
-        # Use ASCII-safe turnstile representation
-        line = f"{prefix}{{{g}}} |~ {{{d}}}"
+    def sequent_card(seq_id, label, gamma_list, delta_list, atom_ids):
+        """Render a sequent card matching the UI display."""
         set_mono(9)
-        x = pdf.get_x()
-        pdf.set_x(x + indent)
-        pdf.multi_cell(w=pdf.w - pdf.get_x() - 20, text=line)
-        pdf.ln(1)
+        pdf.set_text_color(60, 60, 80)
+        pdf.set_x(pdf.get_x() + 6)
+        pdf.cell(text=f"{label}{seq_id}")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(6)
+        # Gamma atoms
+        for g in gamma_list:
+            aid = atom_ids.get(g)
+            atom_line(g, atom_id=aid, indent=10)
+        # Turnstile divider
+        pdf.set_draw_color(150, 150, 170)
+        pdf.line(30, pdf.get_y(), pdf.w - 30, pdf.get_y())
+        pdf.ln(3)
+        # Delta atoms
+        for d in delta_list:
+            aid = atom_ids.get(d)
+            atom_line(d, atom_id=aid, indent=10)
+        pdf.ln(2)
 
     # ── Page 1: Title ──
 
@@ -244,24 +259,26 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
 
     pdf.set_text_color(0, 0, 0)
 
-    # ── Section 1: Summary ──
+    atom_ids = s.get("atom_ids", {})
 
-    section_title(1, "SUMMARY")
+    # ── Summary ──
+
+    section_title("SUMMARY")
     set_body(10)
     pdf.write_html(_md_to_html(summary))
     pdf.ln(4)
 
-    # ── Section 2: Bilateral Position [C : D] ──
+    # ── Position ──
 
-    section_title(2, "BILATERAL POSITION [C : D]")
+    section_title("POSITION")
 
-    # 2.1 Commitments
+    # Commitments
     set_body(11, "B")
-    pdf.cell(text=f"2.1 Commitments ({len(s['commitments'])})")
-    pdf.ln(5)
+    pdf.cell(text=f"Commitments ({len(s['commitments'])})")
+    pdf.ln(8)
     if s["commitments"]:
         for c in s["commitments"]:
-            bullet(c)
+            atom_line(c, atom_id=atom_ids.get(c), indent=6)
     else:
         set_body(10)
         pdf.set_x(pdf.get_x() + 6)
@@ -271,13 +288,13 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.ln(5)
     pdf.ln(3)
 
-    # 2.2 Denials
+    # Denials
     set_body(11, "B")
-    pdf.cell(text=f"2.2 Denials ({len(s['denials'])})")
-    pdf.ln(5)
+    pdf.cell(text=f"Denials ({len(s['denials'])})")
+    pdf.ln(8)
     if s["denials"]:
         for d in s["denials"]:
-            bullet(d)
+            atom_line(d, atom_id=atom_ids.get(d), indent=6)
     else:
         set_body(10)
         pdf.set_x(pdf.get_x() + 6)
@@ -287,14 +304,14 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.ln(5)
     pdf.ln(3)
 
-    # 2.3 Retracted
+    # Retracted
     retracted = s.get("retracted", [])
     set_body(11, "B")
-    pdf.cell(text=f"2.3 Retracted ({len(retracted)})")
-    pdf.ln(5)
+    pdf.cell(text=f"Retracted ({len(retracted)})")
+    pdf.ln(8)
     if retracted:
         for r in retracted:
-            bullet(r)
+            atom_line(r, atom_id=atom_ids.get(r), indent=6)
     else:
         set_body(10)
         pdf.set_x(pdf.get_x() + 6)
@@ -304,112 +321,48 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.ln(5)
     pdf.ln(3)
 
-    # ── Section 3: Tensions ──
+    # ── Sequents ──
 
-    section_title(3, "TENSIONS")
+    section_title("SEQUENTS")
 
-    # 3.1 Open
     open_tensions = s["tensions"]
-    set_body(11, "B")
-    pdf.cell(text=f"3.1 Open ({len(open_tensions)})")
-    pdf.ln(5)
-    if open_tensions:
-        for t in open_tensions:
-            set_body(10)
-            pdf.set_x(pdf.get_x() + 6)
-            pdf.cell(text=f"#{t['id']}: ")
-            pdf.ln(4)
-            sequent_line(t["gamma"], t["delta"], indent=12)
-            if t.get("reason"):
-                set_body(9)
-                pdf.set_x(pdf.get_x() + 12)
-                pdf.set_text_color(100, 100, 120)
-                pdf.write_html(_md_to_html(f"Reason: {t['reason']}"))
-                pdf.set_text_color(0, 0, 0)
-            pdf.ln(2)
-    else:
-        set_body(10)
-        pdf.set_x(pdf.get_x() + 6)
-        pdf.set_text_color(120, 120, 140)
-        pdf.cell(text="(none)")
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(5)
-    pdf.ln(3)
-
-    # 3.2 Contested
-    contested = s.get("contested", [])
-    set_body(11, "B")
-    pdf.cell(text=f"3.2 Contested ({len(contested)})")
-    pdf.ln(5)
-    if contested:
-        for t in contested:
-            set_body(10)
-            pdf.set_x(pdf.get_x() + 6)
-            pdf.cell(text=f"#{t['id']}: ")
-            pdf.ln(4)
-            sequent_line(t["gamma"], t["delta"], indent=12)
-            if t.get("reason"):
-                set_body(9)
-                pdf.set_x(pdf.get_x() + 12)
-                pdf.set_text_color(100, 100, 120)
-                pdf.write_html(_md_to_html(f"Reason: {t['reason']}"))
-                pdf.set_text_color(0, 0, 0)
-            pdf.ln(2)
-    else:
-        set_body(10)
-        pdf.set_x(pdf.get_x() + 6)
-        pdf.set_text_color(120, 120, 140)
-        pdf.cell(text="(none)")
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(5)
-    pdf.ln(3)
-
-    # ── Section 4: Material Implications ──
-
     implications = s["implications"]
-    section_title(4, f"MATERIAL IMPLICATIONS ({len(implications)})")
 
+    # Material Implications
+    set_body(11, "B")
+    pdf.cell(text=f"Material Implications ({len(implications)})")
+    pdf.ln(8)
     if implications:
         for imp in implications:
-            sequent_line(imp["gamma"], imp["delta"])
+            sequent_card(imp.get("id", ""), "I", imp["gamma"], imp["delta"], atom_ids)
     else:
         set_body(10)
+        pdf.set_x(pdf.get_x() + 6)
         pdf.set_text_color(120, 120, 140)
         pdf.cell(text="(none)")
         pdf.set_text_color(0, 0, 0)
         pdf.ln(5)
     pdf.ln(3)
 
-    # ── Section 5: Material Base ──
-
-    section_title(5, "MATERIAL BASE")
-
-    # Atoms and sequents from the base
-    atoms = state.base.atoms
-    base_rows = state.base.con.execute(
-        "SELECT premises, conclusions FROM base_sequents"
-    ).fetchall()
-    completeness = state.base.completeness()
-
-    set_body(10)
-    pdf.cell(text=f"Atoms: {len(atoms)}  |  Sequents: {len(base_rows)}")
-    pdf.ln(5)
-    pdf.cell(
-        text=f"Completeness: {completeness['pct']:.0%} "
-        f"({completeness['assessed']}/{completeness['total']})"
-    )
-    pdf.ln(6)
-
-    if base_rows:
-        for bp, bc in base_rows:
-            p_set = list(str_to_set(bp))
-            c_set = list(str_to_set(bc))
-            sequent_line(p_set, c_set)
+    # Open Tensions
+    set_body(11, "B")
+    pdf.cell(text=f"Open Tensions ({len(open_tensions)})")
+    pdf.ln(8)
+    if open_tensions:
+        for t in open_tensions:
+            sequent_card(t["id"], "T", t["gamma"], t["delta"], atom_ids)
+    else:
+        set_body(10)
+        pdf.set_x(pdf.get_x() + 6)
+        pdf.set_text_color(120, 120, 140)
+        pdf.cell(text="(none)")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(5)
     pdf.ln(3)
 
-    # ── Section 6: Conversation Transcript ──
+    # ── Conversation Transcript ──
 
-    section_title(6, "CONVERSATION TRANSCRIPT")
+    section_title("CONVERSATION TRANSCRIPT")
 
     conversation = state.get_conversation()
     if conversation:
