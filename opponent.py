@@ -88,7 +88,14 @@ Instead, respond as a philosophical interlocutor:
 - For accepted tensions: discuss what this new material implication means for their position, what further consequences or pressures it creates
 - For contested tensions: probe WHY they reject the inference, ask what they think is wrong with it, explore the philosophical stakes
 - For retractions: discuss what retracting this proposition changes in their overall position, what commitments remain that depended on it, what new space opens up
-- You may propose new_tensions if the updated position warrants them"""
+- You may propose new_tensions if the updated position warrants them
+
+IDENTIFIERS:
+Use the identifiers shown in the state when referring to items in your response:
+- Atoms: P1, P2, P3, ... (e.g., "P3 commits you to...")
+- Tensions: T1, T2, ... (e.g., "tension T7 shows...")
+- Implications: I1, I2, ... (e.g., "implication I3 establishes...")
+Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3, I3."""
 
 
 class Opponent:
@@ -156,15 +163,16 @@ class Opponent:
         row = state.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()
         tid = row[0]
 
+        atom_ids = s.get("atom_ids", {})
         formal_state = f"""CURRENT DIALECTICAL STATE:
 Topic: {s["name"]}
 Next tension ID: {tid + 1}
 
-Commitments (C):{self._fmt_list(s["commitments"])}
-Denials (D):{self._fmt_list(s["denials"])}
+Commitments (C):{self._fmt_list(s["commitments"], atom_ids)}
+Denials (D):{self._fmt_list(s["denials"], atom_ids)}
 Open tensions (T):{self._fmt_tensions(s["tensions"])}
 Material implications (I):{self._fmt_implications(s["implications"])}
-Retracted:{self._fmt_list(s["retracted"])}"""
+Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
 
         # Build message with respondent's input
         # Detect UI-driven actions and inject a reminder so the model
@@ -242,15 +250,25 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         s = state.to_dict()
 
         # Build a rich prompt with full formal state
-        commitments_block = "\n".join(f'  - "{c}"' for c in s["commitments"]) or "  (none)"
-        denials_block = "\n".join(f'  - "{d}"' for d in s["denials"]) or "  (none)"
-        retracted_block = "\n".join(f'  - "{r}"' for r in s["retracted"]) or "  (none)"
+        atom_ids = s.get("atom_ids", {})
+        commitments_block = "\n".join(
+            f'  P{atom_ids[c]} - "{c}"' if c in atom_ids else f'  - "{c}"'
+            for c in s["commitments"]
+        ) or "  (none)"
+        denials_block = "\n".join(
+            f'  P{atom_ids[d]} - "{d}"' if d in atom_ids else f'  - "{d}"'
+            for d in s["denials"]
+        ) or "  (none)"
+        retracted_block = "\n".join(
+            f'  P{atom_ids[r]} - "{r}"' if r in atom_ids else f'  - "{r}"'
+            for r in s["retracted"]
+        ) or "  (none)"
 
         tensions_block = ""
         for t in s["tensions"]:
             g = ", ".join(f'"{x}"' for x in t["gamma"])
             d = ", ".join(f'"{x}"' for x in t["delta"])
-            tensions_block += f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
+            tensions_block += f"\n  T{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
         if not tensions_block:
             tensions_block = "  (none)"
 
@@ -258,7 +276,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         for imp in s["implications"]:
             g = ", ".join(f'"{x}"' for x in imp["gamma"])
             d = ", ".join(f'"{x}"' for x in imp["delta"])
-            implications_block += f"\n  {{{g}}} |~ {{{d}}}"
+            imp_id = imp.get("id", "")
+            implications_block += f"\n  I{imp_id}: {{{g}}} |~ {{{d}}}"
         if not implications_block:
             implications_block = "  (none)"
 
@@ -266,7 +285,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         for t in s.get("contested", []):
             g = ", ".join(f'"{x}"' for x in t["gamma"])
             d = ", ".join(f'"{x}"' for x in t["delta"])
-            contested_block += f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
+            contested_block += f"\n  T{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
         if not contested_block:
             contested_block = "  (none)"
 
@@ -294,7 +313,7 @@ Material implications (I):
 Retracted propositions:
 {retracted_block}
 
-Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here. Do NOT include a title or heading — start directly with the substantive content."""
+Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here. Do NOT include a title or heading — start directly with the substantive content. Use the identifiers shown (P1, T3, I2, etc.) when referring to specific atoms, tensions, or implications."""
 
         try:
             response = self.client.messages.create(
@@ -401,9 +420,15 @@ Recent exchanges:
                     state.base.add_atoms({a}, contributor="oracle")
                 state.add_tension(gamma, delta, reason)
 
-    def _fmt_list(self, items):
+    def _fmt_list(self, items, atom_ids=None):
         if not items:
             return " (none)"
+        if atom_ids:
+            return "".join(
+                f'\n  P{atom_ids[item]} - "{item}"' if item in atom_ids
+                else f'\n  - "{item}"'
+                for item in items
+            )
         return "".join(f'\n  - "{item}"' for item in items)
 
     def _fmt_tensions(self, tensions):
@@ -413,7 +438,7 @@ Recent exchanges:
         for t in tensions:
             g = ", ".join(f'"{x}"' for x in t["gamma"])
             d = ", ".join(f'"{x}"' for x in t["delta"])
-            lines.append(f"\n  #{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}")
+            lines.append(f"\n  T{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}")
         return "".join(lines)
 
     def _fmt_implications(self, imps):
@@ -423,5 +448,6 @@ Recent exchanges:
         for imp in imps:
             g = ", ".join(f'"{x}"' for x in imp["gamma"])
             d = ", ".join(f'"{x}"' for x in imp["delta"])
-            lines.append(f"\n  {{{g}}} |~ {{{d}}}")
+            imp_id = imp.get("id", "")
+            lines.append(f"\n  I{imp_id}: {{{g}}} |~ {{{d}}}")
         return "".join(lines)
