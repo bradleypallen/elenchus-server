@@ -203,12 +203,12 @@ class DialecticalState:
     @property
     def I(self) -> list:
         rows = self.base.con.execute(
-            "SELECT premises, conclusions, reason FROM assessments "
+            "SELECT rowid, premises, conclusions, reason FROM assessments "
             "WHERE contributor='respondent' AND domain='tension' "
             "AND judgment='holds' ORDER BY assessed_at"
         ).fetchall()
         return [
-            {"gamma": list(str_to_set(r[0])), "delta": list(str_to_set(r[1])), "reason": r[2]}
+            {"id": r[0], "gamma": list(str_to_set(r[1])), "delta": list(str_to_set(r[2])), "reason": r[3]}
             for r in rows
         ]
 
@@ -251,6 +251,16 @@ class DialecticalState:
         """Return full ProofResult including trace."""
         return self.base.derive_with_trace(set(gamma), set(delta))
 
+    # ── Atom IDs (sequential by creation order) ──
+
+    @property
+    def atom_ids(self) -> dict:
+        """Return {atom_text: sequential_id} ordered by added_at."""
+        rows = self.base.con.execute(
+            "SELECT sentence FROM atoms ORDER BY added_at, sentence"
+        ).fetchall()
+        return {r[0]: i + 1 for i, r in enumerate(rows)}
+
     # ── Full state as dict (for API) ──
 
     def to_dict(self) -> dict:
@@ -262,4 +272,5 @@ class DialecticalState:
             "implications": self.I,
             "retracted": self.retracted,
             "contested": self.contested_tensions,
+            "atom_ids": self.atom_ids,
         }

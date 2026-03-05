@@ -34,30 +34,30 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #08080d; --surface: #10101a; --surface2: #161622;
-    --border: #222235; --border-focus: #3a3a5a;
-    --text: #d8d8e8; --text-dim: #8a8aa0; --text-muted: #505068;
-    --commit: #34d4a4;
-    --commit-bg: rgba(52,212,164,0.08);
-    --commit-bg-strong: rgba(52,212,164,0.25);
-    --commit-border: rgba(52,212,164,0.12);
+    --bg: #0a0a12; --surface: #12121e; --surface2: #1a1a28;
+    --border: #2a2a42; --border-focus: #4a4a6a;
+    --text: #e0e0f0; --text-dim: #a0a0b8; --text-muted: #6a6a82;
+    --commit: #3de0b0;
+    --commit-bg: rgba(52,212,164,0.12);
+    --commit-bg-strong: rgba(52,212,164,0.30);
+    --commit-border: rgba(52,212,164,0.20);
     --deny: #f472b6;
-    --deny-bg: rgba(244,114,182,0.08);
-    --deny-bg-strong: rgba(244,114,182,0.25);
-    --deny-border: rgba(244,114,182,0.12);
-    --tension: #facc15;
-    --tension-bg: rgba(250,204,21,0.06);
-    --tension-bg-strong: rgba(250,204,21,0.25);
-    --tension-border: rgba(250,204,21,0.12);
-    --imp: #60a5fa;
-    --imp-bg: rgba(96,165,250,0.06);
-    --imp-bg-strong: rgba(96,165,250,0.25);
-    --imp-border: rgba(96,165,250,0.12);
+    --deny-bg: rgba(244,114,182,0.12);
+    --deny-bg-strong: rgba(244,114,182,0.30);
+    --deny-border: rgba(244,114,182,0.20);
+    --tension: #fcd34d;
+    --tension-bg: rgba(250,204,21,0.10);
+    --tension-bg-strong: rgba(250,204,21,0.30);
+    --tension-border: rgba(250,204,21,0.18);
+    --imp: #7cb3fc;
+    --imp-bg: rgba(96,165,250,0.10);
+    --imp-bg-strong: rgba(96,165,250,0.30);
+    --imp-border: rgba(96,165,250,0.18);
     --contested: #64748b;
     --opp: #c4b5fd;
-    --opp-bg: rgba(196,181,253,0.03);
-    --opp-bg-strong: rgba(196,181,253,0.25);
-    --opp-border: rgba(196,181,253,0.12);
+    --opp-bg: rgba(196,181,253,0.06);
+    --opp-bg-strong: rgba(196,181,253,0.30);
+    --opp-border: rgba(196,181,253,0.18);
     --accent: #818cf8;
     --respondent-text: #94a3b8;
     --mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
@@ -96,19 +96,19 @@ const DEFAULT_DISPLAY = {
   theme: 'dark',
   fontScale: 1.0,
   colors: {
-    commit: '#34d4a4',
+    commit: '#3de0b0',
     deny: '#f472b6',
-    tension: '#facc15',
-    imp: '#60a5fa',
+    tension: '#fcd34d',
+    imp: '#7cb3fc',
     opp: '#c4b5fd',
   }
 };
 
 const THEMES = {
   dark: {
-    '--bg': '#08080d', '--surface': '#10101a', '--surface2': '#161622',
-    '--border': '#222235', '--border-focus': '#3a3a5a',
-    '--text': '#d8d8e8', '--text-dim': '#8a8aa0', '--text-muted': '#505068',
+    '--bg': '#0a0a12', '--surface': '#12121e', '--surface2': '#1a1a28',
+    '--border': '#2a2a42', '--border-focus': '#4a4a6a',
+    '--text': '#e0e0f0', '--text-dim': '#a0a0b8', '--text-muted': '#6a6a82',
     '--contested': '#64748b', '--accent': '#818cf8',
     '--respondent-text': '#94a3b8',
   },
@@ -144,7 +144,7 @@ function applyDisplayPrefs(prefs) {
 
   // Set semantic color vars + derived alpha variants
   const colors = prefs.colors || DEFAULT_DISPLAY.colors;
-  const alphas = { bg: 0.08, 'bg-strong': 0.25, border: 0.12 };
+  const alphas = { bg: 0.12, 'bg-strong': 0.30, border: 0.20 };
   Object.entries(colors).forEach(([key, hex]) => {
     root.style.setProperty(`--${key}`, hex);
     Object.entries(alphas).forEach(([suffix, a]) => {
@@ -200,6 +200,49 @@ function App() {
   });
   const msgEnd = useRef(null);
   const inputRef = useRef(null);
+
+  // ── Column resizing ──
+  const [leftWidth, setLeftWidth] = useState(() => {
+    try { const v = parseInt(localStorage.getItem('elenchus-left-w')); return v > 0 ? v : 260; } catch(e) { return 260; }
+  });
+  const [rightWidth, setRightWidth] = useState(() => {
+    try { const v = parseInt(localStorage.getItem('elenchus-right-w')); return v > 0 ? v : 280; } catch(e) { return 280; }
+  });
+  const dragging = useRef(null); // 'left' | 'right' | null
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!dragging.current) return;
+      e.preventDefault();
+      if (dragging.current === 'left') {
+        const w = Math.max(160, Math.min(e.clientX, window.innerWidth * 0.4));
+        setLeftWidth(w);
+      } else {
+        const w = Math.max(160, Math.min(window.innerWidth - e.clientX, window.innerWidth * 0.4));
+        setRightWidth(w);
+      }
+    };
+    const onMouseUp = () => {
+      if (dragging.current) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        dragging.current = null;
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
+  }, []);
+
+  useEffect(() => { localStorage.setItem('elenchus-left-w', leftWidth); }, [leftWidth]);
+  useEffect(() => { localStorage.setItem('elenchus-right-w', rightWidth); }, [rightWidth]);
+
+  const startDrag = (side) => (e) => {
+    e.preventDefault();
+    dragging.current = side;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
 
   // Display preferences — persist and apply on every change (including initial)
   useEffect(() => {
@@ -775,10 +818,10 @@ function App() {
   }
 
   // ── Dialogue ──
-  const s = state || { commitments: [], denials: [], tensions: [], implications: [], retracted: [], contested: [] };
+  const s = state || { commitments: [], denials: [], tensions: [], implications: [], retracted: [], contested: [], atom_ids: {} };
 
   return (
-    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: '260px 1fr 280px', gridTemplateRows: 'auto 1fr auto' }}>
+    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`, gridTemplateRows: 'auto 1fr auto' }}>
       {/* Header */}
       <div style={{
         gridColumn: '1 / -1', padding: '10px 20px',
@@ -841,23 +884,17 @@ function App() {
       </div>
 
       {/* Left: Position */}
-      <div style={{ borderRight: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
-        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} />
-        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} />
-        {s.retracted?.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
-              Retracted
-            </div>
-            {s.retracted.map((p, i) => (
-              <div key={i} style={{
-                padding: '3px 6px', fontSize: fs(10), color: 'var(--text-muted)',
-                textDecoration: 'line-through', lineHeight: 1.4, marginBottom: 2,
-              }}>{p}</div>
-            ))}
-          </div>
-        )}
+      <div style={{ padding: 14, overflowY: 'auto' }}>
+        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
+        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
       </div>
+
+      {/* Left drag handle */}
+      <div onMouseDown={startDrag('left')} style={{
+        cursor: 'col-resize', background: 'var(--border)', width: 4,
+        transition: 'background 0.15s',
+      }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
+         onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
 
       {/* Center: Messages */}
       <div style={{ overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -870,54 +907,27 @@ function App() {
         <div ref={msgEnd} />
       </div>
 
-      {/* Right: T and I */}
-      <div style={{ borderLeft: '1px solid var(--border)', padding: 14, overflowY: 'auto' }}>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--tension)', marginBottom: 8, textTransform: 'uppercase' }}>
-            Open tensions (T)
-          </div>
-          {s.tensions.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No open tensions</div>
-          )}
-          {s.tensions.map(t => (
-            <TensionCard key={t.id} t={t} onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} />
-          ))}
-        </div>
+      {/* Right drag handle */}
+      <div onMouseDown={startDrag('right')} style={{
+        cursor: 'col-resize', background: 'var(--border)', width: 4,
+        transition: 'background 0.15s',
+      }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
+         onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
 
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--imp)', marginBottom: 8, textTransform: 'uppercase' }}>
-            Material implications (I)
-          </div>
-          {s.implications.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No implications yet</div>
-          )}
-          {s.implications.map((imp, i) => (
-            <div key={i} style={{
-              padding: '5px 8px', marginBottom: 4, borderRadius: 4,
-              background: 'var(--imp-bg)', borderLeft: '2px solid var(--imp)',
-              fontSize: fs(10), lineHeight: 1.5, color: 'var(--text-dim)',
-              fontFamily: 'var(--sans)',
-            }}>
-              <div style={{ color: 'var(--imp)', fontSize: fs(9), fontFamily: 'var(--mono)', marginBottom: 2 }}>
-                &#123;{imp.gamma.join(', ')}&#125; |∼ &#123;{imp.delta.join(', ')}&#125;
-              </div>
-            </div>
-          ))}
+      {/* Right: Sequents */}
+      <div style={{ padding: 14, overflowY: 'auto' }}>
+        <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+          Sequents
         </div>
-
-        {s.contested?.length > 0 && (
-          <div>
-            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--contested)', marginBottom: 8, textTransform: 'uppercase' }}>
-              Contested
-            </div>
-            {s.contested.map((t, i) => (
-              <div key={i} style={{
-                padding: '4px 8px', marginBottom: 3, fontSize: fs(10),
-                color: 'var(--text-muted)', textDecoration: 'line-through', lineHeight: 1.4,
-              }}>#{t.id}: {(t.reason || '').slice(0, 80)}</div>
-            ))}
-          </div>
+        {s.tensions.length === 0 && s.implications.length === 0 && (
+          <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No sequents yet</div>
         )}
+        {s.tensions.map(t => (
+          <SequentCard key={'t'+t.id} item={t} type="tension" onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} atomIds={s.atom_ids} />
+        ))}
+        {s.implications.map((imp, i) => (
+          <SequentCard key={'i'+i} item={imp} type="implication" loading={loading} fs={fs} atomIds={s.atom_ids} />
+        ))}
       </div>
 
       {/* Input */}
@@ -962,7 +972,7 @@ function App() {
 
 // ── Components ──
 
-function PositionList({ title, color, bgColor, items, onRetract, loading, fs }) {
+function PositionList({ title, color, bgColor, items, onRetract, loading, fs, atomIds }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: fs(9), letterSpacing: 2, color, marginBottom: 6, textTransform: 'uppercase' }}>
@@ -971,51 +981,105 @@ function PositionList({ title, color, bgColor, items, onRetract, loading, fs }) 
       {items.length === 0 && (
         <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>∅</div>
       )}
-      {items.map((p, i) => (
-        <div key={i} style={{
-          padding: '4px 7px', marginBottom: 3, borderRadius: 3,
-          background: bgColor,
-          borderLeft: `2px solid ${color}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          fontSize: fs(10), lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
-        }}>
-          <span style={{ wordBreak: 'break-word' }}>{p}</span>
-          <button onClick={() => onRetract(p)} disabled={loading} style={{
-            background: 'none', border: 'none', color: 'var(--text-muted)',
-            cursor: loading ? 'default' : 'pointer', fontSize: fs(9), padding: '0 2px', flexShrink: 0, lineHeight: 1,
-            opacity: loading ? 0.3 : 1,
-          }} title="Retract">×</button>
-        </div>
-      ))}
+      {items.map((p, i) => {
+        const aid = atomIds && atomIds[p];
+        return (
+          <div key={i} style={{
+            padding: '4px 7px', marginBottom: 3, borderRadius: 3,
+            background: bgColor,
+            borderLeft: `2px solid ${color}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+            fontSize: fs(10), lineHeight: 1.5, gap: 4, fontFamily: 'var(--sans)',
+          }}>
+            <span style={{ wordBreak: 'break-word' }}>
+              {aid && <span style={{ color: 'var(--text-muted)', fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)' }}>{aid}</span>}
+              {p}
+            </span>
+            <button onClick={() => onRetract(p)} disabled={loading} style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              cursor: loading ? 'default' : 'pointer', fontSize: fs(9), padding: '0 2px', flexShrink: 0, lineHeight: 1,
+              opacity: loading ? 0.3 : 1,
+            }} title="Retract">×</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function TensionCard({ t, onAccept, onContest, loading, fs }) {
+function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) {
+  const isTension = type === 'tension';
+  const color = isTension ? 'var(--tension)' : 'var(--imp)';
+  const bg = isTension ? 'var(--tension-bg)' : 'var(--imp-bg)';
+  const border = isTension ? 'var(--tension-border)' : 'var(--imp-border)';
+  const atomBg = isTension ? 'rgba(250,204,21,0.12)' : 'rgba(96,165,250,0.12)';
+
   return (
     <div style={{
-      padding: 8, marginBottom: 8, borderRadius: 5,
-      background: 'var(--tension-bg)', border: '1px solid var(--tension-border)',
+      marginBottom: 8, borderRadius: 6,
+      background: bg, border: `1px solid ${border}`,
+      overflow: 'hidden',
     }}>
-      <div style={{ fontSize: fs(9), color: 'var(--tension)', marginBottom: 3 }}>#{t.id}</div>
       <div style={{
-        fontSize: fs(11), color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6,
-        fontFamily: 'var(--sans)',
-      }}>{t.reason}</div>
-      <div style={{ fontSize: fs(9), color: 'var(--text-muted)', marginBottom: 6 }}>
-        &#123;{t.gamma.join(', ')}&#125; |∼ &#123;{t.delta.join(', ')}&#125;
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '3px 8px',
+        borderBottom: `1px solid ${border}`,
+      }}>
+        <span style={{ fontSize: fs(8), fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>
+          {isTension ? `T${item.id}` : `I${item.id}`}
+        </span>
+        {isTension && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={onAccept} disabled={loading} title="Accept"
+              style={{
+                background: 'none', border: 'none', color: 'var(--commit)',
+                cursor: loading ? 'default' : 'pointer', fontSize: fs(13), padding: 0, lineHeight: 1,
+                opacity: loading ? 0.3 : 0.8,
+              }}
+            >&#9744;</button>
+            <button onClick={onContest} disabled={loading} title="Contest"
+              style={{
+                background: 'none', border: 'none', color: 'var(--text-muted)',
+                cursor: loading ? 'default' : 'pointer', fontSize: fs(12), padding: 0, lineHeight: 1,
+                opacity: loading ? 0.3 : 0.8,
+              }}
+            >&times;</button>
+          </div>
+        )}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={onAccept} disabled={loading} style={{
-          padding: '3px 12px', background: 'var(--commit-bg)', border: '1px solid var(--commit-bg-strong)',
-          borderRadius: 3, color: 'var(--commit)', fontSize: fs(10),
-          cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.4 : 1,
-        }}>accept</button>
-        <button onClick={onContest} disabled={loading} style={{
-          padding: '3px 12px', background: '#64748b15', border: '1px solid #64748b40',
-          borderRadius: 3, color: 'var(--contested)', fontSize: fs(10),
-          cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.4 : 1,
-        }}>contest</button>
+      <div style={{ padding: 8 }}>
+        {item.gamma.map((g, i) => {
+          const aid = atomIds && atomIds[g];
+          return (
+            <div key={'g'+i} style={{
+              padding: '2px 6px', marginBottom: 3, borderRadius: 3,
+              background: atomBg, fontSize: fs(9.5), lineHeight: 1.5,
+              fontFamily: 'var(--sans)', color: 'var(--text-dim)',
+              display: 'flex', alignItems: 'baseline', gap: 4,
+            }}>
+              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{aid}</span>}
+              <span>{g}</span>
+            </div>
+          );
+        })}
+        <div style={{
+          height: 2, background: color,
+          margin: '6px 0', borderRadius: 1,
+        }} />
+        {item.delta.map((d, i) => {
+          const aid = atomIds && atomIds[d];
+          return (
+            <div key={'d'+i} style={{
+              padding: '2px 6px', marginBottom: 3, borderRadius: 3,
+              background: atomBg, fontSize: fs(9.5), lineHeight: 1.5,
+              fontFamily: 'var(--sans)', color: 'var(--text-dim)',
+              display: 'flex', alignItems: 'baseline', gap: 4,
+            }}>
+              {aid && <span style={{ fontSize: fs(7.5), fontFamily: 'var(--mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{aid}</span>}
+              <span>{d}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
