@@ -419,11 +419,9 @@ function App() {
         method: 'POST', body: JSON.stringify({ action: 'accept' })
       });
       setState(res.state);
-      // Phase 2: notify opponent (include substance so opponent can engage with the decision)
-      const gammaStr = t.gamma.join(', ');
-      const deltaStr = t.delta.join(', ');
-      const followUp = `I accept tension T${t.id}: {${gammaStr}} |~ {${deltaStr}}. This is now a material implication in my position.`;
-      setMessages(prev => [...prev, { role: 'respondent', content: `I accept tension T${t.id}.` }]);
+      // Phase 2: notify opponent
+      const followUp = `I accept tension T${t.id}.`;
+      setMessages(prev => [...prev, { role: 'respondent', content: followUp }]);
       setLoading(true);
       setError(null);
       try {
@@ -452,11 +450,9 @@ function App() {
         method: 'POST', body: JSON.stringify({ action: 'contest' })
       });
       setState(res.state);
-      // Phase 2: notify opponent (include substance so opponent can engage with the decision)
-      const gammaStr = t.gamma.join(', ');
-      const deltaStr = t.delta.join(', ');
-      const followUp = `I contest tension T${t.id}: {${gammaStr}} |~ {${deltaStr}}. I reject this inference.`;
-      setMessages(prev => [...prev, { role: 'respondent', content: `I contest tension T${t.id}.` }]);
+      // Phase 2: notify opponent
+      const followUp = `I contest tension T${t.id}.`;
+      setMessages(prev => [...prev, { role: 'respondent', content: followUp }]);
       setLoading(true);
       setError(null);
       try {
