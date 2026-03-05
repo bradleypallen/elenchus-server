@@ -177,7 +177,7 @@ async function api(path, opts = {}) {
 function App() {
   const [view, setView] = useState('home'); // home | positum | dialogue
   const [dialectics, setDialectics] = useState([]);
-  const [current, setCurrent] = useState(null); // dialectic name
+  const [current, setCurrent] = useState(() => localStorage.getItem('elenchus-current') || null);
   const [state, setState] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -234,6 +234,10 @@ function App() {
     return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
   }, []);
 
+  useEffect(() => {
+    if (current) localStorage.setItem('elenchus-current', current);
+    else localStorage.removeItem('elenchus-current');
+  }, [current]);
   useEffect(() => { localStorage.setItem('elenchus-left-w', leftWidth); }, [leftWidth]);
   useEffect(() => { localStorage.setItem('elenchus-right-w', rightWidth); }, [rightWidth]);
 
@@ -253,7 +257,16 @@ function App() {
   // Scaled font size helper
   const fs = useCallback((px) => Math.round(px * displayPrefs.fontScale), [displayPrefs.fontScale]);
 
-  useEffect(() => { loadDialectics(); loadSettings(); }, []);
+  useEffect(() => {
+    loadDialectics();
+    loadSettings();
+    // Restore last-open dialectic on refresh
+    const saved = localStorage.getItem('elenchus-current');
+    if (saved) openDialectic(saved).catch(() => {
+      localStorage.removeItem('elenchus-current');
+      setCurrent(null); setState(null); setView('home'); setError(null);
+    });
+  }, []);
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
 
@@ -830,7 +843,7 @@ function App() {
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
-                onClick={() => setView('home')}>Elenchus</span>
+                onClick={() => { setCurrent(null); setState(null); setView('home'); }}>Elenchus</span>
           <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{s.name || current}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
