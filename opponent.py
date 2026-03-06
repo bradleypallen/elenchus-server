@@ -147,7 +147,13 @@ class Opponent:
             bool(api_key),
         )
 
-    def respond(self, user_message: str, state: DialecticalState, context_turns: int = 6) -> dict:
+    def respond(
+        self,
+        user_message: str,
+        state: DialecticalState,
+        context_turns: int = 6,
+        action_context: dict | None = None,
+    ) -> dict:
         """
         Send the respondent's message + dialectical state to the LLM.
 
@@ -171,6 +177,7 @@ Next tension ID: {tid + 1}
 Commitments (C):{self._fmt_list(s["commitments"], atom_ids)}
 Denials (D):{self._fmt_list(s["denials"], atom_ids)}
 Open tensions (T):{self._fmt_tensions(s["tensions"])}
+Contested tensions:{self._fmt_tensions(s["contested"])}
 Material implications (I):{self._fmt_implications(s["implications"])}
 Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
 
@@ -185,8 +192,23 @@ Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
             or msg_lower.startswith("i contest tension")
             or msg_lower.startswith("i retract")
         ):
-            ui_action_note = """
-[NOTE: This action was applied via the UI — the state above already reflects it. This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.]
+            # Build a specific note with tension details so the LLM knows
+            # exactly which tension was acted on (it may no longer appear
+            # in open tensions after the UI applied the action).
+            detail = ""
+            if action_context:
+                ctx_id = action_context.get("tension_id")
+                gamma = action_context.get("gamma", [])
+                delta = action_context.get("delta", [])
+                action = action_context.get("action", "")
+                g = ", ".join(f'"{x}"' for x in gamma)
+                d = ", ".join(f'"{x}"' for x in delta)
+                detail = f" The tension was T{ctx_id}: {{{g}}} |~ {{{d}}}."
+                if action == "accept":
+                    detail += " It is now a material implication."
+            id_reminder = f" Use the correct tension ID (T{action_context['tension_id']}) when referring to it." if action_context and "tension_id" in action_context else ""
+            ui_action_note = f"""
+[NOTE: This action was applied via the UI — the state above already reflects it.{detail} This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.{id_reminder}]
 """
 
         user_content = f"""{formal_state}

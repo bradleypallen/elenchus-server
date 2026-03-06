@@ -426,7 +426,7 @@ function App() {
       setError(null);
       try {
         const oppRes = await api(`/api/dialectics/${current}/message`, {
-          method: 'POST', body: JSON.stringify({ message: followUp })
+          method: 'POST', body: JSON.stringify({ message: followUp, context: { action: 'accept', tension_id: t.id, gamma: t.gamma, delta: t.delta } })
         });
         setState(oppRes.state);
         if (oppRes.response) {
@@ -457,7 +457,7 @@ function App() {
       setError(null);
       try {
         const oppRes = await api(`/api/dialectics/${current}/message`, {
-          method: 'POST', body: JSON.stringify({ message: followUp })
+          method: 'POST', body: JSON.stringify({ message: followUp, context: { action: 'contest', tension_id: t.id, gamma: t.gamma, delta: t.delta } })
         });
         setState(oppRes.state);
         if (oppRes.response) {

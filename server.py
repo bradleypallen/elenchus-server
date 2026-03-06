@@ -68,6 +68,7 @@ class CreateRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
+    context: dict | None = None
 
 
 class TensionAction(BaseModel):
@@ -187,7 +188,7 @@ def send_message(name: str, req: MessageRequest):
     """
     state = _get_state(name)
     try:
-        result = opponent.respond(req.message, state)
+        result = opponent.respond(req.message, state, action_context=req.context)
         return {
             "response": result.get("response", ""),
             "speech_acts": result.get("speech_acts", []),
