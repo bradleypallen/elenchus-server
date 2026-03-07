@@ -1,5 +1,11 @@
 # Elenchus
 
+[![CI](https://github.com/bradleypallen/elenchus-server/actions/workflows/ci.yml/badge.svg)](https://github.com/bradleypallen/elenchus-server/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/elenchus)](https://pypi.org/project/elenchus/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-user%20guide-blue)](docs/guide.md)
+
 A standalone system for dialectical knowledge base construction, implementing the Elenchus protocol (Allen 2026) with a DuckDB material base backend.
 
 The respondent develops a bilateral position [C : D] through natural language dialogue with an LLM opponent. Accepted tensions become material implications in a NMMS material base satisfying Containment.
