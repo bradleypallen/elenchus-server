@@ -9,25 +9,23 @@ Elenchus is a dialectical knowledge base construction system implementing the El
 ## Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install (editable, for development)
+pip install -e ".[dev]"
 
 # Run web server (serves API + static frontend)
-python server.py                    # or: uvicorn server:app --reload
+elenchus                            # or: uvicorn elenchus.server:app --reload
+elenchus --port 9000 --model claude-opus-4-6
 
-# Run CLI (in-memory)
-python elenchus_cli.py --name "Topic"
+# Run CLI REPL (in-memory)
+elenchus-cli --name "Topic"
 
-# Run CLI (persistent)
-python elenchus_cli.py --db my_inquiry.duckdb --name "Topic"
+# Run CLI REPL (persistent)
+elenchus-cli --db my_inquiry.duckdb --name "Topic"
 ```
 
-When starting the server, source `~/.zshrc` first to pick up `ANTHROPIC_API_KEY` and other env vars: `source ~/.zshrc 2>/dev/null; python server.py`
+When starting the server, source `~/.zshrc` first to pick up `ANTHROPIC_API_KEY` and other env vars: `source ~/.zshrc 2>/dev/null; elenchus`
 
 ```bash
-# Install dev dependencies (includes ruff + pytest)
-pip install -r requirements-dev.txt
-
 # Lint
 ruff check .
 ruff format --check .
@@ -39,24 +37,27 @@ pytest -v
 ## Environment Variables
 
 - `ANTHROPIC_API_KEY` (required)
-- `ELENCHUS_MODEL` — LLM model (default: `claude-sonnet-4-20250514`)
+- `ELENCHUS_MODEL` — LLM model (default: `claude-opus-4-6`)
 - `ELENCHUS_DATA` — directory for `.duckdb` files (default: `./dialectics`)
-- `PORT` — server port (default: `8000`)
+- `PORT` — server port (default: `8741`)
 
 ## Architecture
 
-```
-respondent ──→ server.py ──→ opponent.py ──→ Anthropic API
-    ↑              ↓
-    └── static/    ↓
-        index.html dialectical_state.py
-                       ↓
-                   material_base.py
-                       ↓
-                   dialectics/*.duckdb
+```text
+src/elenchus/
+├── server.py ──→ opponent.py ──→ Anthropic API
+│       ↓
+│   dialectical_state.py
+│       ↓
+│   material_base.py
+│       ↓
+│   dialectics/*.duckdb
+├── static/index.html
+├── cli.py
+└── pdf_report.py
 ```
 
-**Five modules, layered bottom-up:**
+**Five modules in `src/elenchus/`, layered bottom-up:**
 
 1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Derivability is delegated to pyNMMS (`NMMSReasoner`), which implements correct nonmonotonic proof search (no Weakening, no Cut) per Hlobil & Brandom 2025. An in-memory pyNMMS `MaterialBase` mirrors the DuckDB state, synced incrementally on `accept()`/`add_atoms()` and rebuilt from `base_sequents` after `reject()`. Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to DuckDB strings.
 
@@ -70,7 +71,7 @@ respondent ──→ server.py ──→ opponent.py ──→ Anthropic API
 
 **static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). Communicates with the server via fetch calls to the API. Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
 
-**elenchus_cli.py** — Standalone CLI REPL. Same `Opponent` + `DialecticalState` stack, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
+**cli.py** — Standalone CLI REPL. Same `Opponent` + `DialecticalState` stack, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
 
 ## Key Domain Concepts
 

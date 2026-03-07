@@ -10,7 +10,7 @@ The mapping to material base (Definition 7):
 
 import duckdb
 
-from material_base import MaterialBase, set_to_str, str_to_set
+from .material_base import MaterialBase, set_to_str, str_to_set
 
 
 class DialecticalState:
@@ -208,7 +208,12 @@ class DialecticalState:
             "AND judgment='holds' ORDER BY assessed_at"
         ).fetchall()
         return [
-            {"id": r[0], "gamma": list(str_to_set(r[1])), "delta": list(str_to_set(r[2])), "reason": r[3]}
+            {
+                "id": r[0],
+                "gamma": list(str_to_set(r[1])),
+                "delta": list(str_to_set(r[2])),
+                "reason": r[3],
+            }
             for r in rows
         ]
 

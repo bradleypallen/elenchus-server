@@ -7,8 +7,8 @@ FastAPI app that:
 - Proxies LLM oracle calls through the Anthropic SDK
 - Supports creating, listing, resuming, and exporting dialectics
 
-Run: uvicorn server:app --reload
-Or:  python server.py
+Run: elenchus
+Or:  uvicorn elenchus.server:app --reload
 """
 
 import glob
@@ -21,9 +21,9 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from dialectical_state import DialecticalState
-from opponent import Opponent
-from pdf_report import generate_pdf_report
+from .dialectical_state import DialecticalState
+from .opponent import Opponent
+from .pdf_report import generate_pdf_report
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 app = FastAPI(title="Elenchus", version="0.1.0")
 opponent = Opponent(
-    model=os.environ.get("ELENCHUS_MODEL", "claude-sonnet-4-20250514"),
+    model=os.environ.get("ELENCHUS_MODEL", "claude-opus-4-6"),
     api_key=os.environ.get("ANTHROPIC_API_KEY"),
     base_url=os.environ.get("ANTHROPIC_BASE_URL"),
 )
@@ -286,6 +286,12 @@ if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.get("/sw.js")
+def service_worker():
+    sw_path = os.path.join(static_dir, "sw.js")
+    return FileResponse(sw_path, media_type="application/javascript")
+
+
 @app.get("/")
 def index():
     index_path = os.path.join(static_dir, "index.html")
@@ -296,10 +302,39 @@ def index():
 
 # ── Entry point ──
 
-if __name__ == "__main__":
+
+def main():
+    import argparse
+
     import uvicorn
 
-    port = int(os.environ.get("PORT", 8000))
+    parser = argparse.ArgumentParser(description="Elenchus web server")
+    parser.add_argument("--port", "-p", type=int, default=None, help="Server port (default: 8741)")
+    parser.add_argument("--api-key", default=None, help="Anthropic API key")
+    parser.add_argument("--base-url", default=None, help="Anthropic API base URL")
+    parser.add_argument("--model", default=None, help="LLM model name")
+    parser.add_argument("--data-dir", default=None, help="Directory for .duckdb files")
+    args = parser.parse_args()
+
+    # CLI args override env vars
+    global DATA_DIR
+    if args.data_dir:
+        DATA_DIR = args.data_dir
+        os.makedirs(DATA_DIR, exist_ok=True)
+
+    opponent.reconfigure(
+        model=args.model,
+        api_key=args.api_key,
+        base_url=args.base_url,
+    )
+
+    port = args.port or int(os.environ.get("PORT", 8741))
+    logger.info("Elenchus server starting on http://localhost:%d", port)
+    logger.info("Data directory: %s", os.path.abspath(DATA_DIR))
     print(f"Elenchus server starting on http://localhost:{port}")
     print(f"Data directory: {os.path.abspath(DATA_DIR)}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()

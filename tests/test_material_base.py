@@ -2,7 +2,7 @@
 
 import logging
 
-from material_base import MaterialBase, fmt_set, set_to_str, str_to_set
+from elenchus.material_base import MaterialBase, fmt_set, set_to_str, str_to_set
 
 logger = logging.getLogger(__name__)
 

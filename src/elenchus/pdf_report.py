@@ -15,7 +15,7 @@ from datetime import datetime
 
 from fpdf import FPDF
 
-from dialectical_state import DialecticalState
+from .dialectical_state import DialecticalState
 
 logger = logging.getLogger(__name__)
 

@@ -6,14 +6,22 @@ The respondent develops a bilateral position [C : D] through natural language di
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - An Anthropic API key
 
-## Setup
+## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install elenchus
 export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+For development:
+
+```bash
+git clone https://github.com/bradleyallen/elenchus-server.git
+cd elenchus-server
+pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -21,10 +29,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ### Web interface
 
 ```bash
-python server.py
+elenchus
 ```
 
-Open `http://localhost:8000`. The web interface provides:
+Options: `--port`, `--model`, `--api-key`, `--base-url`, `--data-dir` (see `elenchus --help`).
+
+Open the URL shown in the terminal (default `http://localhost:8741`). The web interface provides:
 
 - Creating and resuming dialectics
 - Natural language dialogue with the LLM opponent
@@ -37,62 +47,65 @@ Open `http://localhost:8000`. The web interface provides:
 
 ```bash
 # Interactive session (in-memory)
-python elenchus_cli.py --name "My Inquiry"
+elenchus-cli --name "My Inquiry"
 
 # Persistent session (saved to DuckDB file)
-python elenchus_cli.py --db my_inquiry.duckdb --name "My Inquiry"
+elenchus-cli --db my_inquiry.duckdb --name "My Inquiry"
 
 # Resume a saved session
-python elenchus_cli.py --db my_inquiry.duckdb
+elenchus-cli --db my_inquiry.duckdb
 ```
 
 ### API
 
 ```bash
 # Create a dialectic
-curl -X POST http://localhost:8000/api/dialectics \
+curl -X POST http://localhost:8741/api/dialectics \
   -H "Content-Type: application/json" \
   -d '{"name": "prov-o", "topic": "PROV-O Starting Point Terms"}'
 
 # Send a message
-curl -X POST http://localhost:8000/api/dialectics/prov-o/message \
+curl -X POST http://localhost:8741/api/dialectics/prov-o/message \
   -H "Content-Type: application/json" \
   -d '{"message": "Entity is a thing with fixed aspects."}'
 
 # Get state
-curl http://localhost:8000/api/dialectics/prov-o
+curl http://localhost:8741/api/dialectics/prov-o
 
 # Accept a tension
-curl -X POST http://localhost:8000/api/dialectics/prov-o/tensions/1 \
+curl -X POST http://localhost:8741/api/dialectics/prov-o/tensions/1 \
   -H "Content-Type: application/json" \
   -d '{"action": "accept"}'
 
 # Check derivability
-curl -X POST http://localhost:8000/api/dialectics/prov-o/derive \
+curl -X POST http://localhost:8741/api/dialectics/prov-o/derive \
   -H "Content-Type: application/json" \
   -d '{"gamma": ["entity_fixed_aspects"], "delta": ["individuation"]}'
 
 # List all dialectics
-curl http://localhost:8000/api/dialectics
+curl http://localhost:8741/api/dialectics
 ```
 
 ## Architecture
 
-```
-respondent ──→ server.py ──→ opponent.py ──→ Anthropic API
-    ↑              ↓
-    └── static/    ↓
-        index.html dialectical_state.py
-                       ↓
-                   material_base.py
-                       ↓
-                   dialectics/*.duckdb
+```text
+src/elenchus/
+├── server.py ──→ opponent.py ──→ Anthropic API
+│       ↓
+│   dialectical_state.py
+│       ↓
+│   material_base.py
+│       ↓
+│   dialectics/*.duckdb
+├── static/index.html
+├── cli.py
+└── pdf_report.py
 ```
 
 - **server.py**: FastAPI app serving the API and static frontend
 - **opponent.py**: LLM oracle — sends state to Anthropic, parses structured responses, applies state transitions
 - **dialectical_state.py**: Definition 4 — S = ⟨[C : D], T, I⟩ backed by DuckDB
-- **material_base.py**: Definition 5 — B = ⟨L_B, |∼_B⟩ with Projection-based derivability
+- **material_base.py**: Definition 5 — B = ⟨L_B, |∼_B⟩ with pyNMMS-based derivability
 - **dialectics/*.duckdb**: Persistent state files (one per dialectic)
 
 ## Persistence
@@ -112,6 +125,6 @@ To back up a dialectic, copy the `.duckdb` file. To share one, send the file. To
 Environment variables:
 
 - `ANTHROPIC_API_KEY`: Required. Your Anthropic API key.
-- `ELENCHUS_MODEL`: LLM model for the oracle (default: `claude-sonnet-4-20250514`)
+- `ELENCHUS_MODEL`: LLM model for the oracle (default: `claude-opus-4-6`)
 - `ELENCHUS_DATA`: Directory for `.duckdb` files (default: `./dialectics`)
-- `PORT`: Server port (default: `8000`)
+- `PORT`: Server port (default: `8741`)

@@ -1,19 +1,19 @@
 """
-elenchus_cli.py — Terminal interface for Elenchus
+cli.py — Terminal interface for Elenchus
 
 A REPL that lets you have a natural language dialectic from
 the command line. Same protocol, same oracle, no web server needed.
 
 Usage:
-    python elenchus_cli.py --name "My Topic"
-    python elenchus_cli.py --db saved.duckdb
+    elenchus-cli --name "My Topic"
+    elenchus-cli --db saved.duckdb
 """
 
 import argparse
 import os
 
-from dialectical_state import DialecticalState
-from opponent import Opponent
+from .dialectical_state import DialecticalState
+from .opponent import Opponent
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
         "--db", default=None, help="DuckDB file (creates if missing, omit for in-memory)"
     )
     parser.add_argument("--name", default="inquiry", help="Topic name (for new dialectics)")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Anthropic model")
+    parser.add_argument("--model", default="claude-opus-4-6", help="Anthropic model")
     args = parser.parse_args()
 
     # Load or create state

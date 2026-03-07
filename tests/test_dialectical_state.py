@@ -2,7 +2,7 @@
 
 import logging
 
-from dialectical_state import DialecticalState
+from elenchus.dialectical_state import DialecticalState
 
 logger = logging.getLogger(__name__)
 

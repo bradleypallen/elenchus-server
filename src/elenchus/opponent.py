@@ -11,7 +11,7 @@ import os
 
 from anthropic import Anthropic
 
-from dialectical_state import DialecticalState
+from .dialectical_state import DialecticalState
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3
 class Opponent:
     def __init__(
         self,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-opus-4-6",
         api_key: str | None = None,
         base_url: str | None = None,
     ):
@@ -206,7 +206,11 @@ Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
                 detail = f" The tension was T{ctx_id}: {{{g}}} |~ {{{d}}}."
                 if action == "accept":
                     detail += " It is now a material implication."
-            id_reminder = f" Use the correct tension ID (T{action_context['tension_id']}) when referring to it." if action_context and "tension_id" in action_context else ""
+            id_reminder = (
+                f" Use the correct tension ID (T{action_context['tension_id']}) when referring to it."
+                if action_context and "tension_id" in action_context
+                else ""
+            )
             ui_action_note = f"""
 [NOTE: This action was applied via the UI — the state above already reflects it.{detail} This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.{id_reminder}]
 """
@@ -273,18 +277,27 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
         # Build a rich prompt with full formal state
         atom_ids = s.get("atom_ids", {})
-        commitments_block = "\n".join(
-            f'  P{atom_ids[c]} - "{c}"' if c in atom_ids else f'  - "{c}"'
-            for c in s["commitments"]
-        ) or "  (none)"
-        denials_block = "\n".join(
-            f'  P{atom_ids[d]} - "{d}"' if d in atom_ids else f'  - "{d}"'
-            for d in s["denials"]
-        ) or "  (none)"
-        retracted_block = "\n".join(
-            f'  P{atom_ids[r]} - "{r}"' if r in atom_ids else f'  - "{r}"'
-            for r in s["retracted"]
-        ) or "  (none)"
+        commitments_block = (
+            "\n".join(
+                f'  P{atom_ids[c]} - "{c}"' if c in atom_ids else f'  - "{c}"'
+                for c in s["commitments"]
+            )
+            or "  (none)"
+        )
+        denials_block = (
+            "\n".join(
+                f'  P{atom_ids[d]} - "{d}"' if d in atom_ids else f'  - "{d}"'
+                for d in s["denials"]
+            )
+            or "  (none)"
+        )
+        retracted_block = (
+            "\n".join(
+                f'  P{atom_ids[r]} - "{r}"' if r in atom_ids else f'  - "{r}"'
+                for r in s["retracted"]
+            )
+            or "  (none)"
+        )
 
         tensions_block = ""
         for t in s["tensions"]:
@@ -447,8 +460,7 @@ Recent exchanges:
             return " (none)"
         if atom_ids:
             return "".join(
-                f'\n  P{atom_ids[item]} - "{item}"' if item in atom_ids
-                else f'\n  - "{item}"'
+                f'\n  P{atom_ids[item]} - "{item}"' if item in atom_ids else f'\n  - "{item}"'
                 for item in items
             )
         return "".join(f'\n  - "{item}"' for item in items)
