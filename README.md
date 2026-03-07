@@ -24,6 +24,8 @@ cd elenchus-server
 pip install -e ".[dev]"
 ```
 
+**[User Guide](docs/guide.md)** — full documentation covering concepts, the web interface, CLI, configuration, and a worked example.
+
 ## Usage
 
 ### Web interface
