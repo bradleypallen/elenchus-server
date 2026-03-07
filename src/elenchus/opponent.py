@@ -1,8 +1,10 @@
 """
 opponent.py — The LLM opponent / derivability oracle
 
-Sends the dialectical state to the Anthropic API, parses structured
-responses, and applies state transitions per Figure 4.
+Sends the dialectical state to an LLM API (Anthropic or OpenAI-compatible),
+parses structured responses, and applies state transitions per Figure 4.
+
+Supports Anthropic directly and any OpenAI-compatible endpoint (e.g. OpenRouter).
 """
 
 import json
@@ -10,10 +12,14 @@ import logging
 import os
 
 from anthropic import Anthropic
+from openai import OpenAI
 
 from .dialectical_state import DialecticalState
 
 logger = logging.getLogger(__name__)
+
+# Known OpenAI-compatible base URLs (auto-detect API protocol)
+_OPENAI_COMPAT_HOSTS = {"openrouter.ai", "api.openai.com", "api.together.xyz", "api.groq.com"}
 
 
 SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
@@ -104,28 +110,30 @@ class Opponent:
         model: str = "claude-opus-4-6",
         api_key: str | None = None,
         base_url: str | None = None,
+        protocol: str | None = None,
     ):
-        client_kwargs = {}
-        if api_key:
-            client_kwargs["api_key"] = api_key
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        self.client = Anthropic(**client_kwargs)
         self.model = model
         self.base_url = base_url
         self._api_key = api_key
-        self._has_api_key = bool(api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        self.protocol = protocol or self._detect_protocol(base_url)
+        self.client = self._build_client()
+        self._has_api_key = bool(api_key or self._env_api_key())
         logger.info(
-            "Opponent initialized: model=%s, base_url=%s, api_key_set=%s",
+            "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s",
+            self.protocol,
             model,
             base_url or "(default)",
             self._has_api_key,
         )
 
     def reconfigure(
-        self, model: str | None = None, api_key: str | None = None, base_url: str | None = None
+        self,
+        model: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        protocol: str | None = None,
     ):
-        """Recreate the Anthropic client with new settings."""
+        """Recreate the client with new settings."""
         if model:
             self.model = model
         if api_key:
@@ -133,19 +141,74 @@ class Opponent:
             self._has_api_key = True
         if base_url is not None:
             self.base_url = base_url if base_url else None
-        # Rebuild client, preserving existing credentials
-        client_kwargs = {}
-        if getattr(self, "_api_key", None):
-            client_kwargs["api_key"] = self._api_key
-        if self.base_url:
-            client_kwargs["base_url"] = self.base_url
-        self.client = Anthropic(**client_kwargs)
+        if protocol:
+            self.protocol = protocol
+        elif base_url is not None:
+            self.protocol = self._detect_protocol(self.base_url)
+        self.client = self._build_client()
         logger.info(
-            "Opponent reconfigured: model=%s, base_url=%s, api_key_updated=%s",
+            "Opponent reconfigured: protocol=%s, model=%s, base_url=%s, api_key_updated=%s",
+            self.protocol,
             self.model,
             self.base_url or "(default)",
             bool(api_key),
         )
+
+    @staticmethod
+    def _detect_protocol(base_url: str | None) -> str:
+        """Auto-detect protocol from base URL. Defaults to 'anthropic'."""
+        if base_url:
+            from urllib.parse import urlparse
+
+            host = urlparse(base_url).hostname or ""
+            if any(h in host for h in _OPENAI_COMPAT_HOSTS):
+                return "openai"
+        return "anthropic"
+
+    def _env_api_key(self) -> str | None:
+        """Return the relevant env-var API key for the current protocol."""
+        if self.protocol == "openai":
+            return os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+        return os.environ.get("ANTHROPIC_API_KEY")
+
+    def _build_client(self):
+        """Build the appropriate SDK client."""
+        if self.protocol == "openai":
+            kwargs = {}
+            if self._api_key:
+                kwargs["api_key"] = self._api_key
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            return OpenAI(**kwargs)
+        else:
+            kwargs = {}
+            if self._api_key:
+                kwargs["api_key"] = self._api_key
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            return Anthropic(**kwargs)
+
+    def _chat(
+        self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
+    ) -> str:
+        """Unified chat call that works with both Anthropic and OpenAI-compatible APIs."""
+        if self.protocol == "openai":
+            oai_messages = []
+            if system:
+                oai_messages.append({"role": "system", "content": system})
+            oai_messages.extend(messages)
+            response = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=oai_messages,
+            )
+            return response.choices[0].message.content
+        else:
+            kwargs = {"model": self.model, "max_tokens": max_tokens, "messages": messages}
+            if system:
+                kwargs["system"] = system
+            response = self.client.messages.create(**kwargs)
+            return response.content[0].text
 
     def respond(
         self,
@@ -242,14 +305,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         messages.append({"role": "user", "content": user_content})
 
         # Call API
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=2000,
-            system=SYSTEM_PROMPT,
-            messages=messages,
-        )
-
-        raw_text = response.content[0].text
+        raw_text = self._chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
 
         # Store in conversation history (full, for the record)
         state.add_conversation("user", user_message)
@@ -351,12 +407,7 @@ Retracted propositions:
 Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here. Do NOT include a title or heading — start directly with the substantive content. Use the identifiers shown (P1, T3, I2, etc.) when referring to specific atoms, tensions, or implications."""
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=800,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            summary = response.content[0].text
+            summary = self._chat([{"role": "user", "content": prompt}], max_tokens=800)
             logger.info(
                 "Generated analytical summary for dialectic '%s' (%d chars)",
                 s["name"],
@@ -386,12 +437,7 @@ Recent exchanges:
 """ + "\n".join(f"{m['role']}: {m['content'][:200]}" for m in sample[-10:])
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=500,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            summary = response.content[0].text
+            summary = self._chat([{"role": "user", "content": prompt}], max_tokens=500)
             state.set_summary(summary)
         except Exception:
             logger.debug("Summary update failed (non-critical)")

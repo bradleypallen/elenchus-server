@@ -35,8 +35,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 app = FastAPI(title="Elenchus", version="0.1.0")
 opponent = Opponent(
     model=os.environ.get("ELENCHUS_MODEL", "claude-opus-4-6"),
-    api_key=os.environ.get("ANTHROPIC_API_KEY"),
-    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
+    api_key=os.environ.get("ELENCHUS_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
+    base_url=os.environ.get("ELENCHUS_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL"),
+    protocol=os.environ.get("ELENCHUS_PROTOCOL"),
 )
 
 # Cache open states
@@ -88,6 +89,7 @@ class SettingsUpdate(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    protocol: str | None = None
 
 
 # ── API Routes ──
@@ -99,6 +101,7 @@ def get_settings():
     return {
         "model": opponent.model,
         "base_url": opponent.base_url or "",
+        "protocol": opponent.protocol,
         "has_api_key": opponent._has_api_key,
     }
 
@@ -110,6 +113,7 @@ def update_settings(req: SettingsUpdate):
         model=req.model,
         api_key=req.api_key,
         base_url=req.base_url,
+        protocol=req.protocol,
     )
     logger.info(
         "Settings updated via API: model=%s, base_url=%s, api_key_provided=%s",
@@ -310,9 +314,17 @@ def main():
 
     parser = argparse.ArgumentParser(description="Elenchus web server")
     parser.add_argument("--port", "-p", type=int, default=None, help="Server port (default: 8741)")
-    parser.add_argument("--api-key", default=None, help="Anthropic API key")
-    parser.add_argument("--base-url", default=None, help="Anthropic API base URL")
+    parser.add_argument("--api-key", default=None, help="LLM API key")
+    parser.add_argument(
+        "--base-url", default=None, help="LLM API base URL (e.g. https://openrouter.ai/api/v1)"
+    )
     parser.add_argument("--model", default=None, help="LLM model name")
+    parser.add_argument(
+        "--protocol",
+        default=None,
+        choices=["anthropic", "openai"],
+        help="API protocol (auto-detected from --base-url)",
+    )
     parser.add_argument("--data-dir", default=None, help="Directory for .duckdb files")
     args = parser.parse_args()
 
@@ -326,6 +338,7 @@ def main():
         model=args.model,
         api_key=args.api_key,
         base_url=args.base_url,
+        protocol=args.protocol,
     )
 
     port = args.port or int(os.environ.get("PORT", 8741))

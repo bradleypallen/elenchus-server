@@ -7,13 +7,13 @@ The respondent develops a bilateral position [C : D] through natural language di
 ## Requirements
 
 - Python 3.11+
-- An Anthropic API key
+- An LLM API key (Anthropic, OpenRouter, or any OpenAI-compatible provider)
 
 ## Installation
 
 ```bash
 pip install elenchus
-export ANTHROPIC_API_KEY=sk-ant-...
+export ELENCHUS_API_KEY=sk-ant-...    # or ANTHROPIC_API_KEY
 ```
 
 For development:
@@ -32,7 +32,7 @@ pip install -e ".[dev]"
 elenchus
 ```
 
-Options: `--port`, `--model`, `--api-key`, `--base-url`, `--data-dir` (see `elenchus --help`).
+Options: `--port`, `--model`, `--api-key`, `--base-url`, `--protocol`, `--data-dir` (see `elenchus --help`).
 
 Open the URL shown in the terminal (default `http://localhost:8741`). The web interface provides:
 
@@ -90,7 +90,7 @@ curl http://localhost:8741/api/dialectics
 
 ```text
 src/elenchus/
-├── server.py ──→ opponent.py ──→ Anthropic API
+├── server.py ──→ opponent.py ──→ LLM API (Anthropic / OpenAI-compatible)
 │       ↓
 │   dialectical_state.py
 │       ↓
@@ -103,7 +103,7 @@ src/elenchus/
 ```
 
 - **server.py**: FastAPI app serving the API and static frontend
-- **opponent.py**: LLM oracle — sends state to Anthropic, parses structured responses, applies state transitions
+- **opponent.py**: LLM oracle — sends state to LLM API (Anthropic or OpenAI-compatible), parses structured responses, applies state transitions
 - **dialectical_state.py**: Definition 4 — S = ⟨[C : D], T, I⟩ backed by DuckDB
 - **material_base.py**: Definition 5 — B = ⟨L_B, |∼_B⟩ with pyNMMS-based derivability
 - **dialectics/*.duckdb**: Persistent state files (one per dialectic)
@@ -124,7 +124,20 @@ To back up a dialectic, copy the `.duckdb` file. To share one, send the file. To
 
 Environment variables:
 
-- `ANTHROPIC_API_KEY`: Required. Your Anthropic API key.
+- `ELENCHUS_API_KEY`: Required. Your LLM API key (also accepts `ANTHROPIC_API_KEY`).
 - `ELENCHUS_MODEL`: LLM model for the oracle (default: `claude-opus-4-6`)
+- `ELENCHUS_BASE_URL`: API base URL for OpenAI-compatible providers (e.g. `https://openrouter.ai/api/v1`)
+- `ELENCHUS_PROTOCOL`: API protocol — `anthropic` or `openai` (auto-detected from base URL)
 - `ELENCHUS_DATA`: Directory for `.duckdb` files (default: `./dialectics`)
 - `PORT`: Server port (default: `8741`)
+
+### Using OpenRouter
+
+```bash
+export ELENCHUS_API_KEY=sk-or-...
+export ELENCHUS_BASE_URL=https://openrouter.ai/api/v1
+export ELENCHUS_MODEL=anthropic/claude-opus-4-6
+elenchus
+```
+
+Any OpenAI-compatible endpoint works the same way (Together, Groq, etc.).

@@ -22,7 +22,17 @@ def main():
         "--db", default=None, help="DuckDB file (creates if missing, omit for in-memory)"
     )
     parser.add_argument("--name", default="inquiry", help="Topic name (for new dialectics)")
-    parser.add_argument("--model", default="claude-opus-4-6", help="Anthropic model")
+    parser.add_argument("--model", default="claude-opus-4-6", help="LLM model name")
+    parser.add_argument("--api-key", default=None, help="LLM API key")
+    parser.add_argument(
+        "--base-url", default=None, help="LLM API base URL (e.g. https://openrouter.ai/api/v1)"
+    )
+    parser.add_argument(
+        "--protocol",
+        default=None,
+        choices=["anthropic", "openai"],
+        help="API protocol (auto-detected from --base-url)",
+    )
     args = parser.parse_args()
 
     # Load or create state
@@ -37,7 +47,9 @@ def main():
         state = DialecticalState.in_memory(args.name)
         print(f"In-memory session: {args.name}")
 
-    opp = Opponent(model=args.model)
+    opp = Opponent(
+        model=args.model, api_key=args.api_key, base_url=args.base_url, protocol=args.protocol
+    )
 
     # Show current state
     _show_state(state)

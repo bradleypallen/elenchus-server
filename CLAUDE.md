@@ -36,8 +36,10 @@ pytest -v
 
 ## Environment Variables
 
-- `ANTHROPIC_API_KEY` (required)
+- `ELENCHUS_API_KEY` — LLM API key (also accepts `ANTHROPIC_API_KEY`)
 - `ELENCHUS_MODEL` — LLM model (default: `claude-opus-4-6`)
+- `ELENCHUS_BASE_URL` — API base URL for OpenAI-compatible providers (e.g. `https://openrouter.ai/api/v1`)
+- `ELENCHUS_PROTOCOL` — API protocol: `anthropic` or `openai` (auto-detected from base URL)
 - `ELENCHUS_DATA` — directory for `.duckdb` files (default: `./dialectics`)
 - `PORT` — server port (default: `8741`)
 
@@ -45,7 +47,7 @@ pytest -v
 
 ```text
 src/elenchus/
-├── server.py ──→ opponent.py ──→ Anthropic API
+├── server.py ──→ opponent.py ──→ LLM API (Anthropic / OpenAI-compatible)
 │       ↓
 │   dialectical_state.py
 │       ↓
@@ -63,7 +65,7 @@ src/elenchus/
 
 2. **dialectical_state.py** — Definition 4: `S = ⟨[C : D], T, I⟩`. Wraps `MaterialBase` and adds DuckDB tables for positions (commitments/denials), tensions, and conversation history. The mapping: `L_B = C ∪ D`, `|∼_B = I ∪ Cont`.
 
-3. **opponent.py** — The LLM oracle. Sends full formal state + windowed conversation history to Anthropic, expects structured JSON with `speech_acts`, `new_tensions`, and `response`. Applies state transitions via `_apply()`. Periodically generates conversation summaries (every 20 stored messages) to keep the context window manageable. Also generates analytical summaries for PDF reports via `generate_summary()`.
+3. **opponent.py** — The LLM oracle. Sends full formal state + windowed conversation history to the LLM API (Anthropic or OpenAI-compatible via `_chat()` abstraction), expects structured JSON with `speech_acts`, `new_tensions`, and `response`. Applies state transitions via `_apply()`. Protocol auto-detected from `base_url` or set explicitly. Periodically generates conversation summaries (every 20 stored messages) to keep the context window manageable. Also generates analytical summaries for PDF reports via `generate_summary()`.
 
 4. **server.py** — FastAPI app. Manages a cache of open `DialecticalState` instances (`_states` dict). REST API under `/api/dialectics/`. Serves `static/index.html` at root.
 

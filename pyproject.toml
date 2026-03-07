@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=1.0.0",
     "duckdb>=1.0.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
