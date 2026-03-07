@@ -19,7 +19,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 For development:
 
 ```bash
-git clone https://github.com/bradleyallen/elenchus-server.git
+git clone https://github.com/bradleypallen/elenchus-server.git
 cd elenchus-server
 pip install -e ".[dev]"
 ```
