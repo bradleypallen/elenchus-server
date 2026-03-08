@@ -89,10 +89,14 @@ In standard argumentation frameworks, the consequence relation (what follows fro
 
 Multi-agent debate frameworks (Irving et al. 2018; Li et al. 2024) are LLM-to-LLM systems aimed at answer quality. Elenchus is a human-AI system aimed at knowledge construction. In debate, the human is a judge who selects between positions; in Elenchus, the human is the *author* of the position, with authority over which inferences hold.
 
-## Further Reading
+## References
 
 - Allen, B. P. (2026). "Elenchus: Generating Knowledge Bases from Prover-Skeptic Dialogues." *arXiv preprint*.
-- Brandom, R. (1994). *Making It Explicit: Reasoning, Representing, and Discursive Commitment.* Harvard University Press.
-- Hlobil, U., and Brandom, R. B. (2025). *Reasons for Logic, Logic for Reasons: Pragmatics, Semantics, and Conceptual Roles.* Routledge.
-- Dutilh Novaes, C. (2020). *The Dialogical Roots of Deduction: Historical, Cognitive, and Philosophical Perspectives on Reasoning.* Cambridge University Press.
 - Allen, B. P. (2026). "pyNMMS." [PyPI package](https://pypi.org/project/pyNMMS/).
+- Brandom, R. (1994). *Making It Explicit: Reasoning, Representing, and Discursive Commitment.* Harvard University Press.
+- Dutilh Novaes, C. (2020). *The Dialogical Roots of Deduction: Historical, Cognitive, and Philosophical Perspectives on Reasoning.* Cambridge University Press.
+- Feigenbaum, E. A. (1977). "The Art of Artificial Intelligence: Themes and Case Studies of Knowledge Engineering." In *Proceedings of the Fifth International Joint Conference on Artificial Intelligence*, volume 2.
+- Hlobil, U., and Brandom, R. B. (2025). *Reasons for Logic, Logic for Reasons: Pragmatics, Semantics, and Conceptual Roles.* Routledge.
+- Irving, G.; Christiano, P.; and Amodei, D. (2018). "AI Safety via Debate." *arXiv preprint arXiv:1805.00899*.
+- Li, Y.; Du, Y.; Zhang, J.; Hou, L.; Grabowski, P.; Li, Y.; and Ie, E. (2024). "Improving Multi-Agent Debate with Sparse Communication Topology." *arXiv preprint arXiv:2406.11776*.
+- Sellars, W. (1953). "Inference and Meaning." *Mind* 62(247):313–338.
