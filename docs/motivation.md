@@ -75,15 +75,15 @@ Every material implication in the knowledge base has complete traceability — i
 
 ### From traditional knowledge acquisition
 
-Traditional methodologies (CommonKADS, METHONTOLOGY, NeOn) assume the target is a description of the domain in a formal language, with a knowledge engineer mediating between expert and formalism. Elenchus eliminates this mediating step: the expert interacts directly with the opponent through natural language, and the formal structure is constructed as a byproduct of the dialogue.
+Traditional methodologies (CommonKADS (Schreiber et al. 2000), METHONTOLOGY (Fernández-López et al. 1997), NeOn (Suárez de Figueroa Baonza 2010)) assume the target is a description of the domain in a formal language, with a knowledge engineer mediating between expert and formalism. Elenchus eliminates this mediating step: the expert interacts directly with the opponent through natural language, and the formal structure is constructed as a byproduct of the dialogue.
 
 ### From LLM-based knowledge extraction
 
-Recent work uses LLMs to generate triples, axioms, or class hierarchies, treating the LLM as a *source* of knowledge to be validated. The quality concern is well-documented: LLMs hallucinate and produce plausible but incorrect formalizations. Elenchus takes a fundamentally different stance — the LLM is not a source of knowledge but a dialectical partner. The respondent, not the LLM, is the epistemic authority. LLM unreliability is structurally contained by the respondent's authority over tension resolution.
+Recent work (Babaei Giglou et al. 2023; Yao et al. 2025) uses LLMs to generate triples, axioms, or class hierarchies, treating the LLM as a *source* of knowledge to be validated. The quality concern is well-documented: LLMs hallucinate and produce plausible but incorrect formalizations. Elenchus takes a fundamentally different stance — the LLM is not a source of knowledge but a dialectical partner. The respondent, not the LLM, is the epistemic authority. LLM unreliability is structurally contained by the respondent's authority over tension resolution.
 
 ### From computational argumentation
 
-In standard argumentation frameworks, the consequence relation (what follows from what) is fixed in advance. In Elenchus, the consequence relation is itself the output. Argumentation frameworks produce extensions (sets of acceptable arguments); Elenchus produces a material base — a substructural consequence relation that connects knowledge acquisition directly to the inferentialist program in philosophical logic.
+In standard argumentation frameworks (Dung 1995; Modgil and Prakken 2014), the consequence relation (what follows from what) is fixed in advance. In Elenchus, the consequence relation is itself the output. Argumentation frameworks produce extensions (sets of acceptable arguments); Elenchus produces a material base — a substructural consequence relation that connects knowledge acquisition directly to the inferentialist program in philosophical logic.
 
 ### From multi-agent debate
 
@@ -93,10 +93,17 @@ Multi-agent debate frameworks (Irving et al. 2018; Li et al. 2024) are LLM-to-LL
 
 - Allen, B. P. (2026). "Elenchus: Generating Knowledge Bases from Prover-Skeptic Dialogues." *arXiv preprint*.
 - Allen, B. P. (2026). "pyNMMS." [PyPI package](https://pypi.org/project/pyNMMS/).
+- Babaei Giglou, H.; D'Souza, J.; and Auer, S. (2023). "LLMs4OL: Large Language Models for Ontology Learning." In *Proceedings of the International Semantic Web Conference*.
 - Brandom, R. (1994). *Making It Explicit: Reasoning, Representing, and Discursive Commitment.* Harvard University Press.
+- Dung, P. M. (1995). "On the Acceptability of Arguments and Its Fundamental Role in Nonmonotonic Reasoning, Logic Programming and N-Person Games." *Artificial Intelligence* 77(2):321–357.
 - Dutilh Novaes, C. (2020). *The Dialogical Roots of Deduction: Historical, Cognitive, and Philosophical Perspectives on Reasoning.* Cambridge University Press.
 - Feigenbaum, E. A. (1977). "The Art of Artificial Intelligence: Themes and Case Studies of Knowledge Engineering." In *Proceedings of the Fifth International Joint Conference on Artificial Intelligence*, volume 2.
+- Fernández-López, M.; Gómez-Pérez, A.; and Juristo, N. (1997). "METHONTOLOGY: From Ontological Art Towards Ontological Engineering." In *Proceedings of the AAAI-97 Spring Symposium Series on Ontological Engineering*, 33–40.
 - Hlobil, U., and Brandom, R. B. (2025). *Reasons for Logic, Logic for Reasons: Pragmatics, Semantics, and Conceptual Roles.* Routledge.
 - Irving, G.; Christiano, P.; and Amodei, D. (2018). "AI Safety via Debate." *arXiv preprint arXiv:1805.00899*.
 - Li, Y.; Du, Y.; Zhang, J.; Hou, L.; Grabowski, P.; Li, Y.; and Ie, E. (2024). "Improving Multi-Agent Debate with Sparse Communication Topology." *arXiv preprint arXiv:2406.11776*.
+- Modgil, S., and Prakken, H. (2014). "The ASPIC+ Framework for Structured Argumentation: A Tutorial." *Argument & Computation* 5(1):31–62.
+- Schreiber, A. T.; Akkermans, H.; Anjewierden, A.; Shadbolt, N.; de Hoog, R.; Van de Velde, W.; and Wielinga, B. (2000). *Knowledge Engineering and Management: The CommonKADS Methodology.* MIT Press.
 - Sellars, W. (1953). "Inference and Meaning." *Mind* 62(247):313–338.
+- Suárez de Figueroa Baonza, M. del C. (2010). *NeOn Methodology for Building Ontology Networks: Specification, Scheduling and Reuse.* Ph.D. dissertation, Universidad Politécnica de Madrid.
+- Yao, L.; Peng, J.; Mao, C.; and Luo, Y. (2025). "Exploring Large Language Models for Knowledge Graph Completion." In *ICASSP 2025*, 1–5. IEEE.
