@@ -1,0 +1,25 @@
+site_name: Elenchus
+site_url: https://bradleypallen.github.io/elenchus-server/
+repo_url: https://github.com/bradleypallen/elenchus-server
+repo_name: bradleypallen/elenchus-server
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - User Guide: guide.md
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - codehilite

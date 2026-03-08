@@ -44,6 +44,7 @@ elenchus-cli = "elenchus.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/bradleypallen/elenchus-server"
+Documentation = "https://bradleypallen.github.io/elenchus-server/"
 Repository = "https://github.com/bradleypallen/elenchus-server"
 
 [tool.hatch.build.targets.wheel]

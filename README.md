@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/elenchus)](https://pypi.org/project/elenchus/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-user%20guide-blue)](docs/guide.md)
+[![Docs](https://img.shields.io/badge/docs-user%20guide-blue)](https://bradleypallen.github.io/elenchus-server/guide/)
 
 A standalone system for dialectical knowledge base construction, implementing the Elenchus protocol (Allen 2026) with a DuckDB material base backend.
 
@@ -30,7 +30,7 @@ cd elenchus-server
 pip install -e ".[dev]"
 ```
 
-**[User Guide](docs/guide.md)** — full documentation covering concepts, the web interface, CLI, configuration, and a worked example.
+**[User Guide](https://bradleypallen.github.io/elenchus-server/guide/)** — full documentation covering concepts, the web interface, CLI, configuration, and a worked example.
 
 ## Usage
 
