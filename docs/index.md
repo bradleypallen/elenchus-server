@@ -17,6 +17,7 @@ Then open `http://localhost:8741` in your browser.
 ## Documentation
 
 - [User Guide](guide.md) — installation, concepts, web interface, CLI, configuration, and a worked example
+- [Architecture](architecture.md) — internal design, module descriptions, DuckDB schema, and API protocol
 
 ## Links
 

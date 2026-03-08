@@ -18,6 +18,7 @@ theme:
 nav:
   - Home: index.md
   - User Guide: guide.md
+  - Architecture: architecture.md
 
 markdown_extensions:
   - tables
