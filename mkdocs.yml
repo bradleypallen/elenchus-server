@@ -17,6 +17,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Motivation: motivation.md
   - User Guide: guide.md
   - Architecture: architecture.md
 

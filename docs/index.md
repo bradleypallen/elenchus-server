@@ -16,6 +16,7 @@ Then open `http://localhost:8741` in your browser.
 
 ## Documentation
 
+- [Motivation and Approach](motivation.md) — philosophical foundations, inferentialism, and how Elenchus differs from other approaches
 - [User Guide](guide.md) — installation, concepts, web interface, CLI, configuration, and a worked example
 - [Architecture](architecture.md) — internal design, module descriptions, DuckDB schema, and API protocol
 
