@@ -81,6 +81,14 @@ Traditional methodologies (CommonKADS (Schreiber et al. 2000), METHONTOLOGY (Fer
 
 Recent work (Babaei Giglou et al. 2023; Yao et al. 2025) uses LLMs to generate triples, axioms, or class hierarchies, treating the LLM as a *source* of knowledge to be validated. The quality concern is well-documented: LLMs hallucinate and produce plausible but incorrect formalizations. Elenchus takes a fundamentally different stance — the LLM is not a source of knowledge but a dialectical partner. The respondent, not the LLM, is the epistemic authority. LLM unreliability is structurally contained by the respondent's authority over tension resolution.
 
+### From LLM-assisted ontology engineering
+
+Much recent work in LLM-assisted ontology engineering centers on *competency questions* (CQs) — natural language questions expressing an ontology's functional requirements (Grüninger and Fox 1995). OntoChat (Zhang et al. 2024) uses LLMs to support ontology requirements elicitation through user story creation, CQ extraction, and ontology testing. Zhao et al. (2024) extend this with participatory prompting to address the finding that domain experts struggle to prompt LLMs effectively. Koutsiana et al. (2024) report that while LLMs improve efficiency in knowledge graph construction, evaluation of LLM outputs remains the central challenge.
+
+In all these systems, the LLM serves as a facilitator or generator: it elicits requirements, produces ontology fragments, or suggests competency questions, and the expert validates the output. The expert is treated as a *source* — of user stories, of competency questions, of validation judgments — rather than as an agent whose commitments are tested for coherence. Elenchus inverts this relationship: the LLM *challenges* the expert's commitments, and the expert's responses to those challenges constitute the knowledge base.
+
+The formal outputs also differ. Competency questions and OWL fragments lack a characterized consequence relation, proven structural properties, or systematic traceability from output to the process that produced it. Elenchus produces material bases satisfying Containment, with proven supraclassicality, conservative extension, and explicitation properties, and complete traceability of every material implication to a specific dialogue move.
+
 ### From computational argumentation
 
 In standard argumentation frameworks (Dung 1995; Modgil and Prakken 2014), the consequence relation (what follows from what) is fixed in advance. In Elenchus, the consequence relation is itself the output. Argumentation frameworks produce extensions (sets of acceptable arguments); Elenchus produces a material base — a substructural consequence relation that connects knowledge acquisition directly to the inferentialist program in philosophical logic.
@@ -99,11 +107,15 @@ Multi-agent debate frameworks (Irving et al. 2018; Li et al. 2024) are LLM-to-LL
 - Dutilh Novaes, C. (2020). *The Dialogical Roots of Deduction: Historical, Cognitive, and Philosophical Perspectives on Reasoning.* Cambridge University Press.
 - Feigenbaum, E. A. (1977). "The Art of Artificial Intelligence: Themes and Case Studies of Knowledge Engineering." In *Proceedings of the Fifth International Joint Conference on Artificial Intelligence*, volume 2.
 - Fernández-López, M.; Gómez-Pérez, A.; and Juristo, N. (1997). "METHONTOLOGY: From Ontological Art Towards Ontological Engineering." In *Proceedings of the AAAI-97 Spring Symposium Series on Ontological Engineering*, 33–40.
+- Grüninger, M., and Fox, M. S. (1995). "The Role of Competency Questions in Enterprise Engineering." In *Benchmarking — Theory and Practice*, 22–31. Springer.
 - Hlobil, U., and Brandom, R. B. (2025). *Reasons for Logic, Logic for Reasons: Pragmatics, Semantics, and Conceptual Roles.* Routledge.
 - Irving, G.; Christiano, P.; and Amodei, D. (2018). "AI Safety via Debate." *arXiv preprint arXiv:1805.00899*.
+- Koutsiana, E.; Walker, J.; Nwachukwu, M.; Meroño-Peñuela, A.; and Simperl, E. (2024). "Knowledge Prompting: How Knowledge Engineers Use Large Language Models." *arXiv preprint arXiv:2408.08878*.
 - Li, Y.; Du, Y.; Zhang, J.; Hou, L.; Grabowski, P.; Li, Y.; and Ie, E. (2024). "Improving Multi-Agent Debate with Sparse Communication Topology." *arXiv preprint arXiv:2406.11776*.
 - Modgil, S., and Prakken, H. (2014). "The ASPIC+ Framework for Structured Argumentation: A Tutorial." *Argument & Computation* 5(1):31–62.
 - Schreiber, A. T.; Akkermans, H.; Anjewierden, A.; Shadbolt, N.; de Hoog, R.; Van de Velde, W.; and Wielinga, B. (2000). *Knowledge Engineering and Management: The CommonKADS Methodology.* MIT Press.
 - Sellars, W. (1953). "Inference and Meaning." *Mind* 62(247):313–338.
 - Suárez de Figueroa Baonza, M. del C. (2010). *NeOn Methodology for Building Ontology Networks: Specification, Scheduling and Reuse.* Ph.D. dissertation, Universidad Politécnica de Madrid.
 - Yao, L.; Peng, J.; Mao, C.; and Luo, Y. (2025). "Exploring Large Language Models for Knowledge Graph Completion." In *ICASSP 2025*, 1–5. IEEE.
+- Zhang, B.; Carriero, V. A.; Schreiberhuber, K.; Tsaneva, S.; González, L. S.; Kim, J.; and de Berardinis, J. (2024). "OntoChat: A Framework for Conversational Ontology Engineering Using Language Models." In *European Semantic Web Conference*, 102–121. Springer.
+- Zhao, Y.; Zhang, B.; Hu, X.; Ouyang, S.; Kim, J.; Jain, N.; De Berardinis, J.; Meroño-Peñuela, A.; and Simperl, E. (2024). "Improving Ontology Requirements Engineering with OntoChat and Participatory Prompting." In *Proceedings of the AAAI Symposium Series* 4(1):253–257.
