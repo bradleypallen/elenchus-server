@@ -1,0 +1,1670 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/guide/">
+      
+      
+        <link rel="prev" href="../motivation/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>User Guide - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#elenchus-user-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              User Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Concepts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Concepts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bilateral-position-c-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bilateral Position [C : D]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speech-acts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speech Acts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#material-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Implications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derivability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derivability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web Interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#home-screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Home Screen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialogue-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialogue View
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dialogue View">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#left-column-position-c-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Left Column — Position [C : D]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#center-column-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Center Column — Chat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#right-column-tensions-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Right Column — Tensions &amp; Implications
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tension-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tension Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derive-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derive Query
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pdf-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PDF Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#display-preferences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Display Preferences
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#starting-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting a Session
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slash-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slash Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Session
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#switching-models-and-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switching Models and Providers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#all-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managing-dialectics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managing Dialectics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Dialectics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-files-are-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where Files Are Stored
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changing-the-data-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing the Data Directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A Worked Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Concepts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Concepts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bilateral-position-c-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bilateral Position [C : D]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speech-acts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speech Acts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#material-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Implications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derivability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derivability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Web Interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#home-screen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Home Screen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialogue-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialogue View
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dialogue View">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#left-column-position-c-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Left Column — Position [C : D]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#center-column-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Center Column — Chat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#right-column-tensions-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Right Column — Tensions &amp; Implications
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tension-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tension Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#derive-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derive Query
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pdf-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PDF Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#display-preferences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Display Preferences
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#starting-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting a Session
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slash-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slash Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Session
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#switching-models-and-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switching Models and Providers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#all-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managing-dialectics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managing Dialectics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Dialectics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-files-are-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where Files Are Stored
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changing-the-data-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing the Data Directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A Worked Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="elenchus-user-guide">Elenchus User Guide</h1>
+<h2 id="quick-start">Quick Start</h2>
+<ol>
+<li><strong>Install</strong></li>
+</ol>
+<p><code>bash
+   pip install elenchus</code></p>
+<ol>
+<li><strong>Set your API key</strong></li>
+</ol>
+<p><code>bash
+   export ELENCHUS_API_KEY=sk-ant-...    # Anthropic key</code></p>
+<ol>
+<li><strong>Launch the server</strong></li>
+</ol>
+<p><code>bash
+   elenchus</code></p>
+<ol>
+<li>
+<p><strong>Open the web interface</strong> at the URL shown (default: <code>http://localhost:8741</code>)</p>
+</li>
+<li>
+<p><strong>Create a dialectic</strong> — enter a name and topic, then start typing</p>
+</li>
+</ol>
+<p>That's it. You're now in a Socratic dialogue with an LLM opponent. Read on to understand what's happening and how to use the system effectively.</p>
+<h2 id="core-concepts">Core Concepts</h2>
+<p>Elenchus implements a formal dialectical protocol. You don't need to know the formalism to use it, but understanding the core concepts will help you get more out of the system.</p>
+<h3 id="bilateral-position-c-d">Bilateral Position [C : D]</h3>
+<p>Your position has two sides:</p>
+<ul>
+<li><strong>Commitments (C)</strong> — propositions you accept as true</li>
+<li><strong>Denials (D)</strong> — propositions you reject as false</li>
+</ul>
+<p>When you say something like "I think knowledge requires justification," the opponent registers that as a commitment. When you say "I don't think mere true belief counts as knowledge," it becomes a denial.</p>
+<p>The position is <em>bilateral</em> because what you deny matters just as much as what you commit to. Many tensions arise from the interaction between commitments and denials.</p>
+<h3 id="speech-acts">Speech Acts</h3>
+<p>The opponent interprets your natural language into formal speech acts:</p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it does</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Commit</strong></td>
+<td>Adds a proposition to C</td>
+<td>"Perception is reliable"</td>
+</tr>
+<tr>
+<td><strong>Deny</strong></td>
+<td>Adds a proposition to D</td>
+<td>"We can't trust our senses completely"</td>
+</tr>
+<tr>
+<td><strong>Retract</strong></td>
+<td>Removes a proposition from C or D</td>
+<td>"Actually, I take back what I said about perception"</td>
+</tr>
+<tr>
+<td><strong>Refine</strong></td>
+<td>Replaces one proposition with a better version</td>
+<td>"Let me rephrase — perception is <em>generally</em> reliable"</td>
+</tr>
+<tr>
+<td><strong>Accept tension</strong></td>
+<td>Agrees a proposed tension is valid</td>
+<td>"Yes, I see that contradiction"</td>
+</tr>
+<tr>
+<td><strong>Contest tension</strong></td>
+<td>Rejects a proposed tension</td>
+<td>"No, those don't actually conflict"</td>
+</tr>
+</tbody>
+</table>
+<p>You don't need to use these labels — just speak naturally and the opponent will classify your utterances.</p>
+<h3 id="tensions">Tensions</h3>
+<p>A tension is a proposed incoherence in your position. It takes the form:</p>
+<blockquote>
+<p>{premises from C} |~ {conclusions}</p>
+</blockquote>
+<p>This reads: "If you accept all the premises, you are materially committed to the conclusions — which conflicts with your position."</p>
+<p>For example, if you commit to "All swans are white" and "I've seen a black bird that looks like a swan," the opponent might propose:</p>
+<blockquote>
+<p>{"All swans are white", "I've seen a black bird that looks like a swan"} |~ {"Not all apparently swan-like birds are swans"}</p>
+</blockquote>
+<p>The opponent preferentially targets your denials: it looks for cases where your commitments logically entail something you've explicitly denied.</p>
+<p>When a tension is proposed, you must either:</p>
+<ul>
+<li><strong>Accept</strong> it — you agree the inference is valid. The tension becomes a material implication (see below).</li>
+<li><strong>Contest</strong> it — you reject the inference. Be ready to explain why.</li>
+</ul>
+<h3 id="material-implications">Material Implications</h3>
+<p>When you accept a tension, it becomes a <strong>material implication</strong> — a permanent rule in your knowledge base. The implication says: given these premises, these conclusions follow.</p>
+<p>Material implications accumulate over the course of a dialectic. They represent the inferential commitments you've agreed to, building up a structured knowledge base.</p>
+<h3 id="derivability">Derivability</h3>
+<p>Once you have material implications, you can query what follows from your position. Derivability checks whether a conclusion can be derived from given premises using your accepted implications.</p>
+<p>Derivability in Elenchus uses NMMS (Nonmonotonic Material Sequent) reasoning. Two key properties:</p>
+<ul>
+<li><strong>No Weakening</strong> — adding premises to a valid inference does not preserve it. If {A} |~ {B}, it does <em>not</em> follow that {A, C} |~ {B}. Each inference must be justified on its own terms.</li>
+<li><strong>No Cut</strong> — you can't chain inferences automatically. The derivability check performs a proper proof search respecting these constraints.</li>
+</ul>
+<p>This means your knowledge base behaves nonmonotonically — new information can genuinely change what follows, rather than just adding more conclusions.</p>
+<h2 id="web-interface">Web Interface</h2>
+<h3 id="home-screen">Home Screen</h3>
+<p>When you open Elenchus, you see a list of your existing dialectics (if any) and a form to create a new one. Each dialectic shows its name and counts of commitments, denials, tensions, and implications.</p>
+<ul>
+<li><strong>Create</strong> — enter a name and press Enter or click Create</li>
+<li><strong>Resume</strong> — click any existing dialectic to continue where you left off</li>
+<li><strong>Delete</strong> — click the × next to a dialectic to remove it permanently</li>
+</ul>
+<h3 id="dialogue-view">Dialogue View</h3>
+<p>The main interface has three columns:</p>
+<h4 id="left-column-position-c-d">Left Column — Position [C : D]</h4>
+<p>Displays your current bilateral position:</p>
+<ul>
+<li><strong>Commitments</strong> — listed in green with P-prefixed IDs (P1, P2, ...)</li>
+<li><strong>Denials</strong> — listed in pink/red with P-prefixed IDs</li>
+<li><strong>Retracted</strong> — greyed-out propositions you've withdrawn</li>
+</ul>
+<p>Each proposition has an <strong>×</strong> button to retract it directly.</p>
+<h4 id="center-column-chat">Center Column — Chat</h4>
+<p>The conversation with the opponent. Your messages appear on the right, the opponent's responses on the left. The opponent uses Markdown formatting and references your propositions by ID (P1, P3, etc.).</p>
+<p>Type naturally in the input box at the bottom. Press Enter to send (Shift+Enter for newlines).</p>
+<h4 id="right-column-tensions-implications">Right Column — Tensions &amp; Implications</h4>
+<ul>
+<li><strong>Open Tensions (T)</strong> — displayed as sequent cards with Accept/Contest buttons. Each shows the premises (from your commitments) above a turnstile line, and the conclusions below.</li>
+<li><strong>Material Implications (I)</strong> — accepted tensions, displayed in the same sequent card format.</li>
+<li><strong>Contested</strong> — tensions you've rejected, shown in grey.</li>
+</ul>
+<h3 id="tension-resolution">Tension Resolution</h3>
+<p>When the opponent proposes a tension, it appears in the right column with two buttons:</p>
+<ul>
+<li><strong>Accept</strong> — the tension becomes a material implication immediately. The opponent then discusses what this new implication means for your position.</li>
+<li><strong>Contest</strong> — the tension is rejected. The opponent will probe your reasoning.</li>
+</ul>
+<p>You can also accept or contest tensions through natural language in the chat ("I accept that tension" or "I don't think that follows").</p>
+<h3 id="derive-query">Derive Query</h3>
+<p>Type a derivability query in the chat using the format:</p>
+<div class="codehilite"><pre><span></span><code>/derive premise1, premise2 ~ conclusion
+</code></pre></div>
+
+<p>The system checks whether the conclusion follows from the premises given your current material implications, and shows a step-by-step proof trace if derivable.</p>
+<h3 id="pdf-export">PDF Export</h3>
+<p>Click the <strong>PDF</strong> button (top bar) to generate and download a report of the current dialectic. The report includes:</p>
+<ul>
+<li>An LLM-generated analytical summary</li>
+<li>Your bilateral position (commitments, denials, retracted)</li>
+<li>All tensions and material implications</li>
+<li>The full conversation transcript</li>
+</ul>
+<h3 id="settings">Settings</h3>
+<p>Click the <strong>gear icon</strong> to open the settings modal:</p>
+<ul>
+<li><strong>Model</strong> — the LLM model to use (e.g., <code>claude-opus-4-6</code>, <code>claude-sonnet-4-6</code>)</li>
+<li><strong>API Key</strong> — your LLM API key (never displayed after entry)</li>
+<li><strong>Base URL</strong> — for OpenAI-compatible providers (e.g., <code>https://openrouter.ai/api/v1</code>)</li>
+</ul>
+<p>Model and base URL are saved in your browser and re-applied on future visits.</p>
+<h3 id="display-preferences">Display Preferences</h3>
+<p>Also in the settings area:</p>
+<ul>
+<li><strong>Theme</strong> — dark or light mode</li>
+<li><strong>Font size</strong> — S, M, L, XL</li>
+<li><strong>Colors</strong> — customizable colors for commitments, denials, tensions, implications, and opponent messages</li>
+</ul>
+<h2 id="cli-usage">CLI Usage</h2>
+<p>The CLI provides the same dialectical protocol without the web interface.</p>
+<h3 id="starting-a-session">Starting a Session</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># In-memory (lost when you exit)</span>
+elenchus-cli<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;Epistemology&quot;</span>
+
+<span class="c1"># Persistent (saved to a DuckDB file)</span>
+elenchus-cli<span class="w"> </span>--db<span class="w"> </span>epistemology.duckdb<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;Epistemology&quot;</span>
+
+<span class="c1"># Resume a saved session</span>
+elenchus-cli<span class="w"> </span>--db<span class="w"> </span>epistemology.duckdb
+</code></pre></div>
+
+<h3 id="slash-commands">Slash Commands</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/state</code></td>
+<td>Show current position summary</td>
+</tr>
+<tr>
+<td><code>/tensions</code> or <code>/t</code></td>
+<td>List open tensions</td>
+</tr>
+<tr>
+<td><code>/implications</code> or <code>/i</code></td>
+<td>List material implications</td>
+</tr>
+<tr>
+<td><code>/derive premise ~ conclusion</code></td>
+<td>Check derivability</td>
+</tr>
+<tr>
+<td><code>/report</code></td>
+<td>Print material base report</td>
+</tr>
+<tr>
+<td><code>/quit</code> or <code>/q</code></td>
+<td>Exit the session</td>
+</tr>
+</tbody>
+</table>
+<h3 id="example-session">Example Session</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">$</span><span class="w"> </span><span class="n">elenchus</span><span class="o">-</span><span class="n">cli</span><span class="w"> </span><span class="c1">--name &quot;Knowledge&quot;</span>
+<span class="ow">In</span><span class="o">-</span><span class="n">memory</span><span class="w"> </span><span class="k">session</span><span class="err">:</span><span class="w"> </span><span class="n">Knowledge</span>
+<span class="w">  </span><span class="o">[</span><span class="n">Knowledge</span><span class="o">]</span>
+<span class="w">  </span><span class="nl">C</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">commitments</span><span class="p">,</span><span class="w"> </span><span class="nl">D</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">denials</span><span class="p">,</span><span class="w"> </span><span class="nl">T</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">tensions</span><span class="p">,</span><span class="w"> </span><span class="nl">I</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">implications</span>
+
+<span class="n">Type</span><span class="w"> </span><span class="n">naturally</span><span class="p">.</span><span class="w"> </span><span class="n">The</span><span class="w"> </span><span class="n">opponent</span><span class="w"> </span><span class="n">will</span><span class="w"> </span><span class="nf">parse</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">speech</span><span class="w"> </span><span class="n">acts</span><span class="p">.</span>
+<span class="nl">Commands</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">state</span><span class="w">  </span><span class="o">/</span><span class="n">tensions</span><span class="w">  </span><span class="o">/</span><span class="n">implications</span><span class="w">  </span><span class="o">/</span><span class="n">derive</span><span class="w">  </span><span class="o">/</span><span class="n">report</span><span class="w">  </span><span class="o">/</span><span class="n">quit</span>
+
+<span class="nl">You</span><span class="p">:</span><span class="w"> </span><span class="n">Knowledge</span><span class="w"> </span><span class="n">requires</span><span class="w"> </span><span class="n">justified</span><span class="w"> </span><span class="k">true</span><span class="w"> </span><span class="n">belief</span><span class="p">.</span>
+
+<span class="nl">Opponent</span><span class="p">:</span><span class="w"> </span><span class="n">I</span><span class="err">&#39;</span><span class="n">ve</span><span class="w"> </span><span class="n">registered</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">commitment</span><span class="p">.</span><span class="w"> </span><span class="n">Let</span><span class="w"> </span><span class="n">me</span><span class="w"> </span><span class="n">probe</span><span class="w"> </span><span class="n">this</span><span class="p">...</span>
+<span class="w">  </span><span class="o">+</span><span class="w"> </span><span class="n">Knowledge</span><span class="w"> </span><span class="n">requires</span><span class="w"> </span><span class="n">justified</span><span class="w"> </span><span class="k">true</span><span class="w"> </span><span class="n">belief</span>
+
+<span class="nl">You</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="k">state</span>
+<span class="w">  </span><span class="o">[</span><span class="n">Knowledge</span><span class="o">]</span>
+<span class="w">  </span><span class="nl">C</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">commitments</span><span class="p">,</span><span class="w"> </span><span class="nl">D</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">denials</span><span class="p">,</span><span class="w"> </span><span class="nl">T</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">tensions</span><span class="p">,</span><span class="w"> </span><span class="nl">I</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">implications</span>
+</code></pre></div>
+
+<h2 id="configuration">Configuration</h2>
+<h3 id="api-keys">API Keys</h3>
+<p>Elenchus needs an LLM API key to function. Set it via:</p>
+<ul>
+<li><strong>Environment variable</strong>: <code>ELENCHUS_API_KEY</code> (also accepts <code>ANTHROPIC_API_KEY</code>)</li>
+<li><strong>CLI flag</strong>: <code>--api-key sk-ant-...</code></li>
+<li><strong>Web UI</strong>: Settings modal → API Key field</li>
+</ul>
+<h3 id="switching-models-and-providers">Switching Models and Providers</h3>
+<p>Elenchus works with any LLM accessible via the Anthropic or OpenAI Chat Completions API.</p>
+<p><strong>Anthropic directly</strong> (default):</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_API_KEY</span><span class="o">=</span>sk-ant-...
+elenchus
+</code></pre></div>
+
+<p><strong>OpenRouter</strong> (access many models through one endpoint):</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_API_KEY</span><span class="o">=</span>sk-or-...
+<span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_BASE_URL</span><span class="o">=</span>https://openrouter.ai/api/v1
+<span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_MODEL</span><span class="o">=</span>anthropic/claude-sonnet-4-6
+elenchus
+</code></pre></div>
+
+<p><strong>Any OpenAI-compatible endpoint</strong> (Together, Groq, etc.):</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_API_KEY</span><span class="o">=</span>your-key
+<span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_BASE_URL</span><span class="o">=</span>https://api.together.xyz/v1
+<span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_MODEL</span><span class="o">=</span>meta-llama/Llama-3-70b-chat-hf
+elenchus
+</code></pre></div>
+
+<p>The API protocol (Anthropic vs. OpenAI) is auto-detected from the base URL. You can override it explicitly with <code>ELENCHUS_PROTOCOL=openai</code> or <code>--protocol openai</code>.</p>
+<h3 id="all-environment-variables">All Environment Variables</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ELENCHUS_API_KEY</code></td>
+<td>LLM API key</td>
+<td>(required)</td>
+</tr>
+<tr>
+<td><code>ELENCHUS_MODEL</code></td>
+<td>LLM model name</td>
+<td><code>claude-opus-4-6</code></td>
+</tr>
+<tr>
+<td><code>ELENCHUS_BASE_URL</code></td>
+<td>API base URL for OpenAI-compatible providers</td>
+<td>(none — uses Anthropic)</td>
+</tr>
+<tr>
+<td><code>ELENCHUS_PROTOCOL</code></td>
+<td>API protocol: <code>anthropic</code> or <code>openai</code></td>
+<td>auto-detected</td>
+</tr>
+<tr>
+<td><code>ELENCHUS_DATA</code></td>
+<td>Directory for .duckdb files</td>
+<td><code>./dialectics</code></td>
+</tr>
+<tr>
+<td><code>PORT</code></td>
+<td>Server port</td>
+<td><code>8741</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="managing-dialectics">Managing Dialectics</h2>
+<h3 id="where-files-are-stored">Where Files Are Stored</h3>
+<p>Each dialectic is a single <code>.duckdb</code> file in the data directory (default: <code>./dialectics</code> relative to where you run the server). The file contains everything: your position, tensions, implications, and the full conversation history.</p>
+<h3 id="backup">Backup</h3>
+<p>Copy the <code>.duckdb</code> file. That's it — the entire dialectic is self-contained.</p>
+<div class="codehilite"><pre><span></span><code>cp<span class="w"> </span>dialectics/my_inquiry.duckdb<span class="w"> </span>~/backups/
+</code></pre></div>
+
+<h3 id="sharing">Sharing</h3>
+<p>Send someone the <code>.duckdb</code> file. They can resume it by placing it in their data directory and launching the server, or by using the CLI:</p>
+<div class="codehilite"><pre><span></span><code>elenchus-cli<span class="w"> </span>--db<span class="w"> </span>shared_inquiry.duckdb
+</code></pre></div>
+
+<h3 id="deleting">Deleting</h3>
+<p>Through the web UI (× button on the home screen), through the API (<code>DELETE /api/dialectics/{name}</code>), or just delete the file:</p>
+<div class="codehilite"><pre><span></span><code>rm<span class="w"> </span>dialectics/my_inquiry.duckdb
+</code></pre></div>
+
+<h3 id="changing-the-data-directory">Changing the Data Directory</h3>
+<div class="codehilite"><pre><span></span><code>elenchus<span class="w"> </span>--data-dir<span class="w"> </span>/path/to/my/dialectics
+<span class="c1"># or</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ELENCHUS_DATA</span><span class="o">=</span>/path/to/my/dialectics
+elenchus
+</code></pre></div>
+
+<h2 id="a-worked-example">A Worked Example</h2>
+<p>Here's a short dialectic about the nature of bonsai to illustrate how a session develops.</p>
+<p><strong>Creating the dialectic</strong>: You open Elenchus and create a new dialectic called "Bonsai."</p>
+<p><strong>Opening moves</strong>: You type: "Bonsai is a living art form."</p>
+<p>The opponent registers this as a commitment (P1: "Bonsai is a living art form") and responds with a question probing what you mean by "living art form."</p>
+<p><strong>Building the position</strong>: Over several exchanges, you commit to more propositions:</p>
+<ul>
+<li>P2: "A bonsai tree expresses the artist's vision"</li>
+<li>P3: "The tree itself is the artwork"</li>
+<li>P4: "Art requires a fixed, completed form"</li>
+</ul>
+<p>And you deny:</p>
+<ul>
+<li>P5: "A bonsai is ever truly finished"</li>
+</ul>
+<p><strong>A tension emerges</strong>: The opponent notices that P4 ("Art requires a fixed, completed form") together with P3 ("The tree itself is the artwork") materially entails that a bonsai, as an artwork, must have a fixed completed form — but you've denied P5 ("A bonsai is ever truly finished"). This is a tension:</p>
+<blockquote>
+<p>T1: {"Art requires a fixed, completed form", "The tree itself is the artwork"} |~ {"A bonsai is ever truly finished"}</p>
+</blockquote>
+<p><strong>Resolving the tension</strong>: You have a choice:</p>
+<ul>
+<li><strong>Accept</strong> — you agree that your commitments really do entail that a bonsai must be completable, creating a contradiction with your denial. This becomes material implication I1, and you'll need to retract or refine something to restore coherence.</li>
+<li><strong>Contest</strong> — you argue that "fixed, completed form" doesn't mean "finished" in the same sense. The opponent probes your distinction.</li>
+</ul>
+<p>Say you choose to <strong>retract P4</strong> instead: "Actually, I take back that art requires a fixed form." The opponent removes P4 from your commitments and the tension dissolves. But now the opponent may probe: "If art doesn't require a fixed form, what makes something an artwork at all?"</p>
+<p><strong>The dialectic continues</strong>: Through this back-and-forth, your position becomes more refined and coherent. Each accepted tension adds a material implication to your knowledge base. You can query derivability at any point to see what follows from your current position.</p>
+<p><strong>Exporting</strong>: When you're satisfied (or exhausted), click PDF to get a report documenting your final position, all the material implications you've accepted, and the full conversation.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

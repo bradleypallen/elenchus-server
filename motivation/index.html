@@ -1,0 +1,960 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/motivation/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../guide/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Motivation - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#motivation-and-approach" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Motivation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-knowledge-acquisition-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Knowledge Acquisition Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inferentialism-meaning-as-inferential-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inferentialism: Meaning as Inferential Role
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inferentialism: Meaning as Inferential Role">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#material-inference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Inference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#knowledge-engineering-as-explicitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Knowledge Engineering as Explicitation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-prover-skeptic-dialogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Prover-Skeptic Dialogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-llm-as-a-defeasible-derivability-oracle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The LLM as a Defeasible Derivability Oracle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#material-bases-and-nmms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Bases and NMMS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Material Bases and NMMS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-dialogue-to-material-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Dialogue to Material Base
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-elenchus-differs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Elenchus Differs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Elenchus Differs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-traditional-knowledge-acquisition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From traditional knowledge acquisition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-llm-based-knowledge-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From LLM-based knowledge extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-llm-assisted-ontology-engineering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From LLM-assisted ontology engineering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-computational-argumentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From computational argumentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-multi-agent-debate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From multi-agent debate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-knowledge-acquisition-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Knowledge Acquisition Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inferentialism-meaning-as-inferential-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inferentialism: Meaning as Inferential Role
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inferentialism: Meaning as Inferential Role">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#material-inference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Inference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#knowledge-engineering-as-explicitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Knowledge Engineering as Explicitation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-prover-skeptic-dialogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Prover-Skeptic Dialogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-llm-as-a-defeasible-derivability-oracle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The LLM as a Defeasible Derivability Oracle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#material-bases-and-nmms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Material Bases and NMMS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Material Bases and NMMS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-dialogue-to-material-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Dialogue to Material Base
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-elenchus-differs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How Elenchus Differs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How Elenchus Differs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-traditional-knowledge-acquisition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From traditional knowledge acquisition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-llm-based-knowledge-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From LLM-based knowledge extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-llm-assisted-ontology-engineering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From LLM-assisted ontology engineering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-computational-argumentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From computational argumentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-multi-agent-debate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From multi-agent debate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="motivation-and-approach">Motivation and Approach</h1>
+<p>This page introduces the philosophical and theoretical foundations of Elenchus. If you just want to use the system, see the <a href="../guide/">User Guide</a>. For implementation details, see <a href="../architecture/">Architecture</a>.</p>
+<h2 id="the-knowledge-acquisition-problem">The Knowledge Acquisition Problem</h2>
+<p>Knowledge engineering — the formalization of knowledge for use in information systems — has faced a persistent bottleneck since its earliest days (Feigenbaum 1977): how do you get what an expert knows into a formal system? Despite fifty years of effort across expert systems, ontology engineering, and knowledge graph construction, the problem persists.</p>
+<p>Traditional approaches treat expert knowledge as determinate internal content awaiting extraction — as if experts have formal structures in their heads that need only be transcribed. But knowledge is not determinate prior to articulation; it is constituted through practices of expression and negotiation. Elenchus starts from a different premise: the task is not to <em>extract</em> pre-formed content but to <em>make explicit</em>, through dialogue, the inferential relationships implicit in expert practice.</p>
+<h2 id="inferentialism-meaning-as-inferential-role">Inferentialism: Meaning as Inferential Role</h2>
+<p>Standard approaches to semantics are <em>representationalist</em>: the meaning of a sentence is given by its truth conditions. Inference is derivative — valid inferences preserve truth. <em>Inferentialism</em> (Sellars 1953; Brandom 1994) inverts this picture. The meaning of a sentence is given by its inferential role: what it follows from, what follows from it, and what it is incompatible with. Truth and reference are derivative; they are expressive devices for making explicit inferential relationships already implicit in practice.</p>
+<p>For knowledge engineering, this inversion has a practical consequence. If meaning is inferential role, then a knowledge base is not primarily a set of sentences representing the world, but a structure capturing inferential relationships among sentences. What matters is not just what the expert asserts, but what follows from what according to the expert.</p>
+<h3 id="material-inference">Material Inference</h3>
+<p>Classical logic treats valid inference as formal: an argument is valid in virtue of its logical form, regardless of content. But much reasoning is <em>material</em>: the inference from "it is raining" to "the streets will be wet" is good not because of form but because of what the words mean. The meaning of "rain" is partly constituted by its inferential connections to "wet," "clouds," "umbrella."</p>
+<p>Inferentialists take material inference as primary. Logical vocabulary — "if...then," "and," "or," "not" — is then a tool for making explicit these material relationships. To say "if it is raining then the streets will be wet" is to <em>endorse</em> the material inference explicitly.</p>
+<h2 id="knowledge-engineering-as-explicitation">Knowledge Engineering as Explicitation</h2>
+<p>Drawing on inferentialist semantics, Elenchus reconceives knowledge engineering as <em>explicitation</em>: making explicit, through structured dialogue, the inferential commitments implicit in expert practice. On this view, a knowledge base is not a description of what the expert believes but a record of what has been articulated and defended through dialogue.</p>
+<p>This is an instance of the explicitation pattern that Brandom takes as characteristic of logical vocabulary. Just as logical connectives make explicit the material inferential relationships in a base, the construction of the base itself makes explicit the pragmatic norms governing the dialogue from which the base was derived.</p>
+<h2 id="the-prover-skeptic-dialogue">The Prover-Skeptic Dialogue</h2>
+<p>Elenchus is structured as a <em>prover-skeptic dialogue</em> (Dutilh Novaes 2020), where one party defends a position while another challenges it:</p>
+<ul>
+<li><strong>The respondent</strong> (you, the human expert) proposes commitments and denials about a topic — developing a <em>bilateral position</em> <code>[C : D]</code>.</li>
+<li><strong>The opponent</strong> (the LLM) challenges and probes the respondent's position, detecting <em>tensions</em> — claims that parts of the position are jointly incoherent — and maintaining a record of commitments, denials, and material implications.</li>
+</ul>
+<p>The respondent resolves tensions as they arise — by retracting a commitment or denial, refining a proposition to dissolve the conflict, or contesting the opponent's challenge. Only tensions the respondent <em>accepts</em> become material implications in the knowledge base; contested tensions are simply set aside.</p>
+<p>This follows Dutilh Novaes's analysis of cooperation and adversariality in reasoning: the respondent seeks to develop a defensible position, while the opponent is neutral on outcome but insists on coherence, helping rather than competing.</p>
+<h2 id="the-llm-as-a-defeasible-derivability-oracle">The LLM as a Defeasible Derivability Oracle</h2>
+<p>A natural question: can LLMs reliably identify material inferential relationships? Elenchus claims something weaker but sufficient: LLMs can identify <em>candidate</em> tensions reliably enough to serve as defeasible oracles whose judgments are subject to human override.</p>
+<p>The key is defeasibility. The LLM proposes tensions; the respondent accepts or contests. Only accepted tensions enter the knowledge base. False positives are filtered by contestation; the human retains authority. The LLM surfaces candidate relationships the respondent might not have considered, while the respondent determines which actually hold.</p>
+<p>The cost structure of oracle errors is asymmetric by design:</p>
+<ul>
+<li><strong>False positives</strong> (spurious tensions) are filtered by contestation at the cost of a wasted dialogue turn.</li>
+<li><strong>False negatives</strong> (missed tensions) are a more substantive concern — inferential relationships the LLM fails to surface — but the case study in Allen (2026) suggests that even a single dialogue session can structure expert knowledge into a material base whose implications correspond to documented design decisions.</li>
+</ul>
+<p>This design transforms the hallucination problem from a reliability issue into a feature of the protocol: an LLM-proposed tension that does not reflect genuine incoherence is simply contested, and the contestation itself is part of the dialectical record.</p>
+<h2 id="material-bases-and-nmms">Material Bases and NMMS</h2>
+<p>Hlobil and Brandom (2025) formalize the inferentialist picture. A <em>material base</em> consists of an atomic language and a <em>base consequence relation</em> — a relation between sets of sentences capturing which positions are incoherent. Material bases are substructural: the consequence relation need not satisfy monotonicity (adding premises can defeat an inference) or transitivity (chains of good inferences need not compose). This suits defeasible, context-sensitive expert knowledge.</p>
+<p>One condition is required: <em>Containment</em>, which says asserting and denying the same sentence is incoherent — the minimal coherence constraint. From any material base satisfying Containment, the NMMS (NonMonotonic MultiSuccedent) sequent calculus elaborates a logical vocabulary. The extension is:</p>
+<ul>
+<li><strong>Supraclassical</strong> — all classically valid sequents hold</li>
+<li><strong>Conservative</strong> — no new base-level consequences are introduced</li>
+<li><strong>Explicative</strong> — logical vocabulary can express any base consequence relation</li>
+</ul>
+<h3 id="from-dialogue-to-material-base">From Dialogue to Material Base</h3>
+<p>Elenchus maps dialectical states to material bases. The atomic language is the union of all commitments and denials. The base consequence relation has two components:</p>
+<ol>
+<li><strong>Material implications (I)</strong> — accepted tensions from the dialogue. These are <em>discovered incoherences</em>: the respondent learned, through the dialectic, that certain combinations of commitments and denials cannot be jointly maintained.</li>
+<li><strong>Containment (Cont)</strong> — the background norm that asserting and denying the same sentence is incoherent. This is not discovered through the dialectic; it is a precondition of rational participation.</li>
+</ol>
+<p>The resulting material base satisfies Containment by construction, and its structure exhibits the explicitation pattern: the two components make explicit, respectively, what the dialogue <em>produced</em> and what the dialogue <em>presupposed</em>.</p>
+<p>Every material implication in the knowledge base has complete traceability — it originated as a tension proposed by the opponent and accepted by the respondent. The dialogue transcript records when the tension was raised, what position prompted it, and how the respondent resolved it. This contrasts with knowledge bases extracted from corpora, where provenance may be opaque or statistical.</p>
+<h2 id="how-elenchus-differs">How Elenchus Differs</h2>
+<h3 id="from-traditional-knowledge-acquisition">From traditional knowledge acquisition</h3>
+<p>Traditional methodologies (CommonKADS (Schreiber et al. 2000), METHONTOLOGY (Fernández-López et al. 1997), NeOn (Suárez de Figueroa Baonza 2010)) assume the target is a description of the domain in a formal language, with a knowledge engineer mediating between expert and formalism. Elenchus eliminates this mediating step: the expert interacts directly with the opponent through natural language, and the formal structure is constructed as a byproduct of the dialogue.</p>
+<h3 id="from-llm-based-knowledge-extraction">From LLM-based knowledge extraction</h3>
+<p>Recent work (Babaei Giglou et al. 2023; Yao et al. 2025) uses LLMs to generate triples, axioms, or class hierarchies, treating the LLM as a <em>source</em> of knowledge to be validated. The quality concern is well-documented: LLMs hallucinate and produce plausible but incorrect formalizations. Elenchus takes a fundamentally different stance — the LLM is not a source of knowledge but a dialectical partner. The respondent, not the LLM, is the epistemic authority. LLM unreliability is structurally contained by the respondent's authority over tension resolution.</p>
+<h3 id="from-llm-assisted-ontology-engineering">From LLM-assisted ontology engineering</h3>
+<p>Much recent work in LLM-assisted ontology engineering centers on <em>competency questions</em> (CQs) — natural language questions expressing an ontology's functional requirements (Grüninger and Fox 1995). OntoChat (Zhang et al. 2024) uses LLMs to support ontology requirements elicitation through user story creation, CQ extraction, and ontology testing. Zhao et al. (2024) extend this with participatory prompting to address the finding that domain experts struggle to prompt LLMs effectively. Koutsiana et al. (2024) report that while LLMs improve efficiency in knowledge graph construction, evaluation of LLM outputs remains the central challenge.</p>
+<p>In all these systems, the LLM serves as a facilitator or generator: it elicits requirements, produces ontology fragments, or suggests competency questions, and the expert validates the output. The expert is treated as a <em>source</em> — of user stories, of competency questions, of validation judgments — rather than as an agent whose commitments are tested for coherence. Elenchus inverts this relationship: the LLM <em>challenges</em> the expert's commitments, and the expert's responses to those challenges constitute the knowledge base.</p>
+<p>The formal outputs also differ. Competency questions and OWL fragments lack a characterized consequence relation, proven structural properties, or systematic traceability from output to the process that produced it. Elenchus produces material bases satisfying Containment, with proven supraclassicality, conservative extension, and explicitation properties, and complete traceability of every material implication to a specific dialogue move.</p>
+<h3 id="from-computational-argumentation">From computational argumentation</h3>
+<p>In standard argumentation frameworks (Dung 1995; Modgil and Prakken 2014), the consequence relation (what follows from what) is fixed in advance. In Elenchus, the consequence relation is itself the output. Argumentation frameworks produce extensions (sets of acceptable arguments); Elenchus produces a material base — a substructural consequence relation that connects knowledge acquisition directly to the inferentialist program in philosophical logic.</p>
+<h3 id="from-multi-agent-debate">From multi-agent debate</h3>
+<p>Multi-agent debate frameworks (Irving et al. 2018; Li et al. 2024) are LLM-to-LLM systems aimed at answer quality. Elenchus is a human-AI system aimed at knowledge construction. In debate, the human is a judge who selects between positions; in Elenchus, the human is the <em>author</em> of the position, with authority over which inferences hold.</p>
+<h2 id="references">References</h2>
+<ul>
+<li>Allen, B. P. (2026). "Elenchus: Generating Knowledge Bases from Prover-Skeptic Dialogues." <em>arXiv preprint</em>.</li>
+<li>Allen, B. P. (2026). "pyNMMS." <a href="https://pypi.org/project/pyNMMS/">PyPI package</a>.</li>
+<li>Babaei Giglou, H.; D'Souza, J.; and Auer, S. (2023). "LLMs4OL: Large Language Models for Ontology Learning." In <em>Proceedings of the International Semantic Web Conference</em>.</li>
+<li>Brandom, R. (1994). <em>Making It Explicit: Reasoning, Representing, and Discursive Commitment.</em> Harvard University Press.</li>
+<li>Dung, P. M. (1995). "On the Acceptability of Arguments and Its Fundamental Role in Nonmonotonic Reasoning, Logic Programming and N-Person Games." <em>Artificial Intelligence</em> 77(2):321–357.</li>
+<li>Dutilh Novaes, C. (2020). <em>The Dialogical Roots of Deduction: Historical, Cognitive, and Philosophical Perspectives on Reasoning.</em> Cambridge University Press.</li>
+<li>Feigenbaum, E. A. (1977). "The Art of Artificial Intelligence: Themes and Case Studies of Knowledge Engineering." In <em>Proceedings of the Fifth International Joint Conference on Artificial Intelligence</em>, volume 2.</li>
+<li>Fernández-López, M.; Gómez-Pérez, A.; and Juristo, N. (1997). "METHONTOLOGY: From Ontological Art Towards Ontological Engineering." In <em>Proceedings of the AAAI-97 Spring Symposium Series on Ontological Engineering</em>, 33–40.</li>
+<li>Grüninger, M., and Fox, M. S. (1995). "The Role of Competency Questions in Enterprise Engineering." In <em>Benchmarking — Theory and Practice</em>, 22–31. Springer.</li>
+<li>Hlobil, U., and Brandom, R. B. (2025). <em>Reasons for Logic, Logic for Reasons: Pragmatics, Semantics, and Conceptual Roles.</em> Routledge.</li>
+<li>Irving, G.; Christiano, P.; and Amodei, D. (2018). "AI Safety via Debate." <em>arXiv preprint arXiv:1805.00899</em>.</li>
+<li>Koutsiana, E.; Walker, J.; Nwachukwu, M.; Meroño-Peñuela, A.; and Simperl, E. (2024). "Knowledge Prompting: How Knowledge Engineers Use Large Language Models." <em>arXiv preprint arXiv:2408.08878</em>.</li>
+<li>Li, Y.; Du, Y.; Zhang, J.; Hou, L.; Grabowski, P.; Li, Y.; and Ie, E. (2024). "Improving Multi-Agent Debate with Sparse Communication Topology." <em>arXiv preprint arXiv:2406.11776</em>.</li>
+<li>Modgil, S., and Prakken, H. (2014). "The ASPIC+ Framework for Structured Argumentation: A Tutorial." <em>Argument &amp; Computation</em> 5(1):31–62.</li>
+<li>Schreiber, A. T.; Akkermans, H.; Anjewierden, A.; Shadbolt, N.; de Hoog, R.; Van de Velde, W.; and Wielinga, B. (2000). <em>Knowledge Engineering and Management: The CommonKADS Methodology.</em> MIT Press.</li>
+<li>Sellars, W. (1953). "Inference and Meaning." <em>Mind</em> 62(247):313–338.</li>
+<li>Suárez de Figueroa Baonza, M. del C. (2010). <em>NeOn Methodology for Building Ontology Networks: Specification, Scheduling and Reuse.</em> Ph.D. dissertation, Universidad Politécnica de Madrid.</li>
+<li>Yao, L.; Peng, J.; Mao, C.; and Luo, Y. (2025). "Exploring Large Language Models for Knowledge Graph Completion." In <em>ICASSP 2025</em>, 1–5. IEEE.</li>
+<li>Zhang, B.; Carriero, V. A.; Schreiberhuber, K.; Tsaneva, S.; González, L. S.; Kim, J.; and de Berardinis, J. (2024). "OntoChat: A Framework for Conversational Ontology Engineering Using Language Models." In <em>European Semantic Web Conference</em>, 102–121. Springer.</li>
+<li>Zhao, Y.; Zhang, B.; Hu, X.; Ouyang, S.; Kim, J.; Jain, N.; De Berardinis, J.; Meroño-Peñuela, A.; and Simperl, E. (2024). "Improving Ontology Requirements Engineering with OntoChat and Participatory Prompting." In <em>Proceedings of the AAAI Symposium Series</em> 4(1):253–257.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

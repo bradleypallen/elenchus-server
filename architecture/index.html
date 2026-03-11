@@ -1,0 +1,1550 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/architecture/">
+      
+      
+        <link rel="prev" href="../guide/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Architecture - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#system-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#material_basepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        material_base.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialectical_statepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialectical_state.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#opponentpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        opponent.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        server.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pdf_reportpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pdf_report.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staticindexhtml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        static/index.html
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cli.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duckdb-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DuckDB Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DuckDB Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#meta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        meta
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#atoms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        atoms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assessments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        assessments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#positions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        positions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conversation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#current_assessments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        current_assessments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base_sequents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        base_sequents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API Protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-phase-ui-action-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Phase UI Action Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-request-construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Request Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-response-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Response Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistence-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistence and Recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Persistence and Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-based-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Based Persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequence-re-seeding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Re-seeding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pynmms-reasoner-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pyNMMS Reasoner Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#system-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#material_basepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        material_base.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dialectical_statepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dialectical_state.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#opponentpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        opponent.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        server.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pdf_reportpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pdf_report.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staticindexhtml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        static/index.html
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cli.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duckdb-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DuckDB Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DuckDB Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#meta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        meta
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#atoms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        atoms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assessments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        assessments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#positions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        positions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        conversation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#current_assessments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        current_assessments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#base_sequents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        base_sequents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="API Protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-phase-ui-action-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-Phase UI Action Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-request-construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Request Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#llm-response-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Response Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistence-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistence and Recovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Persistence and Recovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-based-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Based Persistence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequence-re-seeding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Re-seeding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pynmms-reasoner-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pyNMMS Reasoner Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture</h1>
+<p>This page describes the internal architecture of Elenchus for developers and contributors. If you just want to use Elenchus, see the <a href="../guide/">User Guide</a>.</p>
+<h2 id="system-overview">System Overview</h2>
+<div class="codehilite"><pre><span></span><code>Browser / CLI
+     │
+     ▼
+server.py ──→ opponent.py ──→ LLM API (Anthropic / OpenAI-compatible)
+     │              │
+     │              ▼
+     │        _parse_response()
+     │        _apply() speech acts
+     │              │
+     ▼              ▼
+dialectical_state.py
+     │
+     ▼
+material_base.py ──→ pyNMMS (NMMSReasoner)
+     │
+     ▼
+DuckDB (.duckdb file)
+</code></pre></div>
+
+<p>A request flows top-down: user input arrives at the server (or CLI), is sent to the opponent along with the formal dialectical state, the opponent calls the LLM API, parses the structured JSON response, applies state transitions to the DuckDB-backed dialectical state, and returns the result.</p>
+<h2 id="modules">Modules</h2>
+<h3 id="material_basepy">material_base.py</h3>
+<p><strong>Definition 5</strong>: <code>B = ⟨L_B, |∼_B⟩</code></p>
+<p>The foundation layer. A material base consists of an atomic language and a base consequence relation, both stored in DuckDB.</p>
+<ul>
+<li><strong>DuckDB tables</strong>: <code>meta</code>, <code>atoms</code>, <code>assessments</code> (plus views <code>current_assessments</code> and <code>base_sequents</code>)</li>
+<li><strong>pyNMMS mirror</strong>: An in-memory <code>MaterialBase</code> + <code>NMMSReasoner</code> mirrors the DuckDB state for derivability queries. Synced incrementally on <code>accept()</code> and <code>add_atoms()</code>, fully rebuilt from <code>base_sequents</code> after <code>reject()</code>.</li>
+<li><strong>Set serialization</strong>: Sets of propositions are stored as <code>\x1e</code>-delimited sorted strings (ASCII Record Separator). Legacy data using comma delimiters is handled transparently on read.</li>
+</ul>
+<p>Key methods: <code>add_atoms()</code>, <code>accept()</code>, <code>reject()</code>, <code>derives()</code>, <code>derive_with_trace()</code></p>
+<h3 id="dialectical_statepy">dialectical_state.py</h3>
+<p><strong>Definition 4</strong>: <code>S = ⟨[C : D], T, I⟩</code></p>
+<p>Wraps <code>MaterialBase</code> and adds DuckDB tables for the bilateral position, tensions, and conversation history.</p>
+<p>The mapping to the material base (Definition 7):</p>
+<ul>
+<li><code>L_B = C ∪ D</code> — the atomic language is the union of commitments and denials</li>
+<li><code>|∼_B = I ∪ Cont</code> — the consequence relation is the accepted implications plus Containment</li>
+</ul>
+<p>Key methods: <code>commit()</code>, <code>deny()</code>, <code>retract_prop()</code>, <code>add_tension()</code>, <code>accept_tension()</code>, <code>contest_tension()</code>, <code>to_dict()</code></p>
+<h3 id="opponentpy">opponent.py</h3>
+<p>The LLM oracle. Sends the formal state + windowed conversation history to the LLM and parses the structured response.</p>
+<ul>
+<li><strong>Protocol abstraction</strong>: <code>_chat()</code> handles both Anthropic Messages API and OpenAI Chat Completions API. Protocol auto-detected from base URL hostname via <code>_detect_protocol()</code>.</li>
+<li><strong>Request construction</strong>: Full formal state (always complete, always compact) + last N conversation turns + running summary of earlier discussion.</li>
+<li><strong>Response format</strong>: Expects JSON with <code>speech_acts</code>, <code>new_tensions</code>, and <code>response</code>. Falls back to wrapping conversational text if JSON parsing fails.</li>
+<li><strong>State application</strong>: <code>_apply()</code> processes each speech act (COMMIT, DENY, RETRACT, REFINE, ACCEPT_TENSION, CONTEST_TENSION) and registers new tensions.</li>
+<li><strong>Summarization</strong>: Every 20 stored messages, generates a running summary to keep the context window manageable. Separate <code>generate_summary()</code> for PDF reports.</li>
+</ul>
+<h3 id="serverpy">server.py</h3>
+<p>FastAPI application. Manages a cache of open <code>DialecticalState</code> instances (<code>_states</code> dict keyed by dialectic name).</p>
+<ul>
+<li>REST API under <code>/api/dialectics/</code> (CRUD, message, tensions, retract, derive, report)</li>
+<li>Settings API (<code>GET/PUT /api/settings</code>) for runtime LLM configuration</li>
+<li>Serves <code>static/index.html</code> at root</li>
+<li>Each dialectic maps to a <code>.duckdb</code> file via <code>_db_path()</code> (name sanitized to alphanumeric + <code>-_</code>)</li>
+</ul>
+<h3 id="pdf_reportpy">pdf_report.py</h3>
+<p>Generates PDF reports using fpdf2. Includes LLM-generated analytical summary, bilateral position with atom IDs, sequent cards for tensions and implications, and the full conversation transcript.</p>
+<ul>
+<li><code>_md_to_html()</code> converts Markdown to simple HTML for fpdf2's <code>write_html()</code></li>
+<li><code>_parse_assistant_content()</code> extracts the natural language response from raw LLM JSON stored in conversation history</li>
+</ul>
+<h3 id="staticindexhtml">static/index.html</h3>
+<p>Single-file React 18 + Babel frontend (in-browser transpilation, no build step). Three-column layout: position [C : D] on the left, chat in the center, tensions and implications on the right.</p>
+<ul>
+<li>Communicates with the server via <code>fetch()</code> calls to the REST API</li>
+<li>Display preferences (theme, font scale, colors) persisted in <code>localStorage</code></li>
+<li>LLM settings (model, base_url) persisted in <code>localStorage</code> and re-synced to the server on page load</li>
+<li>Active dialectic name persisted in <code>localStorage</code> for refresh recovery</li>
+</ul>
+<h3 id="clipy">cli.py</h3>
+<p>Standalone REPL using the same <code>Opponent</code> + <code>DialecticalState</code> stack. Supports in-memory or persistent (DuckDB file) sessions. Slash commands for inspecting state (<code>/state</code>, <code>/tensions</code>, <code>/implications</code>, <code>/derive</code>, <code>/report</code>).</p>
+<h2 id="duckdb-schema">DuckDB Schema</h2>
+<p>Each dialectic is a single <code>.duckdb</code> file containing all tables below. The schema is created by <code>MaterialBase.create()</code> and extended by <code>DialecticalState._ensure_tables()</code>.</p>
+<h3 id="tables">Tables</h3>
+<h4 id="meta"><code>meta</code></h4>
+<p>Key-value store for dialectic metadata.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>VARCHAR (PK)</td>
+<td>Metadata key</td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>VARCHAR</td>
+<td>Metadata value</td>
+</tr>
+</tbody>
+</table>
+<p>Standard keys: <code>name</code> (topic name), <code>version</code> (schema version, currently <code>"5"</code>), <code>summary</code> (running conversation summary).</p>
+<h4 id="atoms"><code>atoms</code></h4>
+<p>The atomic language <code>L_B</code> — all propositions that have appeared in the dialectic.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sentence</code></td>
+<td>VARCHAR (PK)</td>
+<td>The proposition text</td>
+</tr>
+<tr>
+<td><code>added_by</code></td>
+<td>VARCHAR</td>
+<td>Who introduced it (<code>"respondent"</code>, <code>"oracle"</code>, <code>"system"</code>)</td>
+</tr>
+<tr>
+<td><code>added_at</code></td>
+<td>TIMESTAMP</td>
+<td>When it was added</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>VARCHAR</td>
+<td>Optional description</td>
+</tr>
+</tbody>
+</table>
+<h4 id="assessments"><code>assessments</code></h4>
+<p>The base consequence relation <code>|∼_B</code>. Each row is a judgment about whether a sequent holds.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>INTEGER</td>
+<td>Auto-incrementing ID</td>
+</tr>
+<tr>
+<td><code>premises</code></td>
+<td>VARCHAR</td>
+<td>Premise set (serialized)</td>
+</tr>
+<tr>
+<td><code>conclusions</code></td>
+<td>VARCHAR</td>
+<td>Conclusion set (serialized)</td>
+</tr>
+<tr>
+<td><code>judgment</code></td>
+<td>VARCHAR</td>
+<td><code>"holds"</code> or <code>"rejected"</code></td>
+</tr>
+<tr>
+<td><code>contributor</code></td>
+<td>VARCHAR</td>
+<td>Who assessed it</td>
+</tr>
+<tr>
+<td><code>assessed_at</code></td>
+<td>TIMESTAMP</td>
+<td>When assessed</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>VARCHAR</td>
+<td>Why (e.g., <code>"Tension #3: ..."</code>)</td>
+</tr>
+<tr>
+<td><code>domain</code></td>
+<td>VARCHAR</td>
+<td>Category (e.g., <code>"tension"</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Sets in <code>premises</code> and <code>conclusions</code> are serialized as <code>\x1e</code>-delimited sorted strings. Example: <code>"alpha\x1ebeta\x1e"</code> represents <code>{"alpha", "beta"}</code>.</p>
+<h4 id="positions"><code>positions</code></h4>
+<p>The bilateral position <code>[C : D]</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>atom</code></td>
+<td>VARCHAR</td>
+<td>The proposition</td>
+</tr>
+<tr>
+<td><code>side</code></td>
+<td>VARCHAR</td>
+<td><code>"C"</code> (commitment) or <code>"D"</code> (denial)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>VARCHAR</td>
+<td><code>"open"</code> or <code>"retracted"</code></td>
+</tr>
+<tr>
+<td><code>introduced_at</code></td>
+<td>TIMESTAMP</td>
+<td>When added to this side</td>
+</tr>
+</tbody>
+</table>
+<p>Primary key: <code>(atom, side)</code>.</p>
+<h4 id="tensions"><code>tensions</code></h4>
+<p>Proposed incoherences in the position.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>INTEGER (PK)</td>
+<td>Tension ID (sequential)</td>
+</tr>
+<tr>
+<td><code>gamma</code></td>
+<td>VARCHAR</td>
+<td>Premise set (serialized)</td>
+</tr>
+<tr>
+<td><code>delta</code></td>
+<td>VARCHAR</td>
+<td>Conclusion set (serialized)</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>VARCHAR</td>
+<td>Why this is a tension</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>VARCHAR</td>
+<td><code>"open"</code>, <code>"accepted"</code>, or <code>"contested"</code></td>
+</tr>
+<tr>
+<td><code>proposed_at</code></td>
+<td>TIMESTAMP</td>
+<td>When proposed</td>
+</tr>
+<tr>
+<td><code>resolved_at</code></td>
+<td>TIMESTAMP</td>
+<td>When accepted or contested (null if open)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="conversation"><code>conversation</code></h4>
+<p>Multi-turn dialogue history for oracle context.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>INTEGER (PK)</td>
+<td>Sequential message ID</td>
+</tr>
+<tr>
+<td><code>role</code></td>
+<td>VARCHAR</td>
+<td><code>"user"</code> or <code>"assistant"</code></td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td>TEXT</td>
+<td>Message content (raw LLM JSON for assistant messages)</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>TIMESTAMP</td>
+<td>When stored</td>
+</tr>
+</tbody>
+</table>
+<h3 id="views">Views</h3>
+<h4 id="current_assessments"><code>current_assessments</code></h4>
+<p>Most-recent assessment per (premises, conclusions, contributor). Uses <code>ROW_NUMBER()</code> partitioned by these three columns, ordered by <code>assessed_at DESC</code>. This implements most-recent-wins semantics — a later <code>"rejected"</code> overrides an earlier <code>"holds"</code>.</p>
+<h4 id="base_sequents"><code>base_sequents</code></h4>
+<p>The active consequence relation. Selects from <code>current_assessments</code> where <code>judgment = 'holds'</code> and all contributors agree (unanimous consent). This is what gets loaded into the pyNMMS reasoner.</p>
+<h2 id="api-protocol">API Protocol</h2>
+<h3 id="two-phase-ui-action-flow">Two-Phase UI Action Flow</h3>
+<p>Accept, contest, and retract actions from the web UI use a two-phase pattern:</p>
+<ol>
+<li><strong>Phase 1</strong>: Direct API call (<code>POST /tensions/{tid}</code> or <code>POST /retract</code>) mutates state immediately. UI columns update instantly.</li>
+<li><strong>Phase 2</strong>: Follow-up <code>POST /message</code> sends a natural-language description of the action to the opponent. An inline <code>[NOTE: ...]</code> is injected into the user content to prevent the opponent from saying "that's already been done."</li>
+</ol>
+<h3 id="llm-request-construction">LLM Request Construction</h3>
+<p>Each call to <code>opponent.respond()</code> builds a message sequence:</p>
+<ol>
+<li><strong>Summary prefix</strong> (if history &gt; N turns): Earlier conversation condensed into a summary</li>
+<li><strong>Windowed history</strong>: Last N conversation turns (default 6 exchanges)</li>
+<li><strong>Current message</strong>: Formal state block + respondent's input + optional UI action note</li>
+</ol>
+<p>The formal state block includes the complete <code>[C : D]</code>, all open/contested tensions, all material implications, and retracted propositions. It is always sent in full because it is compact.</p>
+<h3 id="llm-response-format">LLM Response Format</h3>
+<p>The opponent expects this JSON structure:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;speech_acts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;COMMIT|DENY|RETRACT|REFINE|ACCEPT_TENSION|CONTEST_TENSION&quot;</span><span class="p">,</span>
+<span class="w">     </span><span class="nt">&quot;proposition&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<span class="w">     </span><span class="nt">&quot;target_tension_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">     </span><span class="nt">&quot;old_proposition&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;new_tensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;gamma&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;...&quot;</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;delta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;...&quot;</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Natural language response.&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>If the LLM returns non-JSON, the response is wrapped as <code>{"speech_acts": [], "new_tensions": [], "response": "&lt;raw text&gt;"}</code>.</p>
+<h2 id="persistence-and-recovery">Persistence and Recovery</h2>
+<h3 id="file-based-persistence">File-Based Persistence</h3>
+<p>Each dialectic is fully self-contained in a single <code>.duckdb</code> file. No external state, no filesystem dependencies beyond the file itself.</p>
+<h3 id="sequence-re-seeding">Sequence Re-seeding</h3>
+<p>DuckDB sequences (<code>tension_seq</code>, <code>conv_seq</code>) don't survive disconnection. On every <code>DialecticalState._ensure_tables()</code> call (including reopen), sequences are dropped and recreated starting from <code>MAX(id) + 1</code> in the respective table.</p>
+<h3 id="pynmms-reasoner-lifecycle">pyNMMS Reasoner Lifecycle</h3>
+<p>The in-memory pyNMMS reasoner is lazily built on the first derivability query:</p>
+<ul>
+<li><strong>Incremental sync</strong>: <code>accept()</code> and <code>add_atoms()</code> update the in-memory base directly, then invalidate the reasoner (forcing rebuild on next query)</li>
+<li><strong>Full rebuild</strong>: <code>reject()</code> invalidates both the base and reasoner, triggering a full rebuild from <code>base_sequents</code> on next query</li>
+<li><strong>Cold start</strong>: After reopening a <code>.duckdb</code> file, the reasoner is <code>None</code> and rebuilds from scratch on first use</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
