@@ -14,6 +14,8 @@ Or:  uvicorn elenchus.server:app --reload
 import glob
 import logging
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -32,7 +34,21 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.environ.get("ELENCHUS_DATA", "./dialectics")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-app = FastAPI(title="Elenchus", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    # Startup
+    yield
+    # Shutdown: close all open DuckDB connections to release locks and flush WAL files
+    for name, state in _states.items():
+        try:
+            state.base.con.close()
+            logger.info("Closed DuckDB connection for '%s'", name)
+        except Exception:
+            logger.warning("Failed to close DuckDB connection for '%s'", name, exc_info=True)
+    _states.clear()
+
+
+app = FastAPI(title="Elenchus", version="0.1.0", lifespan=lifespan)
 opponent = Opponent(
     model=os.environ.get("ELENCHUS_MODEL", "claude-opus-4-6"),
     api_key=os.environ.get("ELENCHUS_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
@@ -53,7 +69,11 @@ def _get_state(name: str) -> DialecticalState:
     if name not in _states:
         path = _db_path(name)
         if os.path.exists(path):
-            _states[name] = DialecticalState.open(path)
+            try:
+                _states[name] = DialecticalState.open(path)
+            except ValueError as e:
+                logger.error("Corrupt dialectic file for '%s': %s", name, e)
+                raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
         else:
             raise HTTPException(404, f"Dialectic '{name}' not found")
     return _states[name]

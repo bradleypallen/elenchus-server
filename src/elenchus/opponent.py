@@ -104,6 +104,14 @@ Use the identifiers shown in the state when referring to items in your response:
 Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3, I3."""
 
 
+def _parse_tension_id(tid) -> int:
+    """Parse a tension ID that may have a 'T' prefix (e.g. 'T1' -> 1, 1 -> 1)."""
+    s = str(tid).strip().upper()
+    if s.startswith("T"):
+        s = s[1:]
+    return int(s)
+
+
 class Opponent:
     def __init__(
         self,
@@ -477,7 +485,7 @@ Recent exchanges:
             elif atype == "ACCEPT_TENSION":
                 tid = act.get("target_tension_id")
                 if tid is not None:
-                    result = state.accept_tension(int(tid))
+                    result = state.accept_tension(_parse_tension_id(tid))
                     if not result:
                         logger.info(
                             "Skipped ACCEPT_TENSION #%s (already resolved or not found)", tid
@@ -485,7 +493,7 @@ Recent exchanges:
             elif atype == "CONTEST_TENSION":
                 tid = act.get("target_tension_id")
                 if tid is not None:
-                    result = state.contest_tension(int(tid))
+                    result = state.contest_tension(_parse_tension_id(tid))
                     if not result:
                         logger.info(
                             "Skipped CONTEST_TENSION #%s (already resolved or not found)", tid

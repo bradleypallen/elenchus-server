@@ -110,6 +110,19 @@ class MaterialBase:
     @classmethod
     def open(cls, db_path):
         con = duckdb.connect(db_path)
+        # Validate that the file has the expected schema
+        tables = {
+            r[0]
+            for r in con.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
+            ).fetchall()
+        }
+        if "meta" not in tables:
+            con.close()
+            raise ValueError(
+                f"Database '{db_path}' is not a valid Elenchus dialectic "
+                f"(missing 'meta' table, found tables: {tables or 'none'})"
+            )
         r = con.execute("SELECT value FROM meta WHERE key='name'").fetchone()
         name = r[0] if r else "unnamed"
         return cls(con, name)
