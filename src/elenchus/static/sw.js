@@ -1,4 +1,8 @@
-const CACHE_NAME = "elenchus-v1";
+// Bump on any change to this file or its caching strategy so existing
+// clients pick up the new behavior. v2 stops intercepting /api/*
+// because the SW-rewrapped fetch was dropping the session cookie on
+// some browsers, producing spurious 401s right after login.
+const CACHE_NAME = "elenchus-v2";
 
 const SHELL_URLS = [
   "/",
@@ -30,24 +34,25 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: network-first for API, cache-first for shell
+// Fetch: cache-first for the shell, untouched for everything else.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // API calls: always go to network
+  // Hands-off for /api/*. The v1 SW intercepted these and re-issued
+  // `fetch(event.request)`, but some browsers don't carry the session
+  // cookie cleanly through that round-trip — producing 401s that look
+  // like "I just logged in and got bounced". Letting the page-side
+  // fetch hit the network natively preserves the cookie reliably.
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response(JSON.stringify({ error: "Server unreachable" }), {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        })
-      )
-    );
     return;
   }
 
-  // Everything else: try cache first, then network, then offline fallback
+  // POST / PUT / DELETE never read from the cache. Only handle GETs.
+  if (event.request.method !== "GET") {
+    return;
+  }
+
+  // Shell resources: try cache first, then network, then offline fallback.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
