@@ -135,6 +135,8 @@ class DialecticalState:
 
     @property
     def T(self) -> list:
+        """All open tensions, ordered by id. The first is the focal tension
+        (shown to respondent and opponent); the rest are queued."""
         rows = self.base.con.execute(
             "SELECT id, gamma, delta, reason FROM tensions WHERE status='open' ORDER BY id"
         ).fetchall()
@@ -147,6 +149,18 @@ class DialecticalState:
             }
             for r in rows
         ]
+
+    @property
+    def focal_tension(self) -> dict | None:
+        """The single open tension currently surfaced to the respondent.
+        Lowest-id open tension, or None if none are open."""
+        t = self.T
+        return t[0] if t else None
+
+    @property
+    def queued_tensions(self) -> list:
+        """Open tensions waiting their turn behind the focal one."""
+        return self.T[1:]
 
     @property
     def contested_tensions(self) -> list:
@@ -269,11 +283,17 @@ class DialecticalState:
     # ── Full state as dict (for API) ──
 
     def to_dict(self) -> dict:
+        focal = self.focal_tension
+        queued = self.queued_tensions
         return {
             "name": self.base.name,
             "commitments": self.C,
             "denials": self.D,
-            "tensions": self.T,
+            # 'tensions' holds only the focal tension (single-element list or
+            # empty) — the respondent addresses one at a time. Queued open
+            # tensions are exposed separately.
+            "tensions": [focal] if focal else [],
+            "queued_tensions": queued,
             "implications": self.I,
             "retracted": self.retracted,
             "contested": self.contested_tensions,

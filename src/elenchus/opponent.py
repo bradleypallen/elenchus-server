@@ -40,7 +40,7 @@ When the respondent speaks, classify their utterances:
 - RETRACT: withdrawing a previous commitment or denial
 - REFINE: replacing a commitment with a more precise version
 
-RESPONSE FORMAT — respond ONLY with this JSON, no markdown:
+RESPONSE FORMAT — respond ONLY with this JSON. No markdown fences, no prose preamble, no trailing commentary. The FIRST character of your reply MUST be `{` and the LAST character MUST be `}`. Anything you want the respondent to read goes inside the "response" field — NEVER outside the JSON object.
 {
   "speech_acts": [
     {"type": "COMMIT"|"DENY"|"ACCEPT_TENSION"|"CONTEST_TENSION"|"RETRACT"|"REFINE",
@@ -95,6 +95,14 @@ Instead, respond as a philosophical interlocutor:
 - For contested tensions: probe WHY they reject the inference, ask what they think is wrong with it, explore the philosophical stakes
 - For retractions: discuss what retracting this proposition changes in their overall position, what commitments remain that depended on it, what new space opens up
 - You may propose new_tensions if the updated position warrants them
+
+TENSION QUEUE (CRITICAL — read carefully):
+The respondent addresses tensions ONE AT A TIME to avoid cognitive overload. Only the focal tension is shown to the respondent in the UI — any additional tensions you propose are placed on a hidden queue and surface automatically as each is resolved.
+
+- You will see ONLY the focal tension in "Open tensions (T)" — the count of queued tensions follows as a hint.
+- In your "response" text, discuss ONLY the focal tension. Do NOT reference queued tensions by ID (the respondent cannot see them) and do NOT pile on additional incoherences in prose.
+- You MAY still propose multiple new_tensions in a single turn — they will queue up — but prefer proposing one sharp, well-motivated tension per turn.
+- Do NOT re-propose a tension that is already focal or queued. The "Next tension ID" reflects all tensions ever proposed, including queued.
 
 IDENTIFIERS:
 Use the identifiers shown in the state when referring to items in your response:
@@ -241,13 +249,19 @@ class Opponent:
         tid = row[0]
 
         atom_ids = s.get("atom_ids", {})
+        queued = s.get("queued_tensions", [])
+        queued_hint = (
+            f" [+ {len(queued)} queued, hidden from respondent until current resolves]"
+            if queued
+            else ""
+        )
         formal_state = f"""CURRENT DIALECTICAL STATE:
 Topic: {s["name"]}
 Next tension ID: {tid + 1}
 
 Commitments (C):{self._fmt_list(s["commitments"], atom_ids)}
 Denials (D):{self._fmt_list(s["denials"], atom_ids)}
-Open tensions (T):{self._fmt_tensions(s["tensions"])}
+Open tensions (T) — focal only:{self._fmt_tensions(s["tensions"])}{queued_hint}
 Contested tensions:{self._fmt_tensions(s["contested"])}
 Material implications (I):{self._fmt_implications(s["implications"])}
 Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
@@ -364,7 +378,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         )
 
         tensions_block = ""
-        for t in s["tensions"]:
+        # Summary covers all open tensions, focal and queued
+        for t in s["tensions"] + s.get("queued_tensions", []):
             g = ", ".join(f'"{x}"' for x in t["gamma"])
             d = ", ".join(f'"{x}"' for x in t["delta"])
             tensions_block += f"\n  T{t['id']}: {{{g}}} |~ {{{d}}}: {t['reason']}"
@@ -451,18 +466,85 @@ Recent exchanges:
             logger.debug("Summary update failed (non-critical)")
 
     def _parse_response(self, text: str) -> dict:
-        """Parse JSON from the LLM response."""
+        """Parse JSON from the LLM response.
+
+        Tolerant of:
+        - Plain JSON
+        - JSON wrapped in ```...``` fences (with or without a language tag)
+        - JSON preceded or followed by prose preamble (the LLM
+          occasionally emits a sentence like "Here's my analysis:" before
+          the object). We locate the first '{' and walk braces to find
+          the matching '}' to extract a candidate object.
+
+        If all extraction strategies fail, the entire text is returned
+        as the `response` field — but this case is logged so the issue
+        can be diagnosed from server logs rather than being silent.
+        """
+        clean = text.strip()
+
+        # Strip a leading code fence if present
+        if clean.startswith("```"):
+            # drop the opening fence line (e.g. ``` or ```json)
+            clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+            if clean.endswith("```"):
+                clean = clean[:-3]
+            clean = clean.strip()
+
+        # Strategy 1: direct parse
         try:
-            clean = text.strip()
-            if clean.startswith("```"):
-                clean = clean.split("\n", 1)[1]
-                if clean.endswith("```"):
-                    clean = clean[:-3]
-                clean = clean.strip()
             return json.loads(clean)
         except json.JSONDecodeError:
-            # If the model responded conversationally, wrap it
-            return {"speech_acts": [], "new_tensions": [], "response": text}
+            pass
+
+        # Strategy 2: locate the first '{' and walk braces (string-aware)
+        # to find the matching '}'. This handles "prose preamble + JSON"
+        # and "JSON + trailing chatter".
+        start = clean.find("{")
+        if start >= 0:
+            depth = 0
+            in_str = False
+            escape = False
+            for i in range(start, len(clean)):
+                ch = clean[i]
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = clean[start : i + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                            preamble = clean[:start].strip()
+                            logger.warning(
+                                "Recovered JSON from mixed-content response "
+                                "(preamble=%d chars, candidate=%d chars)",
+                                len(preamble),
+                                len(candidate),
+                            )
+                            return parsed
+                        except json.JSONDecodeError:
+                            break
+
+        # Final fallback: treat entire text as conversational response.
+        # Log so we can spot prompt-adherence regressions during runs.
+        logger.warning(
+            "LLM response did not contain parseable JSON; treating as plain "
+            "text (len=%d, first 80 chars=%r)",
+            len(text),
+            text[:80],
+        )
+        return {"speech_acts": [], "new_tensions": [], "response": text}
 
     def _apply(self, parsed: dict, state: DialecticalState):
         """Apply speech acts and tensions to state."""

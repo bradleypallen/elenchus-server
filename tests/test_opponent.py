@@ -71,6 +71,41 @@ class TestParseResponse:
         assert result["response"] == ""
         assert result["speech_acts"] == []
 
+    def test_prose_preamble_then_json(self):
+        """LLM occasionally prefixes JSON with a sentence — extract anyway."""
+        raw = (
+            'Here is my analysis.\n'
+            '{"speech_acts": [{"type": "COMMIT", "proposition": "p"}],'
+            ' "new_tensions": [], "response": "Hi."}'
+        )
+        result = self.opp._parse_response(raw)
+        assert result["response"] == "Hi."
+        assert len(result["speech_acts"]) == 1
+        assert result["speech_acts"][0]["proposition"] == "p"
+
+    def test_json_with_trailing_chatter(self):
+        raw = (
+            '{"speech_acts": [], "new_tensions": [], "response": "Done."}'
+            "\n\nLet me know if you need anything else!"
+        )
+        result = self.opp._parse_response(raw)
+        assert result["response"] == "Done."
+
+    def test_brace_in_string_does_not_break_extraction(self):
+        """Strings containing '{' or '}' must not confuse the brace walker."""
+        raw = (
+            'Preamble.\n'
+            '{"speech_acts": [], "new_tensions": [],'
+            ' "response": "Consider the set {x : x > 0}."}'
+        )
+        result = self.opp._parse_response(raw)
+        assert result["response"] == "Consider the set {x : x > 0}."
+
+    def test_fenced_with_language_tag(self):
+        raw = '```json\n{"speech_acts": [], "new_tensions": [], "response": "Y."}\n```'
+        result = self.opp._parse_response(raw)
+        assert result["response"] == "Y."
+
 
 # ── State application (_apply) ──
 

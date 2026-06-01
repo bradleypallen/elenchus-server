@@ -249,10 +249,11 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     )
     pdf.ln(8)
 
-    # Stats line
+    # Stats line — T counts focal + queued open tensions
+    open_t_count = len(s["tensions"]) + len(s.get("queued_tensions", []))
     stats = (
         f"C:{len(s['commitments'])}  D:{len(s['denials'])}  "
-        f"T:{len(s['tensions'])}  I:{len(s['implications'])}"
+        f"T:{open_t_count}  I:{len(s['implications'])}"
     )
     pdf.cell(text=stats, align="C", center=True)
     pdf.ln(16)
@@ -325,7 +326,8 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
 
     section_title("SEQUENTS")
 
-    open_tensions = s["tensions"]
+    # PDF preserves the full record: combine focal + queued open tensions
+    open_tensions = s["tensions"] + s.get("queued_tensions", [])
     implications = s["implications"]
 
     # Material Implications

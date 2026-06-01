@@ -213,6 +213,13 @@ function App() {
   const [rightWidth, setRightWidth] = useState(() => {
     try { const v = parseInt(localStorage.getItem('elenchus-right-w')); return v > 0 ? v : 280; } catch(e) { return 280; }
   });
+  // Side panes hidden by default; user toggles them via header buttons.
+  const [leftVisible, setLeftVisible] = useState(() => {
+    try { return localStorage.getItem('elenchus-left-visible') === '1'; } catch(e) { return false; }
+  });
+  const [rightVisible, setRightVisible] = useState(() => {
+    try { return localStorage.getItem('elenchus-right-visible') === '1'; } catch(e) { return false; }
+  });
   const dragging = useRef(null); // 'left' | 'right' | null
 
   useEffect(() => {
@@ -245,6 +252,8 @@ function App() {
   }, [current]);
   useEffect(() => { localStorage.setItem('elenchus-left-w', leftWidth); }, [leftWidth]);
   useEffect(() => { localStorage.setItem('elenchus-right-w', rightWidth); }, [rightWidth]);
+  useEffect(() => { localStorage.setItem('elenchus-left-visible', leftVisible ? '1' : '0'); }, [leftVisible]);
+  useEffect(() => { localStorage.setItem('elenchus-right-visible', rightVisible ? '1' : '0'); }, [rightVisible]);
 
   const startDrag = (side) => (e) => {
     e.preventDefault();
@@ -832,10 +841,23 @@ function App() {
   }
 
   // ── Dialogue ──
-  const s = state || { commitments: [], denials: [], tensions: [], implications: [], retracted: [], contested: [], atom_ids: {} };
+  const s = state || { commitments: [], denials: [], tensions: [], queued_tensions: [], implications: [], retracted: [], contested: [], atom_ids: {} };
+  const queuedTensions = s.queued_tensions || [];
+  const openTensionCount = s.tensions.length + queuedTensions.length;
+  const leftCount = s.commitments.length + s.denials.length;
+  const rightCount = openTensionCount + s.implications.length;
+
+  // Build grid template: omit hidden columns and their drag handles.
+  const gridCols = [
+    leftVisible ? `${leftWidth}px` : null,
+    leftVisible ? '4px' : null,
+    '1fr',
+    rightVisible ? '4px' : null,
+    rightVisible ? `${rightWidth}px` : null,
+  ].filter(Boolean).join(' ');
 
   return (
-    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`, gridTemplateRows: 'auto 1fr auto' }}>
+    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: gridCols, gridTemplateRows: 'auto 1fr auto' }}>
       {/* Header */}
       <div style={{
         gridColumn: '1 / -1', padding: '10px 20px',
@@ -847,10 +869,29 @@ function App() {
                 onClick={() => { setCurrent(null); setState(null); setView('home'); }}>Elenchus</span>
           <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{s.name || current}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>
-            C:{s.commitments.length} · D:{s.denials.length} · T:{s.tensions.length} · I:{s.implications.length}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setLeftVisible(v => !v)}
+            title={leftVisible ? 'Hide position pane' : 'Show position pane'}
+            style={{
+              background: leftVisible ? 'var(--surface)' : 'none',
+              border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text-muted)', cursor: 'pointer',
+              fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+              letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
+            }}
+          >POSITION C:{s.commitments.length} D:{s.denials.length}</button>
+          <button
+            onClick={() => setRightVisible(v => !v)}
+            title={rightVisible ? 'Hide sequents pane' : 'Show sequents pane'}
+            style={{
+              background: rightVisible ? 'var(--surface)' : 'none',
+              border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text-muted)', cursor: 'pointer',
+              fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+              letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
+            }}
+          >SEQUENTS T:{openTensionCount} I:{s.implications.length}</button>
           <button
             onClick={async () => {
               setPdfLoading(true);
@@ -897,37 +938,41 @@ function App() {
       </div>
 
       {/* Left: Position */}
-      <div style={{ padding: 14, overflowY: 'auto' }}>
-        <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
-        <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
-        {s.retracted?.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
-              Retracted
+      {leftVisible && (
+        <div style={{ padding: 14, overflowY: 'auto' }}>
+          <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
+          <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
+          {s.retracted?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+                Retracted
+              </div>
+              {s.retracted.map((p, i) => {
+                const aid = s.atom_ids && s.atom_ids[p];
+                return (
+                  <div key={i} style={{
+                    padding: '3px 7px', marginBottom: 3, borderRadius: 3,
+                    fontSize: fs(10), lineHeight: 1.5, fontFamily: 'var(--sans)',
+                    color: 'var(--text-muted)', textDecoration: 'line-through',
+                  }}>
+                    {aid && <span style={{ fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)', textDecoration: 'none', display: 'inline' }}>P{aid}</span>}
+                    {p}
+                  </div>
+                );
+              })}
             </div>
-            {s.retracted.map((p, i) => {
-              const aid = s.atom_ids && s.atom_ids[p];
-              return (
-                <div key={i} style={{
-                  padding: '3px 7px', marginBottom: 3, borderRadius: 3,
-                  fontSize: fs(10), lineHeight: 1.5, fontFamily: 'var(--sans)',
-                  color: 'var(--text-muted)', textDecoration: 'line-through',
-                }}>
-                  {aid && <span style={{ fontSize: fs(8), marginRight: 4, fontFamily: 'var(--mono)', textDecoration: 'none', display: 'inline' }}>P{aid}</span>}
-                  {p}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Left drag handle */}
-      <div onMouseDown={startDrag('left')} style={{
-        cursor: 'col-resize', background: 'var(--border)', width: 4,
-        transition: 'background 0.15s',
-      }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
-         onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
+      {leftVisible && (
+        <div onMouseDown={startDrag('left')} style={{
+          cursor: 'col-resize', background: 'var(--border)', width: 4,
+          transition: 'background 0.15s',
+        }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
+           onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
+      )}
 
       {/* Center: Messages */}
       <div style={{ overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -941,27 +986,41 @@ function App() {
       </div>
 
       {/* Right drag handle */}
-      <div onMouseDown={startDrag('right')} style={{
-        cursor: 'col-resize', background: 'var(--border)', width: 4,
-        transition: 'background 0.15s',
-      }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
-         onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
+      {rightVisible && (
+        <div onMouseDown={startDrag('right')} style={{
+          cursor: 'col-resize', background: 'var(--border)', width: 4,
+          transition: 'background 0.15s',
+        }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border-focus)'}
+           onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
+      )}
 
-      {/* Right: Sequents */}
-      <div style={{ padding: 14, overflowY: 'auto' }}>
-        <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
-          Sequents
+      {/* Right: Sequents (focal tension only; rest are queued) */}
+      {rightVisible && (
+        <div style={{ padding: 14, overflowY: 'auto' }}>
+          <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
+            Sequents
+          </div>
+          {s.tensions.length === 0 && s.implications.length === 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No sequents yet</div>
+          )}
+          {s.tensions.map(t => (
+            <SequentCard key={'t'+t.id} item={t} type="tension" onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} atomIds={s.atom_ids} />
+          ))}
+          {queuedTensions.length > 0 && (
+            <div style={{
+              padding: '6px 10px', marginBottom: 10, borderRadius: 4,
+              border: '1px dashed var(--border)',
+              fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
+              fontStyle: 'italic',
+            }}>
+              {queuedTensions.length} more tension{queuedTensions.length === 1 ? '' : 's'} queued — surface after this one resolves
+            </div>
+          )}
+          {s.implications.map((imp, i) => (
+            <SequentCard key={'i'+i} item={imp} type="implication" loading={loading} fs={fs} atomIds={s.atom_ids} />
+          ))}
         </div>
-        {s.tensions.length === 0 && s.implications.length === 0 && (
-          <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No sequents yet</div>
-        )}
-        {s.tensions.map(t => (
-          <SequentCard key={'t'+t.id} item={t} type="tension" onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} atomIds={s.atom_ids} />
-        ))}
-        {s.implications.map((imp, i) => (
-          <SequentCard key={'i'+i} item={imp} type="implication" loading={loading} fs={fs} atomIds={s.atom_ids} />
-        ))}
-      </div>
+      )}
 
       {/* Input */}
       <div style={{
