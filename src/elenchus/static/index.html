@@ -1016,56 +1016,61 @@ function App() {
 
   if (view === 'home') {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
-          <div style={{ textAlign: 'center', marginBottom: 48, position: 'relative' }}>
-            <div style={{
-              position: 'absolute', top: 0, right: 0,
-              display: 'flex', alignItems: 'center', gap: 8,
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Top bar — account info + controls. Sits in document flow so
+            it never overlaps the centered wordmark. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: 8, padding: '12px 20px',
+        }}>
+          {actor && (
+            <span title={actor.email || ''} style={{
+              fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
             }}>
-              {actor && (
-                <span title={actor.email || ''} style={{
-                  fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
-                }}>
-                  {actor.display_name || actor.email}
-                  {actor.kind === 'admin' && (
-                    <span style={{ marginLeft: 4, color: 'var(--accent)' }}>·admin</span>
-                  )}
-                </span>
+              {actor.display_name || actor.email}
+              {actor.kind === 'admin' && (
+                <span style={{ marginLeft: 4, color: 'var(--accent)' }}>·admin</span>
               )}
-              {actor && actor.kind === 'admin' && (
-                <button
-                  onClick={() => setView('admin')}
-                  title="Admin dashboard"
-                  style={{
-                    background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
-                    color: 'var(--accent)', cursor: 'pointer',
-                    fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
-                    letterSpacing: 1, fontFamily: 'var(--mono)',
-                  }}
-                >ADMIN</button>
-              )}
-              {actor && (
-                <button
-                  onClick={logout}
-                  title="Sign out"
-                  style={{
-                    background: 'none', border: '1px solid var(--border)', borderRadius: 4,
-                    color: 'var(--text-muted)', cursor: 'pointer',
-                    fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
-                    letterSpacing: 1, fontFamily: 'var(--mono)',
-                  }}
-                >SIGN OUT</button>
-              )}
-              <button
-                onClick={openSettingsPanel}
-                title="Settings"
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-muted)',
-                  cursor: 'pointer', fontSize: fs(18), padding: 4, lineHeight: 1,
-                }}
-              >&#9881;</button>
-            </div>
+            </span>
+          )}
+          {actor && actor.kind === 'admin' && (
+            <button
+              onClick={() => setView('admin')}
+              title="Admin dashboard"
+              style={{
+                background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
+                color: 'var(--accent)', cursor: 'pointer',
+                fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                letterSpacing: 1, fontFamily: 'var(--mono)',
+              }}
+            >ADMIN</button>
+          )}
+          {actor && (
+            <button
+              onClick={logout}
+              title="Sign out"
+              style={{
+                background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                color: 'var(--text-muted)', cursor: 'pointer',
+                fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                letterSpacing: 1, fontFamily: 'var(--mono)',
+              }}
+            >SIGN OUT</button>
+          )}
+          <button
+            onClick={openSettingsPanel}
+            title="Settings"
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              cursor: 'pointer', fontSize: fs(18), padding: 4, lineHeight: 1,
+            }}
+          >&#9881;</button>
+        </div>
+
+        {/* Centered card */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 560, width: '100%', padding: '0 48px 48px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
             <div style={{ fontSize: fs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
               ἜΛΕΓΧΟΣ
             </div>
@@ -1146,6 +1151,7 @@ function App() {
               {error}
             </div>
           )}
+        </div>
         </div>
       </div>
     );
