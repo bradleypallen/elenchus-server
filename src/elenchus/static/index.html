@@ -1004,6 +1004,16 @@ function App() {
   ) : null;
 
   // ── Home ──
+  // ── Admin Dashboard ──
+  if (view === 'admin') {
+    if (actor?.kind !== 'admin') {
+      // Defense in depth: non-admins shouldn't reach this; bounce home.
+      setView('home');
+      return null;
+    }
+    return <AdminDashboard fs={fs} onBack={() => setView('home')} />;
+  }
+
   if (view === 'home') {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1022,6 +1032,18 @@ function App() {
                     <span style={{ marginLeft: 4, color: 'var(--accent)' }}>·admin</span>
                   )}
                 </span>
+              )}
+              {actor && actor.kind === 'admin' && (
+                <button
+                  onClick={() => setView('admin')}
+                  title="Admin dashboard"
+                  style={{
+                    background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
+                    color: 'var(--accent)', cursor: 'pointer',
+                    fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                    letterSpacing: 1, fontFamily: 'var(--mono)',
+                  }}
+                >ADMIN</button>
               )}
               {actor && (
                 <button
@@ -1573,6 +1595,302 @@ function Message({ msg, fs }) {
             color: 'var(--respondent-text)',
           }}>{msg.content}</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin Dashboard ──
+//
+// Two-tab view for admins: Invites (issue / list / revoke) and Users
+// (list, read-only for Phase A). Mounted in App when view==='admin'.
+// Non-admins shouldn't be able to reach this (the route is hidden in
+// the home header), but the component also defends: the backend
+// returns 403 for non-admins and we surface that as an error banner.
+
+function AdminInvitesTab({ fs }) {
+  const [invites, setInvites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [form, setForm] = useState({ role: 'user', intended_email: '' });
+  const [creating, setCreating] = useState(false);
+  const [lastIssued, setLastIssued] = useState(null);
+
+  const load = async () => {
+    setLoading(true); setError(null);
+    try {
+      const data = await api('/api/admin/invites');
+      setInvites(data.invites || []);
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const issue = async () => {
+    if (!form.role || creating) return;
+    setCreating(true); setError(null);
+    try {
+      const body = { role: form.role };
+      if (form.intended_email) body.intended_email = form.intended_email;
+      const res = await api('/api/admin/invites', {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      setLastIssued(res);
+      setForm({ role: 'user', intended_email: '' });
+      await load();
+    } catch (e) { setError(e.message); }
+    setCreating(false);
+  };
+
+  const revoke = async (token) => {
+    if (!confirm('Revoke this invite? It cannot be undone.')) return;
+    try {
+      await api(`/api/admin/invites/${encodeURIComponent(token)}`, { method: 'DELETE' });
+      await load();
+    } catch (e) { setError(e.message); }
+  };
+
+  const inviteUrl = (token) => `${window.location.origin}/?token=${encodeURIComponent(token)}`;
+
+  return (
+    <div>
+      {/* Create form */}
+      <div style={{
+        marginBottom: 24, padding: 16, borderRadius: 6,
+        background: 'var(--surface)', border: '1px solid var(--border)',
+      }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
+          ISSUE INVITE
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <select
+            value={form.role}
+            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+            style={{
+              padding: '8px 10px', background: 'var(--surface2)',
+              border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)',
+            }}
+          >
+            <option value="user">user</option>
+            <option value="researcher">researcher</option>
+            <option value="judge">judge</option>
+            <option value="admin">admin</option>
+          </select>
+          <input
+            value={form.intended_email}
+            onChange={e => setForm(f => ({ ...f, intended_email: e.target.value }))}
+            placeholder="recipient email (optional)"
+            style={{
+              flex: 1, padding: '8px 10px', background: 'var(--surface2)',
+              border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={issue} disabled={creating}
+            style={{
+              padding: '8px 16px', background: 'var(--accent)',
+              border: 'none', borderRadius: 4, color: '#111',
+              fontSize: fs(11), letterSpacing: 1, fontWeight: 500,
+              cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.5 : 1,
+            }}
+          >{creating ? '…' : 'ISSUE'}</button>
+        </div>
+        {lastIssued && (
+          <div style={{
+            marginTop: 8, padding: 10, borderRadius: 4,
+            background: 'var(--surface2)', border: '1px dashed var(--commit-border)',
+            fontSize: fs(11), fontFamily: 'var(--mono)', color: 'var(--text-dim)',
+            wordBreak: 'break-all',
+          }}>
+            <div style={{ color: 'var(--commit)', fontSize: fs(10), letterSpacing: 1, marginBottom: 4 }}>
+              ISSUED — share this link with {lastIssued.intended_email || 'recipient'}:
+            </div>
+            <div>{inviteUrl(lastIssued.token)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* List */}
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        ALL INVITES ({invites.length})
+      </div>
+      {loading ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>…</div>
+      ) : invites.length === 0 ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>
+          No invites yet.
+        </div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+          <thead>
+            <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>role</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>recipient</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>status</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {invites.map(inv => {
+              const status = inv.consumed_at ? 'consumed'
+                : (inv.expires_at && new Date(inv.expires_at) < new Date()) ? 'expired'
+                : 'open';
+              const color = status === 'open' ? 'var(--commit)'
+                : status === 'consumed' ? 'var(--text-muted)'
+                : 'var(--deny)';
+              return (
+                <tr key={inv.token} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{inv.role}</td>
+                  <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>
+                    {inv.intended_email || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '8px', color, fontFamily: 'var(--sans)' }}>{status}</td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                    {status === 'open' && (
+                      <button onClick={() => revoke(inv.token)}
+                        style={{
+                          background: 'none', border: '1px solid var(--border)', borderRadius: 3,
+                          color: 'var(--deny)', cursor: 'pointer',
+                          fontSize: fs(10), padding: '2px 6px', fontFamily: 'var(--mono)',
+                          letterSpacing: 1,
+                        }}>REVOKE</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {error && (
+        <div style={{
+          marginTop: 14, padding: 10, borderRadius: 6,
+          background: '#ef444420', border: '1px solid #ef444440',
+          color: '#ef4444', fontSize: fs(11), fontFamily: 'var(--sans)',
+        }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+function AdminUsersTab({ fs }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api('/api/admin/users');
+        setUsers(data.users || []);
+      } catch (e) { setError(e.message); }
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) return <div style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>…</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        USERS ({users.length})
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+        <thead>
+          <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>kind</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>display name</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>email</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>
+                {u.kind}
+                {u.kind === 'admin' && (
+                  <span style={{ marginLeft: 4, color: 'var(--accent)' }}>★</span>
+                )}
+              </td>
+              <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{u.display_name}</td>
+              <td style={{ padding: '8px', fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+                {u.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+              </td>
+              <td style={{ padding: '8px', fontFamily: 'var(--sans)',
+                           color: u.deactivated_at ? 'var(--deny)' : 'var(--commit)' }}>
+                {u.deactivated_at ? 'deactivated' : 'active'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {error && (
+        <div style={{
+          marginTop: 14, padding: 10, borderRadius: 6,
+          background: '#ef444420', border: '1px solid #ef444440',
+          color: '#ef4444', fontSize: fs(11), fontFamily: 'var(--sans)',
+        }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+function AdminDashboard({ fs, onBack }) {
+  const [tab, setTab] = useState('invites');
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{
+        padding: '10px 20px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)',
+                         cursor: 'pointer' }} onClick={onBack}>Elenchus</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>
+            Admin dashboard
+          </span>
+        </div>
+        <button
+          onClick={onBack}
+          title="Back to home"
+          style={{
+            background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer',
+            fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+            letterSpacing: 1, fontFamily: 'var(--mono)',
+          }}
+        >← BACK</button>
+      </div>
+      {/* Tabs */}
+      <div style={{ padding: '12px 20px', display: 'flex', gap: 4,
+                    borderBottom: '1px solid var(--border)' }}>
+        {[
+          { id: 'invites', label: 'Invites' },
+          { id: 'users', label: 'Users' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{
+              background: tab === t.id ? 'var(--surface)' : 'none',
+              border: '1px solid', borderColor: tab === t.id ? 'var(--border-focus)' : 'transparent',
+              borderRadius: 4, color: tab === t.id ? 'var(--text)' : 'var(--text-muted)',
+              cursor: 'pointer', fontSize: fs(11), padding: '4px 12px',
+              letterSpacing: 1, fontFamily: 'var(--mono)',
+            }}
+          >{t.label.toUpperCase()}</button>
+        ))}
+      </div>
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div style={{ maxWidth: 880, margin: '0 auto' }}>
+          {tab === 'invites' && <AdminInvitesTab fs={fs} />}
+          {tab === 'users' && <AdminUsersTab fs={fs} />}
+        </div>
       </div>
     </div>
   );
