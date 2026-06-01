@@ -34,6 +34,31 @@ pip install -e ".[dev]"
 
 ## Usage
 
+### First-time setup (multi-user mode)
+
+Elenchus is a multi-user platform. Before the first sign-in you create
+an admin actor; everyone else joins by accepting an invite that admin
+issues.
+
+```bash
+# 1. Bootstrap the admin.
+elenchus admin create --email admin@local --name "Admin"
+# (prompts for a password, or reads ELENCHUS_ADMIN_PASSWORD)
+
+# 2. Start the server.
+elenchus
+
+# 3. Open the browser and sign in as the admin.
+# 4. In the admin dashboard, issue an invite to each user.
+#    The dashboard renders the full ?token=... URL — share that link.
+# 5. Users click the link, choose a display name and password, and land
+#    in the app.
+```
+
+Upgrading from a single-user install? Run `elenchus migrate-legacy` once
+to register every existing `./dialectics/*.duckdb` under the admin's
+account and relocate it into the per-actor directory layout. Idempotent.
+
 ### Web interface
 
 ```bash
@@ -44,12 +69,13 @@ Options: `--port`, `--model`, `--api-key`, `--base-url`, `--protocol`, `--data-d
 
 Open the URL shown in the terminal (default `http://localhost:8741`). The web interface provides:
 
-- Creating and resuming dialectics
+- Creating and resuming dialectics scoped to the current user
 - Natural language dialogue with the LLM opponent
 - Live bilateral state display [C : D]
 - Tension resolution (accept/contest)
 - Material implications accumulating in I
 - Derivability queries against the material base
+- An admin-only dashboard for issuing invites and managing users
 
 ### Command line
 
@@ -66,33 +92,46 @@ elenchus-cli --db my_inquiry.duckdb
 
 ### API
 
+All `/api/dialectics/*` and `/api/admin/*` routes require an
+authenticated session. The flow is: POST to `/api/auth/login` to get
+a session cookie, then send subsequent requests with that cookie.
+
 ```bash
-# Create a dialectic
-curl -X POST http://localhost:8741/api/dialectics \
+# 1. Log in (saves the cookie to ./cookies.txt).
+curl -c cookies.txt -X POST http://localhost:8741/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "..."}'
+
+# 2. Create a dialectic.
+curl -b cookies.txt -X POST http://localhost:8741/api/dialectics \
   -H "Content-Type: application/json" \
   -d '{"name": "prov-o", "topic": "PROV-O Starting Point Terms"}'
 
-# Send a message
-curl -X POST http://localhost:8741/api/dialectics/prov-o/message \
+# 3. Send a message.
+curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/message \
   -H "Content-Type: application/json" \
   -d '{"message": "Entity is a thing with fixed aspects."}'
 
-# Get state
-curl http://localhost:8741/api/dialectics/prov-o
+# 4. Get state.
+curl -b cookies.txt http://localhost:8741/api/dialectics/prov-o
 
-# Accept a tension
-curl -X POST http://localhost:8741/api/dialectics/prov-o/tensions/1 \
+# 5. Accept a tension.
+curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/tensions/1 \
   -H "Content-Type: application/json" \
   -d '{"action": "accept"}'
 
-# Check derivability
-curl -X POST http://localhost:8741/api/dialectics/prov-o/derive \
+# 6. Check derivability.
+curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/derive \
   -H "Content-Type: application/json" \
   -d '{"gamma": ["entity_fixed_aspects"], "delta": ["individuation"]}'
 
-# List all dialectics
-curl http://localhost:8741/api/dialectics
+# 7. List your dialectics (admins see every base in the platform).
+curl -b cookies.txt http://localhost:8741/api/dialectics
 ```
+
+Admin-only routes: `/api/admin/invites`, `/api/admin/users`,
+`/api/admin/users/{id}/{deactivate,reactivate}`, `/api/admin/backup`,
+`/api/admin/audit`. Non-admins get a 403.
 
 ## Architecture
 
@@ -118,15 +157,45 @@ src/elenchus/
 
 ## Persistence
 
-Each dialectic is a single `.duckdb` file in the `dialectics/` directory. The file contains:
+The data directory (`$ELENCHUS_DATA`, default `./dialectics/`) holds:
 
-- The atomic language L_B
-- All assessments (the base consequence relation |∼_B)
-- The bilateral position [C : D]
-- Open and resolved tensions
-- Conversation history (for multi-turn oracle context)
+- `platform.duckdb` — actors, auth sessions, invites, magic links, base
+  ownership, platform settings. Held open by the server for its
+  lifetime.
+- `bases/{actor_id}/{base_name}.duckdb` — one file per dialectic, owned
+  by `actor_id`. Each file contains the atomic language L_B, all
+  assessments (the base consequence relation |∼_B), the bilateral
+  position [C : D], open and resolved tensions, and conversation
+  history.
+- `backups/elenchus-*.tar.gz` — output of `scripts/backup.py` /
+  `POST /api/admin/backup` (see *Operations* below).
 
-To back up a dialectic, copy the `.duckdb` file. To share one, send the file. To resume, just point the server at the directory containing it.
+Schema versions live in each file's `meta.schema_version`. The
+migration runner brings every file forward at open time; see
+[`src/elenchus/migrations/README.md`](src/elenchus/migrations/README.md)
+for how to add a new migration.
+
+## Operations
+
+```bash
+# Audit drift between platform.duckdb and the filesystem.
+elenchus audit
+
+# Run a one-shot backup (everything → backups/elenchus-YYYYmmdd-HHMMSS.tar.gz).
+# Server must be running; this hits POST /api/admin/backup.
+python scripts/backup.py --email admin@local --password ...
+
+# Cron entry (3 AM daily, keep latest 14 archives):
+# 0 3 * * * ELENCHUS_BACKUP_EMAIL=admin@local ELENCHUS_BACKUP_PASSWORD=... \
+#           python /opt/elenchus/scripts/backup.py >> /var/log/elenchus-backup.log 2>&1
+```
+
+DuckDB is a single-writer-per-file store, so the production server
+runs as **one process**; horizontal scaling means migrating the
+platform DB to Postgres (the `db/registry.py` boundary is shaped to
+absorb that swap without touching route handlers). See
+[`design-notes/architecture-vision.md`](design-notes/architecture-vision.md)
+for the larger framing.
 
 ## Configuration
 
@@ -138,6 +207,11 @@ Environment variables:
 - `ELENCHUS_PROTOCOL`: API protocol — `anthropic` or `openai` (auto-detected from base URL)
 - `ELENCHUS_DATA`: Directory for `.duckdb` files (default: `./dialectics`)
 - `PORT`: Server port (default: `8741`)
+- `SESSION_COOKIE_SECURE`: Set to `true` in production behind HTTPS so the
+  auth cookie carries the `Secure` flag.
+- `BCRYPT_ROUNDS`: bcrypt cost factor for password hashing (default 12).
+  Tests override this to 4 to keep the suite fast — do not lower in
+  production.
 
 ### Using OpenRouter
 

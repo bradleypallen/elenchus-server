@@ -12,11 +12,20 @@ Elenchus is a dialectical knowledge base construction system implementing the El
 # Install (editable, for development)
 pip install -e ".[dev]"
 
+# Bootstrap the first admin (one-time per install)
+elenchus admin create --email admin@local --name "Admin"
+
 # Run web server (serves API + static frontend)
 elenchus                            # or: uvicorn elenchus.server:app --reload
-elenchus --port 9000 --model claude-opus-4-6
+elenchus serve --port 9000 --model claude-opus-4-6
 
-# Run CLI REPL (in-memory)
+# Migrate legacy single-user dialectics into the multi-user layout
+elenchus migrate-legacy [--admin-email admin@local] [--create-admin]
+
+# Cross-check platform DB ↔ filesystem
+elenchus audit
+
+# Run CLI REPL (in-memory) — bypasses platform DB
 elenchus-cli --name "Topic"
 
 # Run CLI REPL (persistent)
@@ -42,24 +51,31 @@ pytest -v
 - `ELENCHUS_PROTOCOL` — API protocol: `anthropic` or `openai` (auto-detected from base URL)
 - `ELENCHUS_DATA` — directory for `.duckdb` files (default: `./dialectics`)
 - `PORT` — server port (default: `8741`)
+- `SESSION_COOKIE_SECURE` — set to `true` behind HTTPS in production
+- `BCRYPT_ROUNDS` — bcrypt cost factor (default 12; tests use 4 for speed)
+- `ELENCHUS_ADMIN_PASSWORD` — non-interactive password for `admin create`
 
 ## Architecture
 
 ```text
 src/elenchus/
-├── server.py ──→ opponent.py ──→ LLM API (Anthropic / OpenAI-compatible)
+├── server.py ──→ auth.py / invites.py        (Phase A platform layer)
 │       ↓
+│   db/registry.py  ──→  platform.duckdb       (actors, sessions, bases, invites)
+│       ↓                bases/{actor_id}/*.duckdb
 │   dialectical_state.py
 │       ↓
-│   material_base.py
+│   material_base.py ──→ opponent.py ──→ LLM API
 │       ↓
-│   dialectics/*.duckdb
-├── static/index.html
-├── cli.py
+│   migrations/{platform,base}/*.sql
+├── audit.py · backup.py · legacy.py           (operational tools)
+├── email_service.py                            (invites + magic links)
+├── static/index.html                           (React 18 + Babel, single file)
+├── cli.py                                      (CLI REPL, bypasses platform DB)
 └── pdf_report.py
 ```
 
-**Five modules in `src/elenchus/`, layered bottom-up:**
+**Layered bottom-up:**
 
 1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Derivability is delegated to pyNMMS (`NMMSReasoner`), which implements correct nonmonotonic proof search (no Weakening, no Cut) per Hlobil & Brandom 2025. An in-memory pyNMMS `MaterialBase` mirrors the DuckDB state, synced incrementally on `accept()`/`add_atoms()` and rebuilt from `base_sequents` after `reject()`. Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to DuckDB strings.
 
@@ -67,13 +83,21 @@ src/elenchus/
 
 3. **opponent.py** — The LLM oracle. Sends full formal state + windowed conversation history to the LLM API (Anthropic or OpenAI-compatible via `_chat()` abstraction), expects structured JSON with `speech_acts`, `new_tensions`, and `response`. Applies state transitions via `_apply()`. Protocol auto-detected from `base_url` or set explicitly. Periodically generates conversation summaries (every 20 stored messages) to keep the context window manageable. Also generates analytical summaries for PDF reports via `generate_summary()`.
 
-4. **server.py** — FastAPI app. Manages a cache of open `DialecticalState` instances (`_states` dict). REST API under `/api/dialectics/`. Serves `static/index.html` at root.
+4. **db/registry.py** — Process-wide owner of all DuckDB connections. Holds the platform DB open for the lifetime of the server; per-base files are loaded lazily via a bounded LRU (`BaseHandle` per name, each with an `asyncio.Lock` for write serialization). `db_path(name)` resolves through `platform.bases` to `bases/{owner_id}/{name}.duckdb`. Single-writer-per-file is a hard constraint of DuckDB; the server runs as one process. Migration to Postgres swaps this module out.
 
-5. **pdf_report.py** — Generates PDF reports of dialectics using fpdf2. Includes summary, bilateral position, tensions/implications, material base report, and conversation transcript. Converts Markdown formatting to HTML for rendering via `_md_to_html()`.
+5. **auth.py / invites.py / email_service.py** — Phase A platform layer. bcrypt password hashing, session tokens (`secrets.token_urlsafe`), magic-link login, invite issuance/consumption. `current_actor` and `require_admin` FastAPI dependencies gate every protected route. `EmailService` has Console (logs) and SMTP backends.
 
-**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). Communicates with the server via fetch calls to the API. Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
+6. **server.py** — FastAPI app. Routes under `/api/auth`, `/api/admin`, `/api/dialectics`. Every `/api/dialectics/{name}/*` resolves through `_authorize_and_get_state(name, actor)`, which returns 404 (not 403) for non-owners to avoid leaking that a name exists.
 
-**cli.py** — Standalone CLI REPL. Same `Opponent` + `DialecticalState` stack, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
+7. **audit.py / backup.py / legacy.py** — Operational tooling. `backup.py` uses DuckDB `EXPORT DATABASE` under the platform lock and per-base MVCC. `audit.py` reports drift between platform DB, the filesystem, and per-base actor refs. `legacy.py` powers `elenchus migrate-legacy`.
+
+8. **migrations/runner.py + migrations/{platform,base}/*.sql** — Numbered, forward-only SQL migrations with `-- version: N` headers. Platform migrations run at FastAPI lifespan startup; per-base migrations run on `MaterialBase.open` / `MaterialBase.create`. See `migrations/README.md` for the workflow.
+
+9. **pdf_report.py** — Generates PDF reports of dialectics using fpdf2. Includes summary, bilateral position, tensions/implications, material base report, and conversation transcript. Converts Markdown formatting to HTML for rendering via `_md_to_html()`.
+
+**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a two-tab dashboard (Invites + Users). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
+
+**cli.py** — Standalone CLI REPL. Bypasses the platform layer entirely: same `Opponent` + `DialecticalState` stack, no auth, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
 
 ## Key Domain Concepts
 
@@ -103,8 +127,18 @@ The opponent system prompt in `opponent.py` includes:
 
 ## Persistence
 
-Each dialectic is a single `.duckdb` file in `dialectics/`. DuckDB tables: `meta`, `atoms`, `assessments`, `positions`, `tensions`, `conversation`. Sets are serialized as sorted comma-separated strings. The `base_sequents` view computes the active consequence relation from assessments.
+The data directory (`$ELENCHUS_DATA`, default `./dialectics/`) holds:
+
+- `platform.duckdb` — `actors`, `auth_sessions`, `magic_links`, `invites`, `bases`, `sessions`, `platform_settings`, `meta` (schema version). Held open by the registry for the server's lifetime.
+- `bases/{actor_id}/{name}.duckdb` — one per dialectic, owned by `actor_id`. Tables: `meta`, `atoms`, `assessments`, `positions`, `tensions`, `conversation`, `cases`. Sets are serialized as sorted comma-separated strings (with `\x1e` for new entries). The `base_sequents` view computes the active consequence relation from `current_assessments` (which filters on `status='active'`).
+- `backups/elenchus-*.tar.gz` — `EXPORT DATABASE` snapshots, one tar per run.
+
+Cross-DB integrity (per-base `contributor_id` / `actor_id` referencing `platform.actors`) is enforced at the application layer; DuckDB does not honor FKs across files. `elenchus audit` reports drift.
 
 ## Settings
 
 LLM settings (model, API key, base URL) can be configured at runtime via `PUT /api/settings` or the settings modal in the UI. Non-secret settings (model, base_url) are persisted in localStorage and re-synced on server restart.
+
+## Adding a Migration
+
+Numbered SQL files under `src/elenchus/migrations/{platform,base}/`. Each must begin with `-- version: N`. The runner applies any version strictly greater than the current `meta.schema_version`, each in its own transaction. Forward-only — restore from backup to roll back. Use `ALTER TABLE ... ADD COLUMN ... DEFAULT ...` for backwards-compatible additions; the default backfills existing rows. After adding a migration, update any positional `INSERT INTO table VALUES (...)` to be column-explicit (otherwise the now-mismatched value count will break the route). Tests in `tests/test_migrations.py` lock in the schema's shape per version.
