@@ -209,7 +209,9 @@ def format_report(report: dict) -> str:
     section(
         "bases whose file owner directory != bases.owner_id",
         [r for r in report["registered_with_file"] if not r["path_owner_matches_row"]],
-        lambda r: f"base={r['id']!r}: row owner_id={r['owner_id']} but file under owner_id={r['file_owner_id']}",
+        lambda r: (
+            f"base={r['id']!r}: row owner_id={r['owner_id']} but file under owner_id={r['file_owner_id']}"
+        ),
     )
     section(
         "dangling actor refs (cross-DB drift)",
