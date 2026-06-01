@@ -24,6 +24,7 @@ connection use or LLM calls.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -51,14 +52,32 @@ RLIMIT_WARN_THRESHOLD = 256
 class BaseHandle:
     """Wraps a per-base DialecticalState with metadata for the registry.
 
-    The `lock` field is populated when per-base async locking lands (D5);
-    it remains None in the Week 1 D1-2 scaffold so the structure is
-    visible but no concurrency contract is in force yet.
+    The `_lock` is created lazily on first access via the `lock`
+    property. `asyncio.Lock` must be instantiated inside a running event
+    loop, but a BaseHandle may be constructed either in async context
+    (from a route handler) or sync (from a CLI / test setup). Lazy
+    creation lets the same handle work in both worlds.
+
+    Write contract for callers (route handlers): acquire `handle.lock`
+    around any DuckDB *mutation* on the wrapped state. Reads (computing
+    formal_state, fetching conversation) do not require the lock; they
+    rely on DuckDB MVCC for consistent snapshots. The lock should be
+    *released* across the LLM call so concurrent tabs don't freeze each
+    other for the 5–30 s LLM wait — see the strict-serialize-default-off
+    discussion in ROADMAP.md.
     """
 
     state: DialecticalState
     last_used: float = field(default_factory=time.monotonic)
-    # lock: asyncio.Lock | None — added in D5
+    _lock: asyncio.Lock | None = field(default=None, repr=False)
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Lazy-initialized per-base async lock. Created on first
+        access; safe to call from any async context."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def touch(self) -> None:
         """Mark this handle as recently used (for LRU ordering)."""
@@ -121,6 +140,20 @@ class DBRegistry:
         return os.path.join(self._data_dir, f"{safe}.duckdb")
 
     # ── Handle access ──
+
+    def get_handle(self, name: str) -> BaseHandle:
+        """Return the `BaseHandle` for `name`, opening it from disk on
+        first access. Same semantics as `get()` but returns the
+        full handle (including the per-base async lock) rather than
+        just the underlying state.
+        """
+        # Reuse `get()` to do the open/cache work; then look up the handle.
+        self.get(name)  # ensures it's loaded
+        with self._registry_lock:
+            handle = self._handles[name]
+            handle.touch()
+            self._handles.move_to_end(name)
+            return handle
 
     def get(self, name: str) -> DialecticalState:
         """Return the cached DialecticalState for `name`, opening it from

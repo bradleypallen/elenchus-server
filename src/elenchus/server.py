@@ -207,16 +207,32 @@ async def send_message(name: str, req: MessageRequest):
 
     Async because the LLM call dominates this route (5–30 s). Using
     `await opponent.async_respond(...)` frees the event loop to service
-    other requests during the wait.
+    other requests during the wait. The per-base async lock from the
+    DBRegistry is passed through so concurrent writers on the same base
+    serialize at the apply phase only — the LLM call itself runs without
+    the lock so concurrent tabs don't freeze each other.
     """
-    state = _get_state(name)
+    # Use the registry directly so we can fetch the handle (for its lock).
     try:
-        result = await opponent.async_respond(req.message, state, action_context=req.context)
+        handle = get_registry().get_handle(name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, f"Dialectic '{name}' not found") from e
+    except ValueError as e:
+        logger.error("Corrupt dialectic file for '%s': %s", name, e)
+        raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
+
+    try:
+        result = await opponent.async_respond(
+            req.message,
+            handle.state,
+            action_context=req.context,
+            lock=handle.lock,
+        )
         return {
             "response": result.get("response", ""),
             "speech_acts": result.get("speech_acts", []),
             "new_tensions": result.get("new_tensions", []),
-            "state": state.to_dict(),
+            "state": handle.state.to_dict(),
         }
     except Exception as e:
         raise HTTPException(500, f"Opponent error: {str(e)}") from e

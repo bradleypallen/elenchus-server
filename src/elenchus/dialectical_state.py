@@ -8,8 +8,6 @@ The mapping to material base (Definition 7):
     |∼_B = I ∪ Cont
 """
 
-import duckdb
-
 from .material_base import MaterialBase, set_to_str, str_to_set
 
 
@@ -75,30 +73,23 @@ class DialecticalState:
         return [r[0] for r in rows]
 
     def commit(self, prop: str):
+        # INSERT OR REPLACE keeps the upsert semantics of the original
+        # try/except pattern (a re-committed atom refreshes its row) while
+        # remaining transaction-safe — a ConstraintException inside an
+        # outer transaction would abort the transaction.
         self.base.add_atoms({prop}, contributor="respondent")
-        try:
-            self.base.con.execute(
-                "INSERT INTO positions VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)", [prop]
-            )
-        except duckdb.ConstraintException:
-            self.base.con.execute(
-                "UPDATE positions SET status='open', side='C', "
-                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?",
-                [prop],
-            )
+        self.base.con.execute(
+            "INSERT OR REPLACE INTO positions VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)",
+            [prop],
+        )
 
     def deny(self, prop: str):
+        # See `commit()` for the rationale on INSERT OR REPLACE.
         self.base.add_atoms({prop}, contributor="respondent")
-        try:
-            self.base.con.execute(
-                "INSERT INTO positions VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)", [prop]
-            )
-        except duckdb.ConstraintException:
-            self.base.con.execute(
-                "UPDATE positions SET status='open', side='D', "
-                "introduced_at=CURRENT_TIMESTAMP WHERE atom=?",
-                [prop],
-            )
+        self.base.con.execute(
+            "INSERT OR REPLACE INTO positions VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)",
+            [prop],
+        )
 
     def retract_prop(self, prop: str) -> bool:
         n = self.base.con.execute(
@@ -233,10 +224,9 @@ class DialecticalState:
 
     def set_summary(self, summary: str):
         """Update the running summary."""
-        try:
-            self.base.con.execute("INSERT INTO meta VALUES ('summary', ?)", [summary])
-        except duckdb.ConstraintException:
-            self.base.con.execute("UPDATE meta SET value=? WHERE key='summary'", [summary])
+        # INSERT OR REPLACE is transaction-safe; the original try/except
+        # pattern would abort an outer transaction on conflict.
+        self.base.con.execute("INSERT OR REPLACE INTO meta VALUES ('summary', ?)", [summary])
 
     # ── Derivability ──
 

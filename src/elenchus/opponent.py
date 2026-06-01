@@ -7,6 +7,7 @@ parses structured responses, and applies state transitions per Figure 4.
 Supports Anthropic directly and any OpenAI-compatible endpoint (e.g. OpenRouter).
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -397,33 +398,63 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         state: DialecticalState,
         context_turns: int = 6,
         action_context: dict | None = None,
+        lock: asyncio.Lock | None = None,
     ) -> dict:
         """Async entry point. Used by FastAPI route handlers so the event
         loop can service other requests during the 5–30 s LLM call.
 
-        Mirrors `respond` exactly except that `_async_chat` is awaited
-        instead of `_chat` being called synchronously. State mutations
-        (conversation insert, _apply) remain synchronous against DuckDB
-        — they're fast (≪ 100 ms each) and per-base serialization lands
-        in Week 1 D5 via the per-base async lock.
+        Concurrency model:
+        - Reading state to build the request runs without a lock —
+          DuckDB MVCC gives a consistent snapshot for reads.
+        - The LLM call is awaited with no lock held — concurrent tabs
+          on the same base can have overlapping LLM calls.
+        - State mutations (conversation insert + `_apply`) run under
+          the per-base lock when one is passed, wrapped in an explicit
+          transaction. The lock serializes apply blocks across
+          concurrent callers on the same base; the transaction ensures
+          atomicity within an apply.
+
+        Passing `lock=None` (the default) skips lock acquisition —
+        used by tests and any caller that has already arranged
+        serialization. Route handlers pass `handle.lock` from the
+        DBRegistry.
         """
         messages = self._build_request_messages(user_message, state, context_turns, action_context)
         raw_text = await self._async_chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
-        return self._record_and_apply(user_message, raw_text, state)
+        if lock is None:
+            return self._record_and_apply(user_message, raw_text, state)
+        async with lock:
+            return self._record_and_apply(user_message, raw_text, state)
 
     def _record_and_apply(self, user_message: str, raw_text: str, state: DialecticalState) -> dict:
         """Common post-LLM bookkeeping: store conversation, parse, apply
-        state transitions, periodically update the rolling summary."""
-        state.add_conversation("user", user_message)
-        state.add_conversation("assistant", raw_text)
+        state transitions, periodically update the rolling summary.
 
-        # Periodically update the summary (every 20 stored messages).
+        The apply phase runs inside an explicit DuckDB transaction so a
+        crash or exception leaves the base either fully pre-message or
+        fully post-message — never half-applied. The summary update
+        runs outside the transaction (best-effort; shouldn't roll back
+        the user's turn).
+        """
+        con = state.base.con
+        con.execute("BEGIN")
+        try:
+            state.add_conversation("user", user_message)
+            state.add_conversation("assistant", raw_text)
+            parsed = self._parse_response(raw_text)
+            self._apply(parsed, state)
+            con.execute("COMMIT")
+        except Exception:
+            try:
+                con.execute("ROLLBACK")
+            except Exception:
+                logger.exception("Rollback failed in _record_and_apply")
+            raise
+
         total_turns = len(state.get_conversation())
         if total_turns > 0 and total_turns % 20 == 0:
             self._update_summary(state)
 
-        parsed = self._parse_response(raw_text)
-        self._apply(parsed, state)
         return parsed
 
     def generate_summary(self, state: DialecticalState) -> str:

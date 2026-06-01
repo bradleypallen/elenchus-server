@@ -11,7 +11,6 @@ schema is defined in `migrations/base/*.sql`; calling
 schema version idempotently.
 """
 
-import contextlib
 import logging
 
 import duckdb
@@ -101,12 +100,15 @@ class MaterialBase:
         return frozenset(r[0] for r in rows)
 
     def add_atoms(self, atoms, contributor="system", description=""):
+        # INSERT OR IGNORE is idempotent and (unlike try/except on
+        # ConstraintException) does not abort an outer transaction when
+        # the atom already exists. This matters when add_atoms is
+        # called from inside `Opponent._record_and_apply`'s transaction.
         for a in atoms:
-            with contextlib.suppress(duckdb.ConstraintException):
-                self.con.execute(
-                    "INSERT INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
-                    [a, contributor, description],
-                )
+            self.con.execute(
+                "INSERT OR IGNORE INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
+                [a, contributor, description],
+            )
             if self._nmms_base is not None:
                 self._nmms_base.add_atom(a)
 
