@@ -718,15 +718,34 @@ if os.path.exists(static_dir):
 
 @app.get("/sw.js")
 def service_worker():
+    """Serve the service worker with no-cache headers.
+
+    Browsers cache `sw.js` in the regular HTTP cache; if it's served
+    with default heuristic caching, a deployed SW change can take up
+    to 24 hours to propagate. `Cache-Control: no-cache` makes the
+    browser revalidate every load, so a new SW takes effect on the
+    next page visit. The SW itself uses its `CACHE_NAME` versioning
+    to invalidate cached *assets* — that part has always worked; this
+    just ensures the SW file *replacing* the old SW is fetched
+    promptly."""
     sw_path = os.path.join(static_dir, "sw.js")
-    return FileResponse(sw_path, media_type="application/javascript")
+    return FileResponse(
+        sw_path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/")
 def index():
+    """Serve index.html with no-cache headers for the same reason as
+    sw.js: shell HTML caching delays auth / layout changes."""
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        return FileResponse(
+            index_path,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     return HTMLResponse("<h1>Elenchus</h1><p>Place index.html in ./static/</p>")
 
 
