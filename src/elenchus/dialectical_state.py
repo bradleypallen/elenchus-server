@@ -168,8 +168,21 @@ class DialecticalState:
         gamma = list(str_to_set(row[0]))
         delta = list(str_to_set(row[1]))
         reason = row[2]
+        # Provenance: this assertion exists because the respondent accepted
+        # tension #tid. Downstream tooling can use `earned_via_tension` to
+        # reconstruct the dialectical history of each rule.
+        provenance = {
+            "source": "tension",
+            "earned_via_tension": tid,
+            "reason": reason,
+        }
         self.base.accept(
-            set(gamma), set(delta), "respondent", f"Tension #{tid}: {reason}", domain="tension"
+            set(gamma),
+            set(delta),
+            "respondent",
+            f"Tension #{tid}: {reason}",
+            domain="tension",
+            provenance=provenance,
         )
         self.base.con.execute(
             "UPDATE tensions SET status='accepted', resolved_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -186,14 +199,100 @@ class DialecticalState:
         ).fetchall()
         return len(n) > 0
 
+    # ── Phase B: direct theory articulation ──
+    #
+    # `assert_implication`, `introduce_bearer`, and `retract_implication`
+    # let the respondent articulate theory directly — bypassing the
+    # tension-resolution loop — for the cases where the respondent
+    # *already knows* what rules and vocabulary they want. The opponent
+    # routes natural-language phrasings into these via the
+    # ASSERT_IMPLICATION / INTRODUCE_BEARER / RETRACT_IMPLICATION speech
+    # acts (see opponent.py).
+
+    def assert_implication(
+        self,
+        gamma: list,
+        delta: list,
+        reason: str = "",
+        provenance: dict | None = None,
+    ) -> int:
+        """Directly assert `{gamma} |~ {delta}` as a holding sequent.
+
+        Ensures every atom referenced exists in L_B (adds them with
+        contributor='respondent' if not), then inserts a 'holds'
+        assessment with `domain='asserted'`. Returns the new
+        assessments.id so the caller (or a later RETRACT_IMPLICATION)
+        can target it.
+        """
+        gamma_set = set(gamma)
+        delta_set = set(delta)
+        for a in gamma_set | delta_set:
+            self.base.add_atoms({a}, contributor="respondent")
+
+        prov = {"source": "asserted", **(provenance or {})}
+        if reason and "reason" not in prov:
+            prov["reason"] = reason
+
+        self.base.accept(
+            gamma_set,
+            delta_set,
+            "respondent",
+            reason,
+            domain="asserted",
+            provenance=prov,
+        )
+        # Recover the id of the row we just inserted so the caller can
+        # log it / retract it later. Latest 'holds' row from this
+        # respondent matching the same premises/conclusions/domain.
+        row = self.base.con.execute(
+            "SELECT id FROM assessments "
+            "WHERE contributor='respondent' AND domain='asserted' "
+            "AND premises=? AND conclusions=? "
+            "ORDER BY assessed_at DESC, id DESC LIMIT 1",
+            [set_to_str(gamma_set), set_to_str(delta_set)],
+        ).fetchone()
+        return int(row[0]) if row else -1
+
+    def introduce_bearer(self, prop: str, description: str = "") -> None:
+        """Add `prop` to L_B without committing or denying it.
+
+        Vocabulary-only contribution: the atom becomes part of the
+        atomic language so future tensions and assertions can reference
+        it, but the bilateral position [C : D] is untouched. Useful when
+        the respondent wants to name a concept before deciding whether
+        they endorse it.
+        """
+        if not prop:
+            return
+        self.base.add_atoms({prop}, contributor="respondent", description=description)
+
+    def retract_implication(self, implication_id: int) -> bool:
+        """Retract a previously-asserted (or tension-derived) implication.
+
+        Marks the underlying assessments row `status='retracted'`. The
+        `current_assessments` view filters on `status='active'`, so the
+        rule stops contributing to derivability immediately. Returns
+        True if a row was retracted, False otherwise.
+        """
+        return self.base.retract_assessment(implication_id)
+
     # ── Material implications I ──
 
     @property
     def I(self) -> list:
+        """All active material implications attributed to the respondent.
+
+        Includes both `domain='tension'` (earned via tension acceptance)
+        and `domain='asserted'` (Phase B direct articulation). Retracted
+        rows are filtered out via `status='active'`. The `domain` field
+        is exposed so the UI / report can distinguish tension-earned
+        rules from directly-asserted ones.
+        """
         rows = self.base.con.execute(
-            "SELECT rowid, premises, conclusions, reason FROM assessments "
-            "WHERE contributor='respondent' AND domain='tension' "
-            "AND judgment='holds' ORDER BY assessed_at"
+            "SELECT id, premises, conclusions, reason, domain FROM assessments "
+            "WHERE contributor='respondent' AND domain IN ('tension','asserted') "
+            "AND judgment='holds' AND status='active' "
+            "ORDER BY assessed_at"
         ).fetchall()
         return [
             {
@@ -201,6 +300,7 @@ class DialecticalState:
                 "gamma": list(str_to_set(r[1])),
                 "delta": list(str_to_set(r[2])),
                 "reason": r[3],
+                "domain": r[4],
             }
             for r in rows
         ]

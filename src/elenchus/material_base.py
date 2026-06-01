@@ -11,6 +11,7 @@ schema is defined in `migrations/base/*.sql`; calling
 schema version idempotently.
 """
 
+import json
 import logging
 
 import duckdb
@@ -114,23 +115,71 @@ class MaterialBase:
             if self._nmms_base is not None:
                 self._nmms_base.add_atom(a)
 
-    def accept(self, premises, conclusions, contributor, reason="", domain=""):
+    def accept(self, premises, conclusions, contributor, reason="", domain="", provenance=None):
+        """Insert a 'holds' assessment for `{premises} |~ {conclusions}`.
+
+        `provenance` is an optional dict (JSON-serialized to the
+        `provenance` column) recording why this assertion exists —
+        typical shape: `{source, session_id, case_id, turn, reason,
+        earned_via_tension?}`. Defaults to `{}` so the column stays
+        non-null and queryable.
+        """
+        prov_json = json.dumps(provenance or {})
         self.con.execute(
             "INSERT INTO assessments (premises, conclusions, judgment, "
-            "contributor, reason, domain) VALUES (?,?,'holds',?,?,?)",
-            [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
+            "contributor, reason, domain, provenance) "
+            "VALUES (?,?,'holds',?,?,?,?)",
+            [
+                set_to_str(premises),
+                set_to_str(conclusions),
+                contributor,
+                reason,
+                domain,
+                prov_json,
+            ],
         )
         if self._nmms_base is not None:
             self._nmms_base.add_consequence(frozenset(premises), frozenset(conclusions))
             self._reasoner = None  # rebuild reasoner with updated base
 
-    def reject(self, premises, conclusions, contributor, reason="", domain=""):
+    def reject(self, premises, conclusions, contributor, reason="", domain="", provenance=None):
+        """Insert a 'rejected' assessment. See `accept` for the
+        `provenance` parameter."""
+        prov_json = json.dumps(provenance or {})
         self.con.execute(
             "INSERT INTO assessments (premises, conclusions, judgment, "
-            "contributor, reason, domain) VALUES (?,?,'rejected',?,?,?)",
-            [set_to_str(premises), set_to_str(conclusions), contributor, reason, domain],
+            "contributor, reason, domain, provenance) "
+            "VALUES (?,?,'rejected',?,?,?,?)",
+            [
+                set_to_str(premises),
+                set_to_str(conclusions),
+                contributor,
+                reason,
+                domain,
+                prov_json,
+            ],
         )
         self._invalidate_reasoner()  # full rebuild needed — most-recent-wins logic
+
+    def retract_assessment(self, assessment_id: int) -> bool:
+        """Mark an existing assessment row as retracted (status='retracted').
+
+        The `current_assessments` view filters on `status='active'`, so a
+        retracted row stops contributing to `base_sequents` immediately.
+        Returns True if a row was updated, False if no active row with
+        that id existed.
+        """
+        rows = self.con.execute(
+            "UPDATE assessments SET status='retracted' "
+            "WHERE id = ? AND status = 'active' RETURNING id",
+            [assessment_id],
+        ).fetchall()
+        if rows:
+            # Reasoner cache depends on the (now-changed) base; rebuild
+            # next derivability check.
+            self._invalidate_reasoner()
+            return True
+        return False
 
     # ── pyNMMS reasoner (in-memory mirror of DuckDB base) ──
 

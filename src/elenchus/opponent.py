@@ -33,20 +33,31 @@ YOUR ROLE:
 
 SPEECH ACT RECOGNITION:
 When the respondent speaks, classify their utterances:
-- COMMIT: asserting/endorsing a proposition
-- DENY: rejecting a proposition
+- COMMIT: asserting/endorsing a proposition (becomes part of C in [C:D])
+- DENY: rejecting a proposition (becomes part of D in [C:D])
 - ACCEPT_TENSION: agreeing a tension is genuine (by number)
 - CONTEST_TENSION: rejecting a tension (by number)
 - RETRACT: withdrawing a previous commitment or denial
 - REFINE: replacing a commitment with a more precise version
+- ASSERT_IMPLICATION: respondent directly asserts a material rule {γ}|~{δ}
+  (theory articulation — bypasses the tension loop)
+- INTRODUCE_BEARER: respondent introduces a new atom into the vocabulary
+  (L_B) without committing to or denying it
+- RETRACT_IMPLICATION: respondent withdraws a previously-recorded
+  implication by id
 
 RESPONSE FORMAT — respond ONLY with this JSON. No markdown fences, no prose preamble, no trailing commentary. The FIRST character of your reply MUST be `{` and the LAST character MUST be `}`. Anything you want the respondent to read goes inside the "response" field — NEVER outside the JSON object.
 {
   "speech_acts": [
-    {"type": "COMMIT"|"DENY"|"ACCEPT_TENSION"|"CONTEST_TENSION"|"RETRACT"|"REFINE",
-     "proposition": "the natural language proposition",
+    {"type": "COMMIT"|"DENY"|"ACCEPT_TENSION"|"CONTEST_TENSION"|"RETRACT"|"REFINE"|"ASSERT_IMPLICATION"|"INTRODUCE_BEARER"|"RETRACT_IMPLICATION",
+     "proposition": "the natural language proposition (COMMIT/DENY/RETRACT/REFINE/INTRODUCE_BEARER)",
      "target_tension_id": null,
-     "old_proposition": null}
+     "old_proposition": null,
+     "gamma": null,
+     "delta": null,
+     "reason": null,
+     "implication_id": null,
+     "description": null}
   ],
   "new_tensions": [
     {"gamma": ["premise from C", "another premise from C"], "delta": ["conclusion", "optional further conclusion"], "reason": "why incoherent"}
@@ -78,7 +89,31 @@ RULES:
 - For ACCEPT_TENSION, include target_tension_id
 - For CONTEST_TENSION, include target_tension_id
 - For REFINE, include old_proposition (what's replaced) and proposition (the new version)
+- For ASSERT_IMPLICATION, include gamma (list of premise atoms), delta (list of
+  conclusion atoms), and reason. Use this when the respondent directly
+  articulates a rule, e.g. "anything alive is an animal" → gamma=["X is alive"],
+  delta=["X is an animal"]. Atoms may be NEW — they'll be added to L_B.
+- For INTRODUCE_BEARER, include proposition (the new atom). Use when the
+  respondent names a concept without endorsing or rejecting it: "let's call
+  things that change over time 'mutable entities'" → INTRODUCE_BEARER
+  "X is a mutable entity".
+- For RETRACT_IMPLICATION, include implication_id (the integer id shown next to
+  each rule in Material Implications). Use when the respondent says "drop rule
+  3" or "I take back that anything alive is an animal".
 - Your "response" is what the respondent reads — make it a real philosophical conversation
+
+THEORY-ARTICULATION VS TENSION DETECTION:
+Respondents bringing an *ontology* (definitions, taxonomy, rules) into the
+dialectic typically want to *assert* the rules directly rather than have them
+earned via tension. Recognize positum framings:
+- Descriptive case ("a 58-year-old patient presents with...") → tension loop:
+  COMMIT propositions, propose tensions to expose what their case-specific
+  commitments materially entail.
+- Ontology articulation ("an animal is anything that is alive...") → theory
+  loop: use ASSERT_IMPLICATION for rules, INTRODUCE_BEARER for vocabulary,
+  RETRACT_IMPLICATION when they walk something back. Only propose tensions
+  when the asserted theory is genuinely incoherent.
+When the framing is ambiguous, ask before assuming.
 
 UI-DRIVEN ACTIONS (CRITICAL — read carefully):
 The respondent can accept tensions, contest tensions, and retract propositions via buttons in the UI. The state is updated BEFORE you receive the message. This means:
@@ -631,6 +666,49 @@ Recent exchanges:
                         logger.info(
                             "Skipped CONTEST_TENSION #%s (already resolved or not found)", tid
                         )
+
+            # ── Phase B speech acts ────────────────────────────────
+            elif atype == "ASSERT_IMPLICATION":
+                gamma = act.get("gamma", [])
+                delta = act.get("delta", [])
+                reason = act.get("reason", "")
+                if gamma or delta:
+                    iid = state.assert_implication(gamma, delta, reason=reason)
+                    logger.info(
+                        "Applied ASSERT_IMPLICATION → assessments.id=%d (γ=%d, δ=%d)",
+                        iid,
+                        len(gamma),
+                        len(delta),
+                    )
+                else:
+                    logger.warning("Skipped ASSERT_IMPLICATION with empty γ and δ")
+
+            elif atype == "INTRODUCE_BEARER":
+                if prop:
+                    description = act.get("description", "")
+                    state.introduce_bearer(prop, description=description)
+                    logger.info("Applied INTRODUCE_BEARER %r", prop)
+                else:
+                    logger.warning("Skipped INTRODUCE_BEARER with no proposition")
+
+            elif atype == "RETRACT_IMPLICATION":
+                iid_raw = act.get("implication_id")
+                try:
+                    iid = int(iid_raw) if iid_raw is not None else None
+                except (TypeError, ValueError):
+                    iid = None
+                if iid is not None:
+                    ok = state.retract_implication(iid)
+                    if not ok:
+                        logger.info(
+                            "Skipped RETRACT_IMPLICATION #%s (already retracted or not found)",
+                            iid,
+                        )
+                else:
+                    logger.warning(
+                        "Skipped RETRACT_IMPLICATION: missing or non-integer implication_id (%r)",
+                        iid_raw,
+                    )
 
         for t in parsed.get("new_tensions", []):
             gamma = t.get("gamma", [])
