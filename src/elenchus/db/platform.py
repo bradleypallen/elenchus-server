@@ -279,17 +279,19 @@ def consume_invite(con, token: str, consumed_by: int) -> dict | None:
 
 
 def revoke_invite(con, token: str) -> bool:
-    """Mark an unconsumed invite as expired by setting expires_at to the
-    past. Returns True if an unconsumed invite was found."""
-    invite = find_invite(con, token)
-    if invite is None or invite["consumed_at"] is not None:
-        return False
-    con.execute(
+    """Mark an unconsumed, unrevoked invite as expired. Returns True if
+    the invite was newly revoked, False if it was unknown, already
+    consumed, or already revoked. Atomic — the same caller calling
+    twice gets True then False."""
+    rows = con.execute(
         "UPDATE invites SET expires_at = CURRENT_TIMESTAMP "
-        "WHERE token = ? AND consumed_at IS NULL",
+        "WHERE token = ? "
+        "AND consumed_at IS NULL "
+        "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP) "
+        "RETURNING token",
         [token],
-    )
-    return True
+    ).fetchall()
+    return len(rows) > 0
 
 
 def list_invites(con, *, include_consumed: bool = True) -> list[dict]:

@@ -18,12 +18,14 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import auth, invites
 from .db import get_registry, init_registry
+from .db import platform as pdb
 from .dialectical_state import DialecticalState
 from .opponent import Opponent
 from .pdf_report import generate_pdf_report
@@ -110,7 +112,218 @@ class SettingsUpdate(BaseModel):
     protocol: str | None = None
 
 
+# ─── Auth request models ──────────────────────────────────────────────
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class SignupRequest(BaseModel):
+    token: str
+    display_name: str
+    password: str
+    email_override: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class MagicLinkRequest(BaseModel):
+    email: str
+
+
+class InviteCreateRequest(BaseModel):
+    role: str
+    intended_email: str | None = None
+    ttl_days: int | None = 30
+
+
 # ── API Routes ──
+
+# ─── Auth ─────────────────────────────────────────────────────────────
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    """Attach the session cookie to a response. HTTP-only + SameSite=Lax
+    is the safe default; secure=True is enabled via the SESSION_COOKIE_SECURE
+    env var (set in production behind HTTPS)."""
+    secure = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    response.set_cookie(
+        key=auth.SESSION_COOKIE,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+    )
+
+
+def _clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(key=auth.SESSION_COOKIE, samesite="lax")
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, response: Response):
+    """Verify credentials and set a session cookie."""
+    actor = auth.authenticate(req.email, req.password)
+    if actor is None:
+        raise HTTPException(401, "Invalid email or password")
+    token = auth.create_session(actor["id"])
+    _set_session_cookie(response, token)
+    return {"actor_id": actor["id"], "display_name": actor["display_name"], "kind": actor["kind"]}
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, response: Response):
+    """Revoke the current session and clear its cookie. Idempotent —
+    succeeds even if no cookie is present."""
+    token = request.cookies.get(auth.SESSION_COOKIE)
+    if token:
+        auth.revoke_session(token)
+    _clear_session_cookie(response)
+    return {"status": "logged_out"}
+
+
+@app.post("/api/auth/signup")
+def signup(req: SignupRequest, response: Response):
+    """Consume an invite, create the actor it authorizes, and start a
+    session in one atomic step."""
+    result = invites.signup_with_invite(
+        token=req.token,
+        display_name=req.display_name,
+        password=req.password,
+        email_override=req.email_override,
+    )
+    _set_session_cookie(response, result["session_token"])
+    return {"actor_id": result["actor_id"], "role": result["role"]}
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    req: ChangePasswordRequest,
+    response: Response,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Change the current actor's password. All outstanding sessions
+    (including this one) are revoked; this route issues a fresh session
+    to keep the user logged in."""
+    ok = auth.change_password(actor["id"], req.old_password, req.new_password)
+    if not ok:
+        raise HTTPException(400, "Old password did not verify")
+    # Re-issue a session token since change_password revoked all of them.
+    token = auth.create_session(actor["id"])
+    _set_session_cookie(response, token)
+    return {"status": "changed"}
+
+
+@app.post("/api/auth/magic-link")
+def request_magic_link(req: MagicLinkRequest, request: Request):
+    """Email a magic-link login token. Returns 200 regardless of
+    whether the email is registered (don't leak registration state)."""
+    base_url = str(request.base_url).rstrip("/")
+    token = auth.issue_magic_link(req.email)
+    try:
+        from . import email_service
+
+        email_service.send_magic_link_email(token=token, recipient=req.email, base_url=base_url)
+    except Exception:
+        logger.exception("Failed to send magic-link email")
+    return {"status": "sent"}
+
+
+@app.get("/api/auth/magic/{token}")
+def consume_magic_link(token: str, response: Response):
+    """Consume a magic-link token. If valid, issues an auth session for
+    the actor identified by the link's email and returns 200; if the
+    actor doesn't exist, returns 404."""
+    email = auth.consume_magic_link(token)
+    if email is None:
+        raise HTTPException(400, "Invalid or expired magic link")
+    con = get_registry().platform_con()
+    actor = pdb.find_actor_by_email(con, email)
+    if actor is None:
+        raise HTTPException(404, f"No account exists for {email}")
+    session_token = auth.create_session(actor["id"])
+    _set_session_cookie(response, session_token)
+    return {"actor_id": actor["id"], "display_name": actor["display_name"], "kind": actor["kind"]}
+
+
+@app.get("/api/auth/me")
+def me(actor: dict = Depends(auth.current_actor)):
+    """Return the current actor's public fields."""
+    return {
+        "id": actor["id"],
+        "kind": actor["kind"],
+        "email": actor["email"],
+        "display_name": actor["display_name"],
+    }
+
+
+# ─── Admin: invites ───────────────────────────────────────────────────
+
+
+@app.post("/api/admin/invites")
+def admin_create_invite(
+    req: InviteCreateRequest,
+    request: Request,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Issue an invite. If `intended_email` is set, the EmailService
+    delivers the invite link automatically (or logs it via the console
+    backend)."""
+    from datetime import timedelta
+
+    base_url = str(request.base_url).rstrip("/")
+    ttl = timedelta(days=req.ttl_days) if req.ttl_days else None
+    token = invites.issue_invite(
+        role=req.role,
+        issued_by=actor["id"],
+        intended_email=req.intended_email,
+        ttl=ttl,
+        base_url=base_url,
+    )
+    return {"token": token, "role": req.role, "intended_email": req.intended_email}
+
+
+@app.get("/api/admin/invites")
+def admin_list_invites(actor: dict = Depends(auth.require_admin)):
+    """List all invites issued by this platform."""
+    return {"invites": invites.list_invites()}
+
+
+@app.delete("/api/admin/invites/{token}")
+def admin_revoke_invite(token: str, actor: dict = Depends(auth.require_admin)):
+    """Revoke an unconsumed invite."""
+    if not invites.revoke_invite(token):
+        raise HTTPException(404, "Invite not found or already consumed")
+    return {"status": "revoked", "token": token}
+
+
+@app.get("/api/admin/users")
+def admin_list_users(actor: dict = Depends(auth.require_admin)):
+    """List all actors. Returns id, kind, email, display_name,
+    deactivated_at — never password_hash."""
+    rows = pdb.list_actors(get_registry().platform_con(), include_deactivated=True)
+    return {
+        "users": [
+            {
+                "id": r["id"],
+                "kind": r["kind"],
+                "email": r["email"],
+                "display_name": r["display_name"],
+                "created_at": str(r["created_at"]) if r["created_at"] else None,
+                "deactivated_at": str(r["deactivated_at"]) if r["deactivated_at"] else None,
+            }
+            for r in rows
+        ]
+    }
+
+
+# ─── Existing routes follow ──────────────────────────────────────────
 
 
 @app.get("/api/settings")
