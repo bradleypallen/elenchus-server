@@ -345,12 +345,7 @@ def index():
 # ── Entry point ──
 
 
-def main():
-    import argparse
-
-    import uvicorn
-
-    parser = argparse.ArgumentParser(description="Elenchus web server")
+def _add_serve_args(parser) -> None:
     parser.add_argument("--port", "-p", type=int, default=None, help="Server port (default: 8741)")
     parser.add_argument("--api-key", default=None, help="LLM API key")
     parser.add_argument(
@@ -364,7 +359,10 @@ def main():
         help="API protocol (auto-detected from --base-url)",
     )
     parser.add_argument("--data-dir", default=None, help="Directory for .duckdb files")
-    args = parser.parse_args()
+
+
+def _run_serve(args) -> None:
+    import uvicorn
 
     # CLI args override env vars
     global DATA_DIR
@@ -385,6 +383,109 @@ def main():
     print(f"Elenchus server starting on http://localhost:{port}")
     print(f"Data directory: {os.path.abspath(DATA_DIR)}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+def _run_admin_create(args) -> None:
+    """Create (or update) an admin actor. Idempotent: if an actor with
+    the given email already exists, optionally updates their password
+    (with confirmation)."""
+    import getpass
+
+    from . import auth
+    from .db import get_registry
+    from .db import platform as pdb
+
+    # The platform DB needs to be migrated before any actor can be
+    # created. The registry was initialized at module import; we just
+    # need to apply migrations explicitly here (lifespan-startup
+    # migration only runs when serving).
+    reg = get_registry()
+    reg.migrate_platform()
+    con = reg.platform_con()
+
+    existing = pdb.find_actor_by_email(con, args.email)
+
+    password = args.password or os.environ.get("ELENCHUS_ADMIN_PASSWORD")
+    if password is None:
+        if existing:
+            prompt = f"Actor {args.email!r} exists. New password (or empty to skip): "
+        else:
+            prompt = f"Password for admin {args.email!r}: "
+        password = getpass.getpass(prompt)
+        if password and not existing:
+            confirm = getpass.getpass("Confirm password: ")
+            if password != confirm:
+                print("Passwords do not match. Aborting.")
+                return
+
+    if existing:
+        if not password:
+            print(f"No change. Existing actor: id={existing['id']}, kind={existing['kind']}")
+            return
+        with reg.platform_lock:
+            pdb.update_actor_password(con, existing["id"], auth.hash_password(password))
+        print(f"Updated password for actor id={existing['id']} ({args.email})")
+        return
+
+    with reg.platform_lock:
+        actor_id = pdb.create_actor(
+            con,
+            kind="admin",
+            email=args.email,
+            display_name=args.name,
+            password_hash=auth.hash_password(password) if password else None,
+        )
+    print(f"Created admin actor id={actor_id} ({args.email})")
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Elenchus — dialectical knowledge base construction"
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # `serve` subcommand — same as the default no-subcommand behavior.
+    serve = subparsers.add_parser("serve", help="Start the web server (default)")
+    _add_serve_args(serve)
+
+    # `admin` subcommand group
+    admin = subparsers.add_parser("admin", help="Administrative commands")
+    admin_subs = admin.add_subparsers(dest="admin_action")
+    create = admin_subs.add_parser("create", help="Create (or update) an admin actor")
+    create.add_argument("--email", required=True, help="Admin email address")
+    create.add_argument("--name", required=True, help="Admin display name")
+    create.add_argument(
+        "--password",
+        default=None,
+        help="Password (prompts interactively if omitted; also reads ELENCHUS_ADMIN_PASSWORD)",
+    )
+
+    # `migrate-legacy` subcommand placeholder — implementation lands in
+    # Week 3 D3 when per-base files are restructured.
+    # subparsers.add_parser("migrate-legacy", ...) — TODO Week 3
+
+    # Default to `serve` when invoked without a subcommand. Re-parse
+    # under the serve subparser so its args are available.
+    import sys
+
+    if len(sys.argv) == 1 or (sys.argv[1].startswith("-") and sys.argv[1] != "-h"):
+        # No subcommand given, or first arg is a flag (e.g. --port) →
+        # treat as serve.
+        sys.argv.insert(1, "serve")
+
+    args = parser.parse_args()
+
+    if args.command in (None, "serve"):
+        _run_serve(args)
+    elif args.command == "admin":
+        if args.admin_action == "create":
+            _run_admin_create(args)
+        else:
+            admin.print_help()
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
