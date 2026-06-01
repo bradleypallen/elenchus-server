@@ -106,7 +106,9 @@ class MaterialBase:
         # called from inside `Opponent._record_and_apply`'s transaction.
         for a in atoms:
             self.con.execute(
-                "INSERT OR IGNORE INTO atoms VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
+                "INSERT OR IGNORE INTO atoms "
+                "(sentence, added_by, added_at, description) "
+                "VALUES (?, ?, CURRENT_TIMESTAMP, ?)",
                 [a, contributor, description],
             )
             if self._nmms_base is not None:

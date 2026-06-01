@@ -79,7 +79,9 @@ class DialecticalState:
         # outer transaction would abort the transaction.
         self.base.add_atoms({prop}, contributor="respondent")
         self.base.con.execute(
-            "INSERT OR REPLACE INTO positions VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)",
+            "INSERT OR REPLACE INTO positions "
+            "(atom, side, status, introduced_at) "
+            "VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)",
             [prop],
         )
 
@@ -87,7 +89,9 @@ class DialecticalState:
         # See `commit()` for the rationale on INSERT OR REPLACE.
         self.base.add_atoms({prop}, contributor="respondent")
         self.base.con.execute(
-            "INSERT OR REPLACE INTO positions VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)",
+            "INSERT OR REPLACE INTO positions "
+            "(atom, side, status, introduced_at) "
+            "VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)",
             [prop],
         )
 
@@ -148,7 +152,9 @@ class DialecticalState:
     def add_tension(self, gamma: list, delta: list, reason: str = "") -> int:
         tid = self.base.con.execute("SELECT nextval('tension_seq')").fetchone()[0]
         self.base.con.execute(
-            "INSERT INTO tensions VALUES (?,?,?,?,'open',CURRENT_TIMESTAMP,NULL)",
+            "INSERT INTO tensions "
+            "(id, gamma, delta, reason, status, proposed_at, resolved_at) "
+            "VALUES (?,?,?,?,'open',CURRENT_TIMESTAMP,NULL)",
             [tid, set_to_str(set(gamma)), set_to_str(set(delta)), reason],
         )
         return tid
