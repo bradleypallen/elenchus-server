@@ -195,15 +195,61 @@ class DBRegistry:
 
     # ── Path resolution ──
 
-    def db_path(self, name: str) -> str:
-        """Compute the on-disk path for a given dialectic name.
+    @staticmethod
+    def _sanitize(name: str) -> str:
+        return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
 
-        Week 1: same flat layout as the previous `_db_path`. Week 3
-        restructures this to `bases/{actor_id}/{base_id}.duckdb` once
-        bases gain proper IDs and ownership.
+    def _lookup_owner(self, name: str) -> int | None:
+        """Look up the owner of a base from `platform.bases` without
+        raising on missing-table conditions (which can happen during
+        early startup before migrations run). Returns None when the
+        base is unregistered."""
+        try:
+            # Lazy import to avoid a hard dep at module-load time.
+            from . import platform as pdb_mod
+
+            base = pdb_mod.find_base(self.platform_con(), name)
+            return base["owner_id"] if base else None
+        except Exception:
+            # Platform DB unavailable / unmigrated / lookup failed.
+            # Fall back to the flat layout; callers handle the
+            # FileNotFoundError downstream.
+            return None
+
+    def db_path(self, name: str, actor_id: int | None = None) -> str:
+        """Resolve the on-disk path for a base.
+
+        New layout: ``{data_dir}/bases/{actor_id}/{name}.duckdb``.
+
+        If `actor_id` is supplied (e.g. by the create route, which knows
+        which actor owns the new base), the scoped path is returned
+        directly — callers must `os.makedirs(parent)` before writing.
+
+        If `actor_id` is None, the registry looks up the owner from
+        `platform.bases`. When the base is unregistered or the actor
+        directory does not yet contain a file but a legacy flat-layout
+        file exists, the flat path is returned as a fallback. This
+        keeps legacy single-user files readable until they're moved by
+        `elenchus migrate-legacy`.
         """
-        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
-        return os.path.join(self._data_dir, f"{safe}.duckdb")
+        safe = self._sanitize(name)
+        flat = os.path.join(self._data_dir, f"{safe}.duckdb")
+
+        if actor_id is None:
+            actor_id = self._lookup_owner(name)
+
+        if actor_id is None:
+            # No ownership info → flat layout (legacy / CLI / tests).
+            return flat
+
+        scoped = os.path.join(self._data_dir, "bases", str(actor_id), f"{safe}.duckdb")
+        if os.path.exists(scoped):
+            return scoped
+        if os.path.exists(flat):
+            # Legacy file present at flat layout; honor it until a
+            # `migrate-legacy` run relocates it.
+            return flat
+        return scoped
 
     # ── Handle access ──
 

@@ -388,14 +388,16 @@ def create_dialectic(req: CreateRequest, actor: dict = Depends(auth.current_acto
 
     Registers the new base in `platform.bases` with `owner_id =
     actor.id` so subsequent routes can verify ownership. The file
-    path uses the sanitized name as the base id — a future migration
-    moves to `bases/{actor_id}/{base_id}.duckdb`.
+    lives at ``{DATA_DIR}/bases/{actor_id}/{name}.duckdb`` — one
+    directory per actor scopes file-level access naturally.
     """
     name = req.name.strip()
     if not name:
         raise HTTPException(400, "Name required")
     reg = get_registry()
-    path = reg.db_path(name)
+    # Resolve the actor-scoped path explicitly; we know the owner here
+    # so we don't need the platform-DB roundtrip the no-arg form does.
+    path = reg.db_path(name, actor_id=actor["id"])
     if os.path.exists(path):
         raise HTTPException(409, f"Dialectic '{name}' already exists")
 
@@ -404,6 +406,9 @@ def create_dialectic(req: CreateRequest, actor: dict = Depends(auth.current_acto
     if pdb.find_base(reg.platform_con(), name) is not None:
         raise HTTPException(409, f"Dialectic '{name}' is already registered")
 
+    # Ensure the per-actor directory exists before DialecticalState.create
+    # tries to write the file.
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     topic = req.topic or name
     state = DialecticalState.create(path, topic)
     reg.put(name, state)
@@ -423,10 +428,19 @@ def list_dialectics(actor: dict = Depends(auth.current_actor)):
     the platform; other actors see only their own."""
     reg = get_registry()
     if actor.get("kind") == "admin":
-        # Walk the data directory (covers legacy files without
-        # `bases` rows in addition to registered ones).
-        files = glob.glob(os.path.join(DATA_DIR, "*.duckdb"))
-        basenames = [Path(f).stem for f in sorted(files)]
+        # Walk `platform.bases` for the canonical list, then top up with
+        # any legacy flat-layout files that lack a `bases` row (still
+        # readable; `migrate-legacy` will register them).
+        rows = pdb.list_bases(reg.platform_con())
+        basenames = [r["id"] for r in rows]
+        seen = set(basenames)
+        for f in sorted(glob.glob(os.path.join(DATA_DIR, "*.duckdb"))):
+            if os.path.basename(f) == "platform.duckdb":
+                continue
+            stem = Path(f).stem
+            if stem not in seen:
+                basenames.append(stem)
+                seen.add(stem)
     else:
         rows = pdb.list_bases_for_actor(reg.platform_con(), actor["id"])
         basenames = [r["id"] for r in rows]

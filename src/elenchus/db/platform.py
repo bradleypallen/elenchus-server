@@ -364,6 +364,15 @@ def list_bases_for_actor(con, owner_id: int) -> list[dict]:
     return [{"id": r[0], "name": r[1], "owner_id": r[2], "created_at": r[3]} for r in rows]
 
 
+def list_bases(con) -> list[dict]:
+    """List every base registered in the platform DB. Admin-only API
+    surface uses this; non-admins should call `list_bases_for_actor`."""
+    rows = con.execute(
+        "SELECT id, name, owner_id, created_at FROM bases ORDER BY created_at"
+    ).fetchall()
+    return [{"id": r[0], "name": r[1], "owner_id": r[2], "created_at": r[3]} for r in rows]
+
+
 def delete_base(con, base_id: str) -> None:
     con.execute("DELETE FROM bases WHERE id = ?", [base_id])
 

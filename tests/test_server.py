@@ -69,11 +69,23 @@ def _clean_states():
 
     client.cookies.clear()
     _close_per_base_handles(reg)
-    # Clean up any .duckdb files created during tests
-    for f in os.listdir(_test_data_dir):
-        if f.endswith(".duckdb"):
+    # Clean up any .duckdb files created during tests (flat layout +
+    # scoped `bases/{actor_id}/` subtree). Walk top-down so we remove
+    # files before their parent directories.
+    for root, _dirs, files in os.walk(_test_data_dir):
+        for f in files:
+            if f.endswith(".duckdb") and f != "platform.duckdb":
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(root, f))
+    # Remove now-empty per-actor subdirectories so successive tests
+    # start from a clean tree.
+    bases_dir = os.path.join(_test_data_dir, "bases")
+    if os.path.isdir(bases_dir):
+        for sub in os.listdir(bases_dir):
+            sub_path = os.path.join(bases_dir, sub)
             with contextlib.suppress(OSError):
-                os.remove(os.path.join(_test_data_dir, f))
+                if os.path.isdir(sub_path) and not os.listdir(sub_path):
+                    os.rmdir(sub_path)
 
 
 # ── Dialectic CRUD ──
@@ -130,6 +142,59 @@ class TestDialecticCRUD:
     def test_delete_nonexistent_returns_404(self):
         r = client.delete("/api/dialectics/nope")
         assert r.status_code == 404
+
+
+class TestDirectoryLayout:
+    """Per-base files land at `bases/{owner_id}/{name}.duckdb` and the
+    registry resolves them through `platform.bases`. Legacy flat-layout
+    files remain readable until migrated."""
+
+    def test_created_file_lives_under_actor_directory(self, _clean_states):
+        actor_id = _clean_states["actor_id"]
+        r = client.post("/api/dialectics", json={"name": "layout1"})
+        assert r.status_code == 200
+
+        scoped = os.path.join(_test_data_dir, "bases", str(actor_id), "layout1.duckdb")
+        assert os.path.exists(scoped), f"expected file at {scoped}"
+        flat = os.path.join(_test_data_dir, "layout1.duckdb")
+        assert not os.path.exists(flat), "new-format files must not land in flat layout"
+
+    def test_registry_resolves_path_via_platform_db(self, _clean_states):
+        from elenchus.db import get_registry
+
+        actor_id = _clean_states["actor_id"]
+        client.post("/api/dialectics", json={"name": "resolved"})
+
+        reg = get_registry()
+        # Without actor_id, the registry should infer it from platform.bases.
+        path = reg.db_path("resolved")
+        assert path == os.path.join(_test_data_dir, "bases", str(actor_id), "resolved.duckdb")
+
+    def test_unregistered_name_falls_back_to_flat(self):
+        """A name with no `bases` row resolves to the legacy flat path
+        so legacy single-user files remain discoverable."""
+        from elenchus.db import get_registry
+
+        reg = get_registry()
+        path = reg.db_path("legacy_orphan")
+        assert path.endswith("legacy_orphan.duckdb")
+        assert os.sep + "bases" + os.sep not in path
+
+    def test_delete_removes_scoped_file_and_bases_row(self, _clean_states):
+        actor_id = _clean_states["actor_id"]
+        client.post("/api/dialectics", json={"name": "to_delete"})
+        scoped = os.path.join(_test_data_dir, "bases", str(actor_id), "to_delete.duckdb")
+        assert os.path.exists(scoped)
+
+        r = client.delete("/api/dialectics/to_delete")
+        assert r.status_code == 200
+        assert not os.path.exists(scoped)
+
+        # Platform row gone too.
+        from elenchus.db import get_registry
+        from elenchus.db import platform as pdb
+
+        assert pdb.find_base(get_registry().platform_con(), "to_delete") is None
 
 
 # ── Authorization ──

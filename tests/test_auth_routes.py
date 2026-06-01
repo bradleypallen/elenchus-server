@@ -43,9 +43,20 @@ def _clean_state():
     client.cookies.clear()
     yield
     client.cookies.clear()
-    for f in os.listdir(_test_data_dir):
-        with contextlib.suppress(OSError):
-            os.remove(os.path.join(_test_data_dir, f))
+    # Remove per-base .duckdb files (flat + scoped). Keep platform.duckdb
+    # since the registry holds its connection open across tests.
+    for root, _dirs, files in os.walk(_test_data_dir):
+        for f in files:
+            if f.endswith(".duckdb") and f != "platform.duckdb":
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(root, f))
+    bases_dir = os.path.join(_test_data_dir, "bases")
+    if os.path.isdir(bases_dir):
+        for sub in os.listdir(bases_dir):
+            sub_path = os.path.join(bases_dir, sub)
+            with contextlib.suppress(OSError):
+                if os.path.isdir(sub_path) and not os.listdir(sub_path):
+                    os.rmdir(sub_path)
 
 
 def _make_admin() -> dict:
