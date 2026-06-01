@@ -17,7 +17,14 @@ DuckDB.
 
 from . import platform
 from .asyncio import run_blocking, run_in_db
-from .registry import BaseHandle, DBRegistry, get_registry, init_registry, registry
+
+# Note: `registry` (the singleton DBRegistry instance) is intentionally
+# *not* re-exported here. Importing the value would shadow the
+# `elenchus.db.registry` submodule reference in the package namespace,
+# breaking `import elenchus.db.registry as registry_module` from tests.
+# Use `get_registry()` to read the singleton; call `init_registry()` to
+# (re)create it.
+from .registry import BaseHandle, DBRegistry, get_registry, init_registry
 
 __all__ = [
     "BaseHandle",
@@ -25,7 +32,6 @@ __all__ = [
     "get_registry",
     "init_registry",
     "platform",
-    "registry",
     "run_blocking",
     "run_in_db",
 ]

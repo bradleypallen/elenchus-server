@@ -112,8 +112,11 @@ class DBRegistry:
         # Platform connection: lazily opened on first access and held
         # for the registry's lifetime. Guarded by its own lock since
         # writes to platform.duckdb happen from any actor's auth check.
+        # RLock (not Lock) so callers can re-enter — `auth.create_session`
+        # holds the lock and then calls `platform_con()` which also
+        # acquires it for the lazy-init check.
         self._platform_con: duckdb.DuckDBPyConnection | None = None
-        self._platform_lock = threading.Lock()
+        self._platform_lock = threading.RLock()
 
         self._check_fd_limit()
 
@@ -183,9 +186,11 @@ class DBRegistry:
             return apply_migrations(con, "platform")
 
     @property
-    def platform_lock(self) -> threading.Lock:
-        """Returns the platform-write lock. Use as a context manager
-        around any write to platform.duckdb to serialize writers."""
+    def platform_lock(self) -> threading.RLock:
+        """Returns the platform-write lock (reentrant). Use as a context
+        manager around any write to platform.duckdb to serialize
+        writers; re-entrant from the same thread, so calling
+        `platform_con()` while holding the lock is safe."""
         return self._platform_lock
 
     # ── Path resolution ──
@@ -339,7 +344,11 @@ class DBRegistry:
 registry: DBRegistry | None = None
 
 
-def init_registry(data_dir: str, capacity: int = DEFAULT_CAPACITY) -> DBRegistry:
+def init_registry(
+    data_dir: str,
+    capacity: int = DEFAULT_CAPACITY,
+    platform_path: str | None = None,
+) -> DBRegistry:
     """Initialize the process-wide registry. Idempotent: replacing an
     existing registry closes its connections first.
 
@@ -350,7 +359,7 @@ def init_registry(data_dir: str, capacity: int = DEFAULT_CAPACITY) -> DBRegistry
     global registry
     if registry is not None:
         registry.close_all()
-    registry = DBRegistry(data_dir=data_dir, capacity=capacity)
+    registry = DBRegistry(data_dir=data_dir, capacity=capacity, platform_path=platform_path)
     return registry
 
 
