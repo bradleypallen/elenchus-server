@@ -14,7 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install ruff
+      # Install via the dev extras so ruff matches the pin in
+      # pyproject.toml — bare `pip install ruff` silently upgrades on
+      # every CI run and bit us with a formatter-rule change once.
+      - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
 

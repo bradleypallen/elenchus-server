@@ -35,7 +35,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.8.0",
+    # Pin ruff exactly: even patch releases tweak the formatter and a
+    # silent CI upgrade caused `Would reformat` failures (commit 688c9c3).
+    # Bump deliberately, with the matching reformat, in a single commit.
+    "ruff==0.15.15",
     "pytest>=8.0.0",
 ]
 
