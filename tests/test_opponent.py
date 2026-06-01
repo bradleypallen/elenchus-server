@@ -74,7 +74,7 @@ class TestParseResponse:
     def test_prose_preamble_then_json(self):
         """LLM occasionally prefixes JSON with a sentence — extract anyway."""
         raw = (
-            'Here is my analysis.\n'
+            "Here is my analysis.\n"
             '{"speech_acts": [{"type": "COMMIT", "proposition": "p"}],'
             ' "new_tensions": [], "response": "Hi."}'
         )
@@ -94,7 +94,7 @@ class TestParseResponse:
     def test_brace_in_string_does_not_break_extraction(self):
         """Strings containing '{' or '}' must not confuse the brace walker."""
         raw = (
-            'Preamble.\n'
+            "Preamble.\n"
             '{"speech_acts": [], "new_tensions": [],'
             ' "response": "Consider the set {x : x > 0}."}'
         )

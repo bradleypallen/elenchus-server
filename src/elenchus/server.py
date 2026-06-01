@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.environ.get("ELENCHUS_DATA", "./dialectics")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Startup
