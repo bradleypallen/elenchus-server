@@ -7,7 +7,6 @@ and implications as cards with numbered atoms), and conversation
 transcript.
 """
 
-import json
 import logging
 import os
 import re
@@ -44,24 +43,15 @@ def _find_font(candidates: list[str]) -> str | None:
 
 
 def _parse_assistant_content(content: str) -> str:
-    """Extract the 'response' field from raw LLM JSON output.
-
-    The opponent stores raw JSON in the conversation table. This
-    strips any markdown code fence, parses the JSON, and returns
-    the natural language response field.
+    """Extract the natural-language `response` field from a stored
+    opponent turn. Delegates to the shared parser so the PDF agrees
+    with the live dialogue surface on what's prose vs JSON envelope —
+    the earlier local copy only handled code fences and missed prose-
+    preamble + JSON, which made the JSON leak into the PDF transcript.
     """
-    try:
-        clean = content.strip()
-        # Strip markdown code fence if present
-        if clean.startswith("```"):
-            clean = clean.split("\n", 1)[1]
-            if clean.endswith("```"):
-                clean = clean[:-3]
-            clean = clean.strip()
-        parsed = json.loads(clean)
-        return parsed.get("response", content)
-    except (json.JSONDecodeError, IndexError, AttributeError):
-        return content
+    from .response_parsing import extract_response_text
+
+    return extract_response_text(content)
 
 
 def _inline_md(text):

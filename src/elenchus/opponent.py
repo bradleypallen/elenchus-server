@@ -8,7 +8,6 @@ Supports Anthropic directly and any OpenAI-compatible endpoint (e.g. OpenRouter)
 """
 
 import asyncio
-import json
 import logging
 import os
 
@@ -577,75 +576,16 @@ Recent exchanges:
             logger.debug("Summary update failed (non-critical)")
 
     def _parse_response(self, text: str) -> dict:
-        """Parse JSON from the LLM response.
+        """Parse the LLM's response into the opponent's expected payload
+        shape. Tolerates code fences, prose preamble, and trailing
+        chatter via `response_parsing.parse_llm_response`. Falls back
+        to wrapping the raw text as a plain conversational response so
+        the dialogue never breaks on a malformed turn."""
+        from .response_parsing import parse_llm_response
 
-        Tolerant of:
-        - Plain JSON
-        - JSON wrapped in ```...``` fences (with or without a language tag)
-        - JSON preceded or followed by prose preamble (the LLM
-          occasionally emits a sentence like "Here's my analysis:" before
-          the object). We locate the first '{' and walk braces to find
-          the matching '}' to extract a candidate object.
-
-        If all extraction strategies fail, the entire text is returned
-        as the `response` field — but this case is logged so the issue
-        can be diagnosed from server logs rather than being silent.
-        """
-        clean = text.strip()
-
-        # Strip a leading code fence if present
-        if clean.startswith("```"):
-            # drop the opening fence line (e.g. ``` or ```json)
-            clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
-            if clean.endswith("```"):
-                clean = clean[:-3]
-            clean = clean.strip()
-
-        # Strategy 1: direct parse
-        try:
-            return json.loads(clean)
-        except json.JSONDecodeError:
-            pass
-
-        # Strategy 2: locate the first '{' and walk braces (string-aware)
-        # to find the matching '}'. This handles "prose preamble + JSON"
-        # and "JSON + trailing chatter".
-        start = clean.find("{")
-        if start >= 0:
-            depth = 0
-            in_str = False
-            escape = False
-            for i in range(start, len(clean)):
-                ch = clean[i]
-                if escape:
-                    escape = False
-                    continue
-                if ch == "\\":
-                    escape = True
-                    continue
-                if ch == '"':
-                    in_str = not in_str
-                    continue
-                if in_str:
-                    continue
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        candidate = clean[start : i + 1]
-                        try:
-                            parsed = json.loads(candidate)
-                            preamble = clean[:start].strip()
-                            logger.warning(
-                                "Recovered JSON from mixed-content response "
-                                "(preamble=%d chars, candidate=%d chars)",
-                                len(preamble),
-                                len(candidate),
-                            )
-                            return parsed
-                        except json.JSONDecodeError:
-                            break
+        parsed = parse_llm_response(text)
+        if parsed is not None:
+            return parsed
 
         # Final fallback: treat entire text as conversational response.
         # Log so we can spot prompt-adherence regressions during runs.

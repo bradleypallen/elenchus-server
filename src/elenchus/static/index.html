@@ -185,6 +185,63 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Opponent response parsing ──
+//
+// Mirrors `src/elenchus/response_parsing.py`. The opponent stores its
+// raw JSON envelope in `conversation.content`; when we load history
+// into the dialogue pane we want to show only the `response` field,
+// not the JSON. The LLM occasionally emits "prose preamble + JSON"
+// (with or without a ```json fence), so a simple JSON.parse on the
+// whole content can miss real responses and leave raw JSON in the UI.
+// We try fence-strip + direct parse first, then walk braces (string-
+// aware) to recover JSON embedded after a preamble.
+function extractResponseText(content) {
+  if (!content) return content;
+  let clean = content.trim();
+
+  // Strip a leading ```...``` fence.
+  if (clean.startsWith('```')) {
+    const nl = clean.indexOf('\n');
+    clean = nl >= 0 ? clean.slice(nl + 1) : clean.slice(3);
+    if (clean.endsWith('```')) clean = clean.slice(0, -3);
+    clean = clean.trim();
+  }
+
+  // Strategy 1: direct parse.
+  try {
+    const parsed = JSON.parse(clean);
+    if (parsed && typeof parsed.response === 'string' && parsed.response.trim()) {
+      return parsed.response;
+    }
+  } catch (e) { /* fall through */ }
+
+  // Strategy 2: walk braces to find the first balanced { ... } block.
+  const start = clean.indexOf('{');
+  if (start < 0) return content;
+  let depth = 0, inStr = false, escape = false;
+  for (let i = start; i < clean.length; i++) {
+    const ch = clean[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(clean.slice(start, i + 1));
+          if (parsed && typeof parsed.response === 'string' && parsed.response.trim()) {
+            return parsed.response;
+          }
+        } catch (e) { /* fall through */ }
+        break;
+      }
+    }
+  }
+  return content;
+}
+
 // ── Auth context ──
 // Shared by AuthGate (provider) and App (consumer). Holds the current
 // actor and a logout helper. Defaults to null while the gate is still
@@ -675,19 +732,13 @@ function App() {
       const s = await api(`/api/dialectics/${name}`);
       setCurrent(name);
       setState(s);
-      // Restore conversation history from DB
+      // Restore conversation history from DB. Assistant messages are
+      // stored as the raw LLM payload; extractResponseText pulls out
+      // just the `response` field, tolerating prose preambles and
+      // un-fenced JSON the same way opponent.py's parser does.
       const roleMap = { user: 'respondent', assistant: 'opponent' };
       const history = (s.conversation || []).map(m => {
-        let content = m.content;
-        // Assistant messages are stored as raw LLM output; extract the response field
-        if (m.role === 'assistant') {
-          try {
-            // Strip markdown code fence if present (```json ... ```)
-            const stripped = content.replace(/^[\s\S]*?```json\s*\n?/i, '').replace(/\n?\s*```[\s\S]*$/, '');
-            const parsed = JSON.parse(stripped);
-            content = parsed.response || content;
-          } catch (e) { /* not parseable, use as-is */ }
-        }
+        const content = m.role === 'assistant' ? extractResponseText(m.content) : m.content;
         return { role: roleMap[m.role] || m.role, content };
       });
       setMessages([
