@@ -16,7 +16,7 @@ from .material_base import MaterialBase, set_to_str, str_to_set
 class DialecticalState:
     def __init__(self, base: MaterialBase):
         self.base = base
-        self._ensure_tables()
+        self._reseed_sequences()
 
     @classmethod
     def create(cls, db_path: str, name: str) -> "DialecticalState":
@@ -30,44 +30,21 @@ class DialecticalState:
     def in_memory(cls, name: str = "inquiry") -> "DialecticalState":
         return cls(MaterialBase.in_memory(name))
 
-    def _ensure_tables(self):
-        self.base.con.execute("""
-            CREATE TABLE IF NOT EXISTS positions (
-                atom VARCHAR NOT NULL,
-                side VARCHAR NOT NULL,
-                status VARCHAR DEFAULT 'open',
-                introduced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CHECK(side IN ('C', 'D')),
-                CHECK(status IN ('open', 'retracted')),
-                PRIMARY KEY(atom, side)
-            )
-        """)
-        self.base.con.execute("""
-            CREATE TABLE IF NOT EXISTS tensions (
-                id INTEGER PRIMARY KEY,
-                gamma VARCHAR NOT NULL,
-                delta VARCHAR NOT NULL,
-                reason VARCHAR DEFAULT '',
-                status VARCHAR DEFAULT 'open',
-                proposed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                resolved_at TIMESTAMP,
-                CHECK(status IN ('open', 'accepted', 'contested'))
-            )
-        """)
-        # Re-seed tension sequence from max existing id to survive reconnects
+    def _reseed_sequences(self):
+        """Re-seed the tension and conversation sequences from the current
+        max(id) in their respective tables. The migration runner creates
+        the tables themselves (see migrations/base/0001_initial.sql); the
+        sequences are kept procedural because DuckDB sequences are
+        first-class database objects but the application-level invariant
+        we want — `nextval` always exceeds any existing id — is easier to
+        guarantee by re-deriving on every connection open. A future
+        migration will replace this pattern with identity columns.
+        """
+        # tension_seq tracks tensions.id
         self.base.con.execute("DROP SEQUENCE IF EXISTS tension_seq")
         max_tid = self.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()[0]
         self.base.con.execute(f"CREATE SEQUENCE tension_seq START {max_tid + 1}")
-        # Conversation history for multi-turn oracle
-        self.base.con.execute("""
-            CREATE TABLE IF NOT EXISTS conversation (
-                id INTEGER PRIMARY KEY,
-                role VARCHAR NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        # Re-seed conversation sequence from max existing id to survive reconnects
+        # conv_seq tracks conversation.id
         self.base.con.execute("DROP SEQUENCE IF EXISTS conv_seq")
         max_cid = self.base.con.execute(
             "SELECT COALESCE(MAX(id), 0) FROM conversation"

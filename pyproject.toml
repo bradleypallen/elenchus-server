@@ -50,6 +50,9 @@ Repository = "https://github.com/bradleypallen/elenchus-server"
 [tool.hatch.build.targets.wheel]
 packages = ["src/elenchus"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/elenchus/migrations" = "elenchus/migrations"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 99

@@ -4,6 +4,11 @@ material_base.py — DuckDB-backed material bases for NMMS
 A material base B = ⟨L_B, |∼_B⟩ consists of an atomic language
 and a base consequence relation. This module stores both in DuckDB
 and delegates derivability to pyNMMS (NMMSReasoner).
+
+Schema management is handled by `migrations/runner.py`. The per-base
+schema is defined in `migrations/base/*.sql`; calling
+`apply_migrations(con, "base")` brings a connection up to the current
+schema version idempotently.
 """
 
 import contextlib
@@ -12,6 +17,8 @@ import logging
 import duckdb
 from pynmms import MaterialBase as NMMSBase
 from pynmms import NMMSReasoner
+
+from .migrations import apply_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -40,58 +47,6 @@ def fmt_set(s):
     return "{" + ", ".join(sorted(s)) + "}"
 
 
-_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS meta (
-    key VARCHAR PRIMARY KEY,
-    value VARCHAR
-);
-CREATE SEQUENCE IF NOT EXISTS assessment_seq START 1;
-CREATE TABLE IF NOT EXISTS atoms (
-    sentence VARCHAR PRIMARY KEY,
-    added_by VARCHAR DEFAULT 'system',
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    description VARCHAR DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS assessments (
-    id INTEGER DEFAULT nextval('assessment_seq'),
-    premises VARCHAR NOT NULL,
-    conclusions VARCHAR NOT NULL,
-    judgment VARCHAR NOT NULL,
-    contributor VARCHAR NOT NULL,
-    assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reason VARCHAR DEFAULT '',
-    domain VARCHAR DEFAULT '',
-    CHECK(judgment IN ('holds', 'rejected'))
-);
-CREATE OR REPLACE VIEW current_assessments AS
-WITH ranked AS (
-    SELECT *,
-        ROW_NUMBER() OVER (
-            PARTITION BY premises, conclusions, contributor
-            ORDER BY assessed_at DESC
-        ) as rn
-    FROM assessments
-)
-SELECT premises, conclusions, judgment, contributor,
-       assessed_at, reason, domain
-FROM ranked WHERE rn = 1;
-
-CREATE OR REPLACE VIEW base_sequents AS
-SELECT premises, conclusions,
-       COUNT(*) as n_assessors,
-       MIN(assessed_at) as first_assessed
-FROM current_assessments
-WHERE judgment = 'holds'
-GROUP BY premises, conclusions
-HAVING COUNT(*) = (
-    SELECT COUNT(DISTINCT contributor)
-    FROM current_assessments ca2
-    WHERE ca2.premises = current_assessments.premises
-      AND ca2.conclusions = current_assessments.conclusions
-);
-"""
-
-
 class MaterialBase:
     def __init__(self, con, name):
         self.con = con
@@ -102,7 +57,7 @@ class MaterialBase:
     @classmethod
     def create(cls, db_path, name):
         con = duckdb.connect(db_path)
-        con.execute(_SCHEMA_SQL)
+        apply_migrations(con, "base")
         con.execute("INSERT OR REPLACE INTO meta VALUES ('name', ?)", [name])
         con.execute("INSERT OR REPLACE INTO meta VALUES ('version', '5')")
         return cls(con, name)
@@ -110,7 +65,9 @@ class MaterialBase:
     @classmethod
     def open(cls, db_path):
         con = duckdb.connect(db_path)
-        # Validate that the file has the expected schema
+        # Validate that the file has the expected schema before letting
+        # the migration runner touch it. An empty / non-Elenchus file
+        # should not be silently "migrated" into one.
         tables = {
             r[0]
             for r in con.execute(
@@ -123,6 +80,9 @@ class MaterialBase:
                 f"Database '{db_path}' is not a valid Elenchus dialectic "
                 f"(missing 'meta' table, found tables: {tables or 'none'})"
             )
+        # Bring the schema up to current version. Safe on already-current
+        # files; the runner skips migrations <= meta.schema_version.
+        apply_migrations(con, "base")
         r = con.execute("SELECT value FROM meta WHERE key='name'").fetchone()
         name = r[0] if r else "unnamed"
         return cls(con, name)
@@ -130,7 +90,7 @@ class MaterialBase:
     @classmethod
     def in_memory(cls, name="unnamed"):
         con = duckdb.connect(":memory:")
-        con.execute(_SCHEMA_SQL)
+        apply_migrations(con, "base")
         con.execute("INSERT INTO meta VALUES ('name', ?)", [name])
         con.execute("INSERT INTO meta VALUES ('version', '5')")
         return cls(con, name)
