@@ -1292,6 +1292,18 @@ function App() {
               animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
           >PDF</button>
+          {actor && actor.kind === 'admin' && (
+            <button
+              onClick={() => { setCurrent(null); setState(null); setView('admin'); }}
+              title="Admin dashboard"
+              style={{
+                background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
+                color: 'var(--accent)', cursor: 'pointer',
+                fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
+              }}
+            >ADMIN</button>
+          )}
           {actor && (
             <span title={actor.email || ''} style={{
               fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
