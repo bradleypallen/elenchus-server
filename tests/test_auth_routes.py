@@ -8,22 +8,20 @@ data directory so the platform DB is isolated.
 import contextlib
 import logging
 import os
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
 
+# conftest.py sets ELENCHUS_DATA / API key / BCRYPT_ROUNDS before any
+# elenchus.* import.
+from elenchus import auth
+from elenchus.db import get_registry
+from elenchus.db import platform as pdb
+from elenchus.server import app
+
 logger = logging.getLogger(__name__)
 
-# Set ENV before any elenchus import so server.py picks up the temp dir.
-_test_data_dir = tempfile.mkdtemp(prefix="elenchus_auth_routes_test_")
-os.environ["ELENCHUS_DATA"] = _test_data_dir
-os.environ.setdefault("ELENCHUS_API_KEY", "test-key-for-ci")
-
-from elenchus import auth  # noqa: E402
-from elenchus.db import get_registry  # noqa: E402
-from elenchus.db import platform as pdb  # noqa: E402
-from elenchus.server import app  # noqa: E402
+_test_data_dir = os.environ["ELENCHUS_DATA"]
 
 client = TestClient(app)
 

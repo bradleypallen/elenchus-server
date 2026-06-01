@@ -69,6 +69,9 @@ def _get_state(name: str) -> DialecticalState:
     """Return the cached DialecticalState for `name`, translating
     registry exceptions into HTTP responses. Thin wrapper over the
     DBRegistry that keeps route handlers ignorant of registry internals.
+
+    This function performs *no* authorization check. Use
+    `_authorize_and_get_state` for protected routes.
     """
     try:
         return get_registry().get(name)
@@ -77,6 +80,30 @@ def _get_state(name: str) -> DialecticalState:
     except ValueError as e:
         logger.error("Corrupt dialectic file for '%s': %s", name, e)
         raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
+
+
+def _authorize_base_access(name: str, actor: dict) -> None:
+    """Verify the current actor is authorized to access the named
+    dialectic. Admins can access any base; other roles can only access
+    bases they own.
+
+    Looks up the base in `platform.bases` (id = sanitized name).
+    Non-owners and missing-base responses both return 404 — leaking
+    that a name exists but is owned by someone else is an information
+    leak. Admins bypass ownership entirely.
+    """
+    if actor.get("kind") == "admin":
+        return  # admins bypass ownership
+
+    base = pdb.find_base(get_registry().platform_con(), name)
+    if base is None or base["owner_id"] != actor["id"]:
+        raise HTTPException(404, f"Dialectic '{name}' not found")
+
+
+def _authorize_and_get_state(name: str, actor: dict) -> DialecticalState:
+    """Combine authorization and state lookup for protected routes."""
+    _authorize_base_access(name, actor)
+    return _get_state(name)
 
 
 # ── API Models ──
@@ -356,8 +383,14 @@ def update_settings(req: SettingsUpdate):
 
 
 @app.post("/api/dialectics")
-def create_dialectic(req: CreateRequest):
-    """Create a new dialectic."""
+def create_dialectic(req: CreateRequest, actor: dict = Depends(auth.current_actor)):
+    """Create a new dialectic owned by the current actor.
+
+    Registers the new base in `platform.bases` with `owner_id =
+    actor.id` so subsequent routes can verify ownership. The file
+    path uses the sanitized name as the base id — a future migration
+    moves to `bases/{actor_id}/{base_id}.duckdb`.
+    """
     name = req.name.strip()
     if not name:
         raise HTTPException(400, "Name required")
@@ -365,19 +398,41 @@ def create_dialectic(req: CreateRequest):
     path = reg.db_path(name)
     if os.path.exists(path):
         raise HTTPException(409, f"Dialectic '{name}' already exists")
+
+    # Sanity-check that no `bases` row exists either (covers the case
+    # where the file was deleted out-of-band but the row remained).
+    if pdb.find_base(reg.platform_con(), name) is not None:
+        raise HTTPException(409, f"Dialectic '{name}' is already registered")
+
     topic = req.topic or name
     state = DialecticalState.create(path, topic)
     reg.put(name, state)
+    with reg.platform_lock:
+        pdb.create_base(
+            reg.platform_con(),
+            base_id=name,
+            name=topic,
+            owner_id=actor["id"],
+        )
     return {"name": name, "state": state.to_dict()}
 
 
 @app.get("/api/dialectics")
-def list_dialectics():
-    """List all saved dialectics."""
-    files = glob.glob(os.path.join(DATA_DIR, "*.duckdb"))
+def list_dialectics(actor: dict = Depends(auth.current_actor)):
+    """List the current actor's dialectics. Admins see every base in
+    the platform; other actors see only their own."""
+    reg = get_registry()
+    if actor.get("kind") == "admin":
+        # Walk the data directory (covers legacy files without
+        # `bases` rows in addition to registered ones).
+        files = glob.glob(os.path.join(DATA_DIR, "*.duckdb"))
+        basenames = [Path(f).stem for f in sorted(files)]
+    else:
+        rows = pdb.list_bases_for_actor(reg.platform_con(), actor["id"])
+        basenames = [r["id"] for r in rows]
+
     result = []
-    for f in sorted(files):
-        basename = Path(f).stem
+    for basename in basenames:
         try:
             s = _get_state(basename)
             d = s.to_dict()
@@ -407,16 +462,20 @@ def list_dialectics():
 
 
 @app.get("/api/dialectics/{name}")
-def get_dialectic(name: str):
+def get_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
     """Get the current state of a dialectic, including conversation history."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     result = state.to_dict()
     result["conversation"] = state.get_conversation()
     return result
 
 
 @app.post("/api/dialectics/{name}/message")
-async def send_message(name: str, req: MessageRequest):
+async def send_message(
+    name: str,
+    req: MessageRequest,
+    actor: dict = Depends(auth.current_actor),
+):
     """
     Send a natural language message from the respondent.
     The opponent parses it, updates state, proposes tensions,
@@ -429,7 +488,7 @@ async def send_message(name: str, req: MessageRequest):
     serialize at the apply phase only — the LLM call itself runs without
     the lock so concurrent tabs don't freeze each other.
     """
-    # Use the registry directly so we can fetch the handle (for its lock).
+    _authorize_base_access(name, actor)
     try:
         handle = get_registry().get_handle(name)
     except FileNotFoundError as e:
@@ -456,9 +515,14 @@ async def send_message(name: str, req: MessageRequest):
 
 
 @app.post("/api/dialectics/{name}/tensions/{tid}")
-def resolve_tension(name: str, tid: int, req: TensionAction):
+def resolve_tension(
+    name: str,
+    tid: int,
+    req: TensionAction,
+    actor: dict = Depends(auth.current_actor),
+):
     """Accept or contest a tension directly (bypassing the oracle)."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     logger.info("Tension action: dialectic=%s, tension=#%d, action=%s", name, tid, req.action)
     if req.action == "accept":
         result = state.accept_tension(tid)
@@ -476,18 +540,18 @@ def resolve_tension(name: str, tid: int, req: TensionAction):
 
 
 @app.post("/api/dialectics/{name}/retract")
-def retract(name: str, req: RetractRequest):
+def retract(name: str, req: RetractRequest, actor: dict = Depends(auth.current_actor)):
     """Retract a proposition directly."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     logger.info("Retract: dialectic=%s, proposition=%r", name, req.proposition)
     state.retract_prop(req.proposition)
     return {"retracted": req.proposition, "state": state.to_dict()}
 
 
 @app.post("/api/dialectics/{name}/derive")
-def derive(name: str, req: DeriveRequest):
+def derive(name: str, req: DeriveRequest, actor: dict = Depends(auth.current_actor)):
     """Check derivability in the material base."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     result = state.derive_with_trace(req.gamma, req.delta)
     return {
         "gamma": req.gamma,
@@ -499,16 +563,16 @@ def derive(name: str, req: DeriveRequest):
 
 
 @app.get("/api/dialectics/{name}/report")
-def report(name: str):
+def report(name: str, actor: dict = Depends(auth.current_actor)):
     """Get the material base report."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     return {"report": state.base.report()}
 
 
 @app.get("/api/dialectics/{name}/report.pdf")
-def download_report_pdf(name: str):
+def download_report_pdf(name: str, actor: dict = Depends(auth.current_actor)):
     """Generate and download a PDF report of the dialectic."""
-    state = _get_state(name)
+    state = _authorize_and_get_state(name, actor)
     logger.info("Generating PDF report for dialectic '%s'", name)
     summary = opponent.generate_summary(state)
     pdf_bytes = generate_pdf_report(state, summary)
@@ -523,13 +587,19 @@ def download_report_pdf(name: str):
 
 
 @app.delete("/api/dialectics/{name}")
-def delete_dialectic(name: str):
-    """Delete a dialectic."""
+def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
+    """Delete a dialectic. Removes the per-base file, the registry
+    cache entry, and the platform `bases` row."""
+    _authorize_base_access(name, actor)
     reg = get_registry()
-    reg.remove(name)  # idempotent: no error if absent from cache
+    reg.remove(name)  # idempotent
     path = reg.db_path(name)
-    if os.path.exists(path):
+    file_existed = os.path.exists(path)
+    if file_existed:
         os.remove(path)
+    with reg.platform_lock:
+        pdb.delete_base(reg.platform_con(), name)
+    if file_existed:
         return {"deleted": name}
     raise HTTPException(404, f"Dialectic '{name}' not found")
 

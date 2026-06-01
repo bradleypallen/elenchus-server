@@ -3,33 +3,72 @@
 import contextlib
 import logging
 import os
-import tempfile
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+# Conftest sets ELENCHUS_DATA, ELENCHUS_API_KEY, BCRYPT_ROUNDS before
+# this module imports `elenchus.server`. Sharing the data dir across
+# test files ensures the registry's data_dir matches what every test
+# file's fixture writes to / cleans up.
+from elenchus import auth
+from elenchus.db import get_registry
+from elenchus.db import platform as pdb
+from elenchus.server import app
+
 logger = logging.getLogger(__name__)
 
-# Use a temp directory for test dialectics to avoid polluting the real data dir
-_test_data_dir = tempfile.mkdtemp(prefix="elenchus_test_")
-os.environ["ELENCHUS_DATA"] = _test_data_dir
-
-# Must set before importing server (which reads env at module level)
-os.environ.setdefault("ELENCHUS_API_KEY", "test-key-for-ci")
-
-from elenchus.db import get_registry  # noqa: E402  # isort: skip
-from elenchus.server import app  # noqa: E402  # isort: skip
+_test_data_dir = os.environ["ELENCHUS_DATA"]
 
 client = TestClient(app)
 
 
+def _close_per_base_handles(reg):
+    """Close every per-base connection cached in the registry without
+    touching the platform connection. Used between tests to release
+    file locks on per-base .duckdb files."""
+    for _name, handle in list(reg._handles.items()):
+        with contextlib.suppress(Exception):
+            handle.state.base.con.close()
+    reg._handles.clear()
+
+
 @pytest.fixture(autouse=True)
 def _clean_states():
-    """Clean up state cache and test DB files between tests."""
-    get_registry().close_all()
-    yield
-    get_registry().close_all()
+    """Clean up state, log in as a default test user, then tear down.
+
+    All routes now require auth; the fixture creates a fresh user per
+    test and sets the session cookie on the shared TestClient.
+    """
+    reg = get_registry()
+    reg.migrate_platform()
+    con = reg.platform_con()
+
+    # Wipe platform tables. Keep the platform connection open — closing
+    # it here would invalidate any subsequent `con.execute` in this
+    # fixture.
+    with reg.platform_lock:
+        for table in ("auth_sessions", "magic_links", "invites", "sessions", "bases", "actors"):
+            con.execute(f"DELETE FROM {table}")
+    _close_per_base_handles(reg)
+    client.cookies.clear()
+
+    # Create a default test user and log them in.
+    actor_id = pdb.create_actor(
+        con,
+        kind="user",
+        email="testuser@example.com",
+        display_name="Test User",
+        password_hash=auth.hash_password("test-pw"),
+    )
+    token = auth.create_session(actor_id)
+    client.cookies.set(auth.SESSION_COOKIE, token)
+
+    yield {"actor_id": actor_id, "token": token}
+
+    client.cookies.clear()
+    _close_per_base_handles(reg)
     # Clean up any .duckdb files created during tests
     for f in os.listdir(_test_data_dir):
         if f.endswith(".duckdb"):
@@ -91,6 +130,134 @@ class TestDialecticCRUD:
     def test_delete_nonexistent_returns_404(self):
         r = client.delete("/api/dialectics/nope")
         assert r.status_code == 404
+
+
+# ── Authorization ──
+
+
+class TestAuthorization:
+    """Routes require auth and enforce per-actor base ownership."""
+
+    def test_unauthenticated_create_401(self):
+        client.cookies.clear()
+        r = client.post("/api/dialectics", json={"name": "anon"})
+        assert r.status_code == 401
+
+    def test_unauthenticated_list_401(self):
+        client.cookies.clear()
+        r = client.get("/api/dialectics")
+        assert r.status_code == 401
+
+    def test_unauthenticated_get_401(self):
+        client.cookies.clear()
+        r = client.get("/api/dialectics/anything")
+        assert r.status_code == 401
+
+    def test_unauthenticated_message_401(self):
+        client.cookies.clear()
+        r = client.post("/api/dialectics/anything/message", json={"message": "hi"})
+        assert r.status_code == 401
+
+    def test_other_actor_cannot_read(self):
+        # Default test user creates a dialectic.
+        client.post("/api/dialectics", json={"name": "private"})
+        # Log out and log in as a different user.
+        other_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="user",
+            email="other@example.com",
+            display_name="Other",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        token = auth.create_session(other_id)
+        client.cookies.set(auth.SESSION_COOKIE, token)
+
+        r = client.get("/api/dialectics/private")
+        assert r.status_code == 404  # 404 (not 403) so we don't leak names
+
+    def test_other_actor_cannot_delete(self):
+        client.post("/api/dialectics", json={"name": "mine"})
+        other_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="user",
+            email="other@example.com",
+            display_name="Other",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(other_id))
+        r = client.delete("/api/dialectics/mine")
+        assert r.status_code == 404
+
+    def test_other_actor_cannot_send_message(self):
+        client.post("/api/dialectics", json={"name": "private"})
+        other_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="user",
+            email="other@example.com",
+            display_name="Other",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(other_id))
+        r = client.post("/api/dialectics/private/message", json={"message": "hi"})
+        assert r.status_code == 404
+
+    def test_list_filtered_to_current_actor(self):
+        # Default user creates one dialectic.
+        client.post("/api/dialectics", json={"name": "mine1"})
+        client.post("/api/dialectics", json={"name": "mine2"})
+
+        # Log in as a different user; they should see no dialectics.
+        other_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="user",
+            email="other@example.com",
+            display_name="Other",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(other_id))
+        r = client.get("/api/dialectics")
+        assert r.status_code == 200
+        names = [d["name"] for d in r.json()]
+        assert "mine1" not in names
+        assert "mine2" not in names
+
+    def test_admin_sees_all_dialectics(self):
+        # Default user creates a dialectic.
+        client.post("/api/dialectics", json={"name": "userbase"})
+
+        # Log in as admin.
+        admin_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="admin",
+            email="admin@example.com",
+            display_name="Admin",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(admin_id))
+        r = client.get("/api/dialectics")
+        assert r.status_code == 200
+        names = [d["name"] for d in r.json()]
+        assert "userbase" in names
+
+    def test_admin_can_access_any_dialectic(self):
+        client.post("/api/dialectics", json={"name": "userbase"})
+
+        admin_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="admin",
+            email="admin@example.com",
+            display_name="Admin",
+            password_hash=auth.hash_password("pw"),
+        )
+        client.cookies.clear()
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(admin_id))
+        r = client.get("/api/dialectics/userbase")
+        assert r.status_code == 200
 
 
 # ── Tensions ──
