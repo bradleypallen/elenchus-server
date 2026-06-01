@@ -735,6 +735,29 @@ def _run_admin_create(args) -> None:
     print(f"Created admin actor id={actor_id} ({args.email})")
 
 
+def _run_migrate_legacy(args) -> None:
+    """Migrate every legacy flat-layout dialectic into the multi-user
+    platform layout. Idempotent; safe to re-run."""
+    from .legacy import DEFAULT_ADMIN_EMAIL, migrate_legacy
+
+    summary = migrate_legacy(
+        DATA_DIR,
+        admin_email=args.admin_email or DEFAULT_ADMIN_EMAIL,
+        create_admin=args.create_admin,
+        admin_password=args.admin_password,
+    )
+
+    print(f"Legacy migration complete (admin id={summary['admin_id']}, {summary['admin_email']}):")
+    if not summary["migrated"]:
+        print("  (no legacy files found)")
+    for item in summary["migrated"]:
+        print(f"  {item['action']:<18} {item['name']} → {item['path']}")
+    if summary["errors"]:
+        print(f"\nErrors ({len(summary['errors'])}):")
+        for err in summary["errors"]:
+            print(f"  {err['path']}: {err['error']}")
+
+
 def main():
     import argparse
 
@@ -759,9 +782,27 @@ def main():
         help="Password (prompts interactively if omitted; also reads ELENCHUS_ADMIN_PASSWORD)",
     )
 
-    # `migrate-legacy` subcommand placeholder — implementation lands in
-    # Week 3 D3 when per-base files are restructured.
-    # subparsers.add_parser("migrate-legacy", ...) — TODO Week 3
+    # `migrate-legacy` subcommand — relocate legacy single-user dialectics
+    # into the multi-user platform layout.
+    mig = subparsers.add_parser(
+        "migrate-legacy",
+        help="Migrate flat-layout dialectics into bases/{actor_id}/{name}.duckdb",
+    )
+    mig.add_argument(
+        "--admin-email",
+        default=None,
+        help="Email of the admin actor that will own the migrated bases (default: admin@local)",
+    )
+    mig.add_argument(
+        "--create-admin",
+        action="store_true",
+        help="Create the admin actor if it doesn't exist (default: error out)",
+    )
+    mig.add_argument(
+        "--admin-password",
+        default=None,
+        help="Initial password for the admin if --create-admin is used (optional)",
+    )
 
     # Default to `serve` when invoked without a subcommand. Re-parse
     # under the serve subparser so its args are available.
@@ -781,6 +822,8 @@ def main():
             _run_admin_create(args)
         else:
             admin.print_help()
+    elif args.command == "migrate-legacy":
+        _run_migrate_legacy(args)
     else:
         parser.print_help()
 
