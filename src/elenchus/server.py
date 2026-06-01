@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .db import get_registry, init_registry
 from .dialectical_state import DialecticalState
 from .opponent import Opponent
 from .pdf_report import generate_pdf_report
@@ -34,19 +35,19 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.environ.get("ELENCHUS_DATA", "./dialectics")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Initialize the process-wide DBRegistry. This must happen before any
+# route handler runs. The registry owns DuckDB connection lifecycle;
+# direct `duckdb.connect` calls outside the registry are forbidden.
+init_registry(DATA_DIR)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    # Startup
+    # Startup: registry is already initialized at module load.
     yield
-    # Shutdown: close all open DuckDB connections to release locks and flush WAL files
-    for name, state in _states.items():
-        try:
-            state.base.con.close()
-            logger.info("Closed DuckDB connection for '%s'", name)
-        except Exception:
-            logger.warning("Failed to close DuckDB connection for '%s'", name, exc_info=True)
-    _states.clear()
+    # Shutdown: close all open DuckDB connections to release locks and
+    # flush WAL files. close_all is idempotent.
+    get_registry().close_all()
 
 
 app = FastAPI(title="Elenchus", version="0.1.0", lifespan=lifespan)
@@ -57,27 +58,19 @@ opponent = Opponent(
     protocol=os.environ.get("ELENCHUS_PROTOCOL"),
 )
 
-# Cache open states
-_states: dict[str, DialecticalState] = {}
-
-
-def _db_path(name: str) -> str:
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
-    return os.path.join(DATA_DIR, f"{safe}.duckdb")
-
 
 def _get_state(name: str) -> DialecticalState:
-    if name not in _states:
-        path = _db_path(name)
-        if os.path.exists(path):
-            try:
-                _states[name] = DialecticalState.open(path)
-            except ValueError as e:
-                logger.error("Corrupt dialectic file for '%s': %s", name, e)
-                raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
-        else:
-            raise HTTPException(404, f"Dialectic '{name}' not found")
-    return _states[name]
+    """Return the cached DialecticalState for `name`, translating
+    registry exceptions into HTTP responses. Thin wrapper over the
+    DBRegistry that keeps route handlers ignorant of registry internals.
+    """
+    try:
+        return get_registry().get(name)
+    except FileNotFoundError as e:
+        raise HTTPException(404, f"Dialectic '{name}' not found") from e
+    except ValueError as e:
+        logger.error("Corrupt dialectic file for '%s': %s", name, e)
+        raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
 
 
 # ── API Models ──
@@ -151,12 +144,13 @@ def create_dialectic(req: CreateRequest):
     name = req.name.strip()
     if not name:
         raise HTTPException(400, "Name required")
-    path = _db_path(name)
+    reg = get_registry()
+    path = reg.db_path(name)
     if os.path.exists(path):
         raise HTTPException(409, f"Dialectic '{name}' already exists")
     topic = req.topic or name
     state = DialecticalState.create(path, topic)
-    _states[name] = state
+    reg.put(name, state)
     return {"name": name, "state": state.to_dict()}
 
 
@@ -294,10 +288,9 @@ def download_report_pdf(name: str):
 @app.delete("/api/dialectics/{name}")
 def delete_dialectic(name: str):
     """Delete a dialectic."""
-    if name in _states:
-        _states[name].base.con.close()
-        del _states[name]
-    path = _db_path(name)
+    reg = get_registry()
+    reg.remove(name)  # idempotent: no error if absent from cache
+    path = reg.db_path(name)
     if os.path.exists(path):
         os.remove(path)
         return {"deleted": name}

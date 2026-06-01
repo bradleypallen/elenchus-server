@@ -18,7 +18,8 @@ os.environ["ELENCHUS_DATA"] = _test_data_dir
 # Must set before importing server (which reads env at module level)
 os.environ.setdefault("ELENCHUS_API_KEY", "test-key-for-ci")
 
-from elenchus.server import app, _states  # noqa: E402  # isort: skip
+from elenchus.db import get_registry  # noqa: E402  # isort: skip
+from elenchus.server import app  # noqa: E402  # isort: skip
 
 client = TestClient(app)
 
@@ -26,9 +27,9 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def _clean_states():
     """Clean up state cache and test DB files between tests."""
-    _states.clear()
+    get_registry().close_all()
     yield
-    _states.clear()
+    get_registry().close_all()
     # Clean up any .duckdb files created during tests
     for f in os.listdir(_test_data_dir):
         if f.endswith(".duckdb"):
@@ -98,7 +99,7 @@ class TestDialecticCRUD:
 class TestTensionEndpoints:
     def _setup_dialectic_with_tension(self):
         client.post("/api/dialectics", json={"name": "tens"})
-        state = _states["tens"]
+        state = get_registry().get("tens")
         state.commit("P")
         state.deny("Q")
         tid = state.add_tension(["P"], ["Q"], reason="conflict")
@@ -134,7 +135,7 @@ class TestTensionEndpoints:
 class TestRetractEndpoint:
     def test_retract_proposition(self):
         client.post("/api/dialectics", json={"name": "ret1"})
-        _states["ret1"].commit("Some claim")
+        get_registry().get("ret1").commit("Some claim")
         r = client.post("/api/dialectics/ret1/retract", json={"proposition": "Some claim"})
         assert r.status_code == 200
         assert r.json()["retracted"] == "Some claim"
@@ -147,15 +148,15 @@ class TestRetractEndpoint:
 class TestDeriveEndpoint:
     def test_derive_containment(self):
         client.post("/api/dialectics", json={"name": "der1"})
-        _states["der1"].commit("P")
+        get_registry().get("der1").commit("P")
         r = client.post("/api/dialectics/der1/derive", json={"gamma": ["P"], "delta": ["P"]})
         assert r.status_code == 200
         assert r.json()["derives"] is True
 
     def test_derive_no_derivation(self):
         client.post("/api/dialectics", json={"name": "der2"})
-        _states["der2"].commit("P")
-        _states["der2"].commit("Q")
+        get_registry().get("der2").commit("P")
+        get_registry().get("der2").commit("Q")
         r = client.post("/api/dialectics/der2/derive", json={"gamma": ["P"], "delta": ["Q"]})
         assert r.status_code == 200
         assert r.json()["derives"] is False
@@ -211,7 +212,7 @@ class TestSettingsEndpoints:
 class TestReportEndpoint:
     def test_report_text(self):
         client.post("/api/dialectics", json={"name": "rpt1"})
-        _states["rpt1"].commit("P")
+        get_registry().get("rpt1").commit("P")
         r = client.get("/api/dialectics/rpt1/report")
         assert r.status_code == 200
         assert "report" in r.json()
