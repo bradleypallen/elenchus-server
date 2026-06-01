@@ -33,6 +33,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import duckdb
+
 if TYPE_CHECKING:
     from ..dialectical_state import DialecticalState
 
@@ -93,14 +95,25 @@ class DBRegistry:
     touching call sites.
     """
 
-    def __init__(self, data_dir: str, capacity: int = DEFAULT_CAPACITY) -> None:
+    def __init__(
+        self,
+        data_dir: str,
+        capacity: int = DEFAULT_CAPACITY,
+        platform_path: str | None = None,
+    ) -> None:
         self._data_dir = data_dir
         self._capacity = capacity
+        self._platform_path = platform_path or os.path.join(data_dir, "platform.duckdb")
         # OrderedDict so we can promote-on-access for LRU ordering in D5.
         self._handles: OrderedDict[str, BaseHandle] = OrderedDict()
         # Guards _handles mutations only. Held briefly during get/put/remove.
         # Never held during connection use, LLM calls, or migrations.
         self._registry_lock = threading.Lock()
+        # Platform connection: lazily opened on first access and held
+        # for the registry's lifetime. Guarded by its own lock since
+        # writes to platform.duckdb happen from any actor's auth check.
+        self._platform_con: duckdb.DuckDBPyConnection | None = None
+        self._platform_lock = threading.Lock()
 
         self._check_fd_limit()
 
@@ -126,6 +139,54 @@ class DBRegistry:
             # resource module unavailable (Windows) or rlimit query failed.
             # Not fatal; just skip the warning.
             pass
+
+    # ── Platform connection ──
+
+    @property
+    def platform_path(self) -> str:
+        return self._platform_path
+
+    def platform_con(self) -> duckdb.DuckDBPyConnection:
+        """Return the platform.duckdb connection, opening it on first
+        access. The connection is held for the registry's lifetime —
+        every request touches platform.duckdb (auth, authorization,
+        session lookup) so eviction is wasteful.
+
+        Callers that *write* to the platform DB must hold
+        `platform_lock` (acquired via `acquire_platform_lock()`).
+        Read-only callers (auth_sessions lookup, base ownership check)
+        can read concurrently — DuckDB MVCC handles this.
+        """
+        with self._platform_lock:
+            if self._platform_con is None:
+                # Ensure parent dir exists. data_dir was created by
+                # server.py at import time; platform_path may be a
+                # different location (custom override).
+                os.makedirs(os.path.dirname(self._platform_path) or ".", exist_ok=True)
+                self._platform_con = duckdb.connect(self._platform_path)
+                logger.info("Opened platform DB at %s", self._platform_path)
+            return self._platform_con
+
+    def migrate_platform(self) -> int:
+        """Apply any unapplied platform-DB migrations. Idempotent.
+        Returns the schema version after migration.
+
+        Called once from server.py during FastAPI lifespan startup,
+        before any request is accepted.
+        """
+        # Local import to avoid a circular dependency: the migrations
+        # module imports from elsewhere that may import from here.
+        from ..migrations import apply_migrations
+
+        con = self.platform_con()
+        with self._platform_lock:
+            return apply_migrations(con, "platform")
+
+    @property
+    def platform_lock(self) -> threading.Lock:
+        """Returns the platform-write lock. Use as a context manager
+        around any write to platform.duckdb to serialize writers."""
+        return self._platform_lock
 
     # ── Path resolution ──
 
@@ -245,6 +306,15 @@ class DBRegistry:
                 logger.info("Closed DuckDB connection for '%s'", name)
             except Exception:
                 logger.warning("Failed to close DuckDB connection for '%s'", name, exc_info=True)
+        # Close the platform connection too.
+        with self._platform_lock:
+            if self._platform_con is not None:
+                try:
+                    self._platform_con.close()
+                    logger.info("Closed platform DB connection")
+                except Exception:
+                    logger.warning("Failed to close platform DB connection", exc_info=True)
+                self._platform_con = None
 
     # ── Introspection ──
 

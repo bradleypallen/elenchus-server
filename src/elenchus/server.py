@@ -43,7 +43,11 @@ init_registry(DATA_DIR)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    # Startup: registry is already initialized at module load.
+    # Startup: registry is already initialized at module load. Apply
+    # platform-DB migrations so the actors / invites / sessions tables
+    # exist before any request hits an auth check.
+    version = get_registry().migrate_platform()
+    logger.info("Platform DB at schema version %d", version)
     yield
     # Shutdown: close all open DuckDB connections to release locks and
     # flush WAL files. close_all is idempotent.
