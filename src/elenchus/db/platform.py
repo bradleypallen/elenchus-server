@@ -82,6 +82,22 @@ def deactivate_actor(con, actor_id: int) -> None:
     )
 
 
+def reactivate_actor(con, actor_id: int) -> None:
+    con.execute(
+        "UPDATE actors SET deactivated_at = NULL WHERE id = ?",
+        [actor_id],
+    )
+
+
+def count_active_admins(con) -> int:
+    """Return how many admin actors are currently active. Used to
+    refuse a deactivation that would lock the platform out of itself."""
+    row = con.execute(
+        "SELECT COUNT(*) FROM actors WHERE kind = 'admin' AND deactivated_at IS NULL"
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def list_actors(con, *, include_deactivated: bool = False) -> list[dict]:
     sql = (
         "SELECT id, kind, email, display_name, password_hash, "

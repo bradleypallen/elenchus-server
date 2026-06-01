@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import audit as audit_mod
 from . import auth, invites
 from . import backup as backup_mod
 from .db import get_registry, init_registry
@@ -362,6 +363,62 @@ def admin_list_backups(actor: dict = Depends(auth.require_admin)):
     """List every backup archive currently on disk, newest first."""
     output_dir = os.path.join(DATA_DIR, "backups")
     return {"backups": backup_mod.list_backups(output_dir), "output_dir": output_dir}
+
+
+@app.get("/api/admin/audit")
+def admin_audit(actor: dict = Depends(auth.require_admin)):
+    """Run the cross-DB / filesystem audit and return the structured
+    report. The CLI counterpart (`elenchus audit`) calls the same
+    underlying function; this endpoint exists so admin dashboards can
+    surface drift without shell access."""
+    return audit_mod.audit_platform(DATA_DIR)
+
+
+@app.put("/api/admin/users/{user_id}/deactivate")
+def admin_deactivate_user(user_id: int, actor: dict = Depends(auth.require_admin)):
+    """Soft-delete an actor. Their session cookies stop working
+    immediately (resolve_auth_token filters on `deactivated_at IS NULL`)
+    and login is refused. Per-base contributions remain attributed to
+    the actor so historical attribution survives.
+
+    Refuses to deactivate the last active admin (would lock the
+    platform out of itself). Refuses to deactivate yourself for the
+    same reason — use another admin to do it.
+    """
+    reg = get_registry()
+    con = reg.platform_con()
+    target = pdb.find_actor_by_id(con, user_id)
+    if target is None:
+        raise HTTPException(404, f"Actor #{user_id} not found")
+    if target.get("deactivated_at") is not None:
+        return {"status": "already_deactivated", "id": user_id}
+    if user_id == actor["id"]:
+        raise HTTPException(400, "Cannot deactivate yourself")
+    if target["kind"] == "admin" and pdb.count_active_admins(con) <= 1:
+        raise HTTPException(400, "Cannot deactivate the last active admin")
+    with reg.platform_lock:
+        pdb.deactivate_actor(con, user_id)
+        pdb.revoke_actor_sessions(con, user_id)
+    logger.info("Actor #%d deactivated by admin #%d", user_id, actor["id"])
+    return {"status": "deactivated", "id": user_id}
+
+
+@app.put("/api/admin/users/{user_id}/reactivate")
+def admin_reactivate_user(user_id: int, actor: dict = Depends(auth.require_admin)):
+    """Undo a deactivation. The actor can log in again with their
+    existing credentials; previously-revoked session cookies are NOT
+    restored (they have to log in fresh)."""
+    reg = get_registry()
+    con = reg.platform_con()
+    target = pdb.find_actor_by_id(con, user_id)
+    if target is None:
+        raise HTTPException(404, f"Actor #{user_id} not found")
+    if target.get("deactivated_at") is None:
+        return {"status": "already_active", "id": user_id}
+    with reg.platform_lock:
+        pdb.reactivate_actor(con, user_id)
+    logger.info("Actor #%d reactivated by admin #%d", user_id, actor["id"])
+    return {"status": "reactivated", "id": user_id}
 
 
 @app.get("/api/admin/users")
@@ -769,6 +826,16 @@ def _run_admin_create(args) -> None:
     print(f"Created admin actor id={actor_id} ({args.email})")
 
 
+def _run_audit(args) -> None:
+    """Walk the data directory and platform DB, print drift report."""
+    from . import audit as audit_mod_local
+
+    reg = get_registry()
+    reg.migrate_platform()  # make sure tables exist before we query them
+    report = audit_mod_local.audit_platform(DATA_DIR)
+    print(audit_mod_local.format_report(report))
+
+
 def _run_migrate_legacy(args) -> None:
     """Migrate every legacy flat-layout dialectic into the multi-user
     platform layout. Idempotent; safe to re-run."""
@@ -816,6 +883,12 @@ def main():
         help="Password (prompts interactively if omitted; also reads ELENCHUS_ADMIN_PASSWORD)",
     )
 
+    # `audit` subcommand — report drift between platform DB and disk.
+    subparsers.add_parser(
+        "audit",
+        help="Audit platform DB vs filesystem and per-base actor references",
+    )
+
     # `migrate-legacy` subcommand — relocate legacy single-user dialectics
     # into the multi-user platform layout.
     mig = subparsers.add_parser(
@@ -856,6 +929,8 @@ def main():
             _run_admin_create(args)
         else:
             admin.print_help()
+    elif args.command == "audit":
+        _run_audit(args)
     elif args.command == "migrate-legacy":
         _run_migrate_legacy(args)
     else:
