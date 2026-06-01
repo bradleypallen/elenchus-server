@@ -4,3 +4,4 @@ dialectics/
 .ruff_cache/
 dist/
 *.egg-info/
+.claude/

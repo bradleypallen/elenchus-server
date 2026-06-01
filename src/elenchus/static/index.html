@@ -168,8 +168,16 @@ function applyDisplayPrefs(prefs) {
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...opts.headers },
+    credentials: 'same-origin',
     ...opts,
   });
+  if (res.status === 401) {
+    // Session expired or never authenticated. Notify the AuthGate so it
+    // can swap to the login view; throw so callers don't see undefined.
+    window.dispatchEvent(new CustomEvent('elenchus:unauthorized'));
+    const err = await res.json().catch(() => ({ detail: 'Not authenticated' }));
+    throw new Error(err.detail || 'Not authenticated');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || res.statusText);
@@ -177,9 +185,313 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Auth context ──
+// Shared by AuthGate (provider) and App (consumer). Holds the current
+// actor and a logout helper. Defaults to null while the gate is still
+// determining whether the user is logged in.
+const AuthContext = React.createContext(null);
+
+// ── Auth UI ──
+//
+// Three small, deliberately stylistically-aligned forms: login, signup
+// (consumes an invite token), and a magic-link request. They share an
+// outer chrome (centered card with the ELENCHUS wordmark on top) so
+// the user never feels like they've left the app.
+
+function AuthShell({ children, footer, error }) {
+  return (
+    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 420, width: '100%', padding: 48 }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
+            ἜΛΕΓΧΟΣ
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: -0.5 }}>Elenchus</h1>
+        </div>
+        {children}
+        {error && (
+          <div style={{ marginTop: 14, padding: 10, borderRadius: 6,
+                        background: '#ef444420', border: '1px solid #ef444440',
+                        color: '#ef4444', fontSize: 12, fontFamily: 'var(--sans)' }}>
+            {error}
+          </div>
+        )}
+        {footer && (
+          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11,
+                        color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const authInputStyle = {
+  width: '100%', padding: '11px 13px', marginBottom: 10,
+  background: 'var(--surface)', border: '1px solid var(--border)',
+  borderRadius: 6, color: 'var(--text)', fontSize: 13, outline: 'none',
+  fontFamily: 'var(--sans)',
+};
+
+const authButtonStyle = (enabled) => ({
+  width: '100%', padding: '11px 16px',
+  background: enabled ? 'var(--accent)' : 'var(--surface)',
+  border: 'none', borderRadius: 6, color: '#111',
+  fontSize: 12, cursor: enabled ? 'pointer' : 'default',
+  letterSpacing: 1, fontWeight: 500, opacity: enabled ? 1 : 0.3,
+});
+
+const authLinkStyle = {
+  background: 'none', border: 'none', color: 'var(--accent)',
+  cursor: 'pointer', fontSize: 11, padding: '4px 6px',
+  fontFamily: 'var(--sans)', textDecoration: 'underline',
+};
+
+function Login({ onAuthed, onSwitchSignup, onSwitchMagic }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    if (!email || !password || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api('/api/auth/login', {
+        method: 'POST', body: JSON.stringify({ email, password }),
+      });
+      onAuthed();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <AuthShell
+      error={error}
+      footer={
+        <>
+          <button style={authLinkStyle} onClick={onSwitchMagic}>email me a login link</button>
+          <span style={{ margin: '0 6px' }}>·</span>
+          <button style={authLinkStyle} onClick={onSwitchSignup}>sign up with invite</button>
+        </>
+      }
+    >
+      <input
+        type="email" value={email} onChange={e => setEmail(e.target.value)}
+        placeholder="email" autoFocus style={authInputStyle}
+      />
+      <input
+        type="password" value={password} onChange={e => setPassword(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+        placeholder="password" style={authInputStyle}
+      />
+      <button onClick={submit} disabled={!email || !password || busy} style={authButtonStyle(!!(email && password) && !busy)}>
+        {busy ? '…' : 'SIGN IN'}
+      </button>
+    </AuthShell>
+  );
+}
+
+function Signup({ initialToken, onAuthed, onSwitchLogin }) {
+  const [token, setToken] = useState(initialToken || '');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    if (!token || !displayName || !password || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api('/api/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({ token, display_name: displayName, password }),
+      });
+      // Clean the ?token= from the URL so a refresh doesn't re-submit.
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      onAuthed();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <AuthShell
+      error={error}
+      footer={
+        <>
+          have an account?{' '}
+          <button style={authLinkStyle} onClick={onSwitchLogin}>sign in</button>
+        </>
+      }
+    >
+      <input
+        value={token} onChange={e => setToken(e.target.value)}
+        placeholder="invite token" style={authInputStyle}
+        readOnly={!!initialToken}
+      />
+      <input
+        value={displayName} onChange={e => setDisplayName(e.target.value)}
+        placeholder="display name" autoFocus={!!initialToken} style={authInputStyle}
+      />
+      <input
+        type="password" value={password} onChange={e => setPassword(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+        placeholder="choose a password" style={authInputStyle}
+      />
+      <button onClick={submit} disabled={!token || !displayName || !password || busy}
+        style={authButtonStyle(!!(token && displayName && password) && !busy)}>
+        {busy ? '…' : 'CREATE ACCOUNT'}
+      </button>
+    </AuthShell>
+  );
+}
+
+function MagicLink({ onSwitchLogin }) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    if (!email || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api('/api/auth/magic-link', {
+        method: 'POST', body: JSON.stringify({ email }),
+      });
+      setSent(true);
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <AuthShell
+      error={error}
+      footer={
+        <button style={authLinkStyle} onClick={onSwitchLogin}>back to sign in</button>
+      }
+    >
+      {sent ? (
+        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
+                      fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '20px 8px' }}>
+          If <span style={{ color: 'var(--text)' }}>{email}</span> is registered, a magic link has been sent.
+          Check your inbox.
+        </div>
+      ) : (
+        <>
+          <input
+            type="email" value={email} onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            placeholder="email" autoFocus style={authInputStyle}
+          />
+          <button onClick={submit} disabled={!email || busy}
+            style={authButtonStyle(!!email && !busy)}>
+            {busy ? '…' : 'SEND LINK'}
+          </button>
+        </>
+      )}
+    </AuthShell>
+  );
+}
+
+function AuthGate() {
+  // Resolution states: 'pending' (initial check in flight), 'login',
+  // 'signup', 'magic', 'authed'.
+  const [phase, setPhase] = useState('pending');
+  const [actor, setActor] = useState(null);
+  const [initialToken, setInitialToken] = useState(null);
+
+  // On mount: check if there's a session, and look at ?token= so signup
+  // links land directly on the signup view.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+
+    (async () => {
+      try {
+        const me = await api('/api/auth/me');
+        setActor(me); setPhase('authed');
+      } catch (e) {
+        if (token) {
+          setInitialToken(token);
+          setPhase('signup');
+        } else {
+          setPhase('login');
+        }
+      }
+    })();
+
+    // Any request that 401s while we believe we're authed kicks us back
+    // to login. Don't wipe the in-flight initial check, though.
+    const onUnauthorized = () => {
+      setActor(null);
+      setPhase((cur) => cur === 'pending' ? cur : 'login');
+    };
+    window.addEventListener('elenchus:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('elenchus:unauthorized', onUnauthorized);
+  }, []);
+
+  const onAuthed = async () => {
+    try {
+      const me = await api('/api/auth/me');
+      setActor(me); setPhase('authed');
+    } catch (e) {
+      // Shouldn't happen — we just authed. Fall back to login.
+      setPhase('login');
+    }
+  };
+
+  const logout = async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+    setActor(null);
+    setPhase('login');
+  };
+
+  if (phase === 'pending') {
+    return (
+      <AuthShell>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+          …
+        </div>
+      </AuthShell>
+    );
+  }
+  if (phase === 'login') {
+    return <Login
+      onAuthed={onAuthed}
+      onSwitchSignup={() => setPhase('signup')}
+      onSwitchMagic={() => setPhase('magic')}
+    />;
+  }
+  if (phase === 'signup') {
+    return <Signup
+      initialToken={initialToken}
+      onAuthed={onAuthed}
+      onSwitchLogin={() => setPhase('login')}
+    />;
+  }
+  if (phase === 'magic') {
+    return <MagicLink onSwitchLogin={() => setPhase('login')} />;
+  }
+  // Authed.
+  return (
+    <AuthContext.Provider value={{ actor, logout }}>
+      <App />
+    </AuthContext.Provider>
+  );
+}
+
 // ── App ──
 
 function App() {
+  // Pulled from AuthGate's provider. Null only in the (impossible)
+  // case that App renders outside the gate — bail safely if so.
+  const authCtx = React.useContext(AuthContext) || { actor: null, logout: () => {} };
+  const { actor, logout } = authCtx;
+
   const [view, setView] = useState('home'); // home | positum | dialogue
   const [dialectics, setDialectics] = useState([]);
   const [current, setCurrent] = useState(() => localStorage.getItem('elenchus-current') || null);
@@ -697,15 +1009,41 @@ function App() {
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
           <div style={{ textAlign: 'center', marginBottom: 48, position: 'relative' }}>
-            <button
-              onClick={openSettingsPanel}
-              title="Settings"
-              style={{
-                position: 'absolute', top: 0, right: 0,
-                background: 'none', border: 'none', color: 'var(--text-muted)',
-                cursor: 'pointer', fontSize: fs(18), padding: 4, lineHeight: 1,
-              }}
-            >&#9881;</button>
+            <div style={{
+              position: 'absolute', top: 0, right: 0,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              {actor && (
+                <span title={actor.email || ''} style={{
+                  fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
+                }}>
+                  {actor.display_name || actor.email}
+                  {actor.kind === 'admin' && (
+                    <span style={{ marginLeft: 4, color: 'var(--accent)' }}>·admin</span>
+                  )}
+                </span>
+              )}
+              {actor && (
+                <button
+                  onClick={logout}
+                  title="Sign out"
+                  style={{
+                    background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                    color: 'var(--text-muted)', cursor: 'pointer',
+                    fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                    letterSpacing: 1, fontFamily: 'var(--mono)',
+                  }}
+                >SIGN OUT</button>
+              )}
+              <button
+                onClick={openSettingsPanel}
+                title="Settings"
+                style={{
+                  background: 'none', border: 'none', color: 'var(--text-muted)',
+                  cursor: 'pointer', fontSize: fs(18), padding: 4, lineHeight: 1,
+                }}
+              >&#9881;</button>
+            </div>
             <div style={{ fontSize: fs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
               ἜΛΕΓΧΟΣ
             </div>
@@ -926,6 +1264,29 @@ function App() {
               animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
           >PDF</button>
+          {actor && (
+            <span title={actor.email || ''} style={{
+              fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)',
+              marginLeft: 4, marginRight: 2,
+            }}>
+              {actor.display_name || actor.email}
+              {actor.kind === 'admin' && (
+                <span style={{ marginLeft: 4, color: 'var(--accent)' }}>·admin</span>
+              )}
+            </span>
+          )}
+          {actor && (
+            <button
+              onClick={logout}
+              title="Sign out"
+              style={{
+                background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                color: 'var(--text-muted)', cursor: 'pointer',
+                fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                letterSpacing: 1, fontFamily: 'var(--mono)',
+              }}
+            >OUT</button>
+          )}
           <button
             onClick={openSettingsPanel}
             title="Settings"
@@ -1217,7 +1578,7 @@ function Message({ msg, fs }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<AuthGate />);
 </script>
 <script>
 if ('serviceWorker' in navigator) {
