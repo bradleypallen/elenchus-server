@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth, invites
+from . import backup as backup_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
 from .dialectical_state import DialecticalState
@@ -328,6 +329,39 @@ def admin_revoke_invite(token: str, actor: dict = Depends(auth.require_admin)):
     if not invites.revoke_invite(token):
         raise HTTPException(404, "Invite not found or already consumed")
     return {"status": "revoked", "token": token}
+
+
+class BackupRequest(BaseModel):
+    """Body for POST /api/admin/backup. Both fields optional; defaults
+    are: dump every base + platform into `{DATA_DIR}/backups/`."""
+
+    output_dir: str | None = None
+    keep: int | None = None  # retention: keep this many newest archives
+
+
+@app.post("/api/admin/backup")
+def admin_run_backup(req: BackupRequest, actor: dict = Depends(auth.require_admin)):
+    """Run a one-shot backup. Snapshots the platform DB and every
+    registered base into a single tar.gz archive, then optionally
+    prunes older archives down to `keep` (default: 14)."""
+    result = backup_mod.make_backup(DATA_DIR, output_dir=req.output_dir)
+    output_dir = req.output_dir or os.path.join(DATA_DIR, "backups")
+    keep = req.keep if req.keep is not None else backup_mod.DEFAULT_RETENTION
+    pruned = backup_mod.prune_backups(output_dir, keep=keep)
+    return {
+        "archive": result["archive"],
+        "timestamp": result["timestamp"],
+        "bases_dumped": result["bases_dumped"],
+        "bases_failed": result["bases_failed"],
+        "pruned": pruned,
+    }
+
+
+@app.get("/api/admin/backup")
+def admin_list_backups(actor: dict = Depends(auth.require_admin)):
+    """List every backup archive currently on disk, newest first."""
+    output_dir = os.path.join(DATA_DIR, "backups")
+    return {"backups": backup_mod.list_backups(output_dir), "output_dir": output_dir}
 
 
 @app.get("/api/admin/users")
