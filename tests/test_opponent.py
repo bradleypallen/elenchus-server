@@ -1,6 +1,8 @@
 """Tests for opponent.py — protocol detection, response parsing, state application, formatting."""
 
+import asyncio
 import logging
+from unittest.mock import AsyncMock, patch
 
 from elenchus.dialectical_state import DialecticalState
 from elenchus.opponent import Opponent
@@ -272,3 +274,82 @@ class TestReconfigure:
         opp.reconfigure(base_url="")
         assert opp.base_url is None
         assert opp.protocol == "anthropic"
+
+
+# ── Async respond path ──
+
+
+class TestAsyncRespond:
+    """Verify the async respond path runs end-to-end with a mocked LLM
+    and that it produces the same state mutations as the sync path."""
+
+    def _make_opponent(self):
+        opp = Opponent(api_key="fake-key")
+        return opp
+
+    def test_async_respond_applies_speech_acts(self):
+        opp = self._make_opponent()
+        state = DialecticalState.in_memory("test")
+
+        fake_json = (
+            '{"speech_acts":[{"type":"COMMIT","proposition":"P"}],'
+            '"new_tensions":[],"response":"Noted."}'
+        )
+
+        with patch.object(opp, "_async_chat", new=AsyncMock(return_value=fake_json)):
+            result = asyncio.run(opp.async_respond("I assert P", state))
+
+        assert result["response"] == "Noted."
+        assert "P" in state.C
+
+    def test_async_respond_extracts_new_tensions(self):
+        opp = self._make_opponent()
+        state = DialecticalState.in_memory("test")
+        state.commit("P")
+
+        fake_json = (
+            '{"speech_acts":[],"new_tensions":['
+            '{"gamma":["P"],"delta":["Q"],"reason":"P entails Q"}'
+            '],"response":"Notice this."}'
+        )
+
+        with patch.object(opp, "_async_chat", new=AsyncMock(return_value=fake_json)):
+            result = asyncio.run(opp.async_respond("Continue", state))
+
+        assert result["response"] == "Notice this."
+        assert len(state.T) == 1
+
+    def test_async_respond_records_conversation(self):
+        opp = self._make_opponent()
+        state = DialecticalState.in_memory("test")
+
+        with patch.object(
+            opp,
+            "_async_chat",
+            new=AsyncMock(return_value='{"speech_acts":[],"new_tensions":[],"response":"OK."}'),
+        ):
+            asyncio.run(opp.async_respond("Hello", state))
+
+        history = state.get_conversation()
+        assert len(history) == 2
+        assert history[0]["role"] == "user"
+        assert history[0]["content"] == "Hello"
+        assert history[1]["role"] == "assistant"
+
+    def test_async_respond_handles_prose_preamble(self):
+        """The robust _parse_response should recover JSON from mixed
+        content via the async path too."""
+        opp = self._make_opponent()
+        state = DialecticalState.in_memory("test")
+
+        fake_response = (
+            "Here is my analysis.\n"
+            '{"speech_acts":[{"type":"COMMIT","proposition":"X"}],'
+            '"new_tensions":[],"response":"Recovered."}'
+        )
+
+        with patch.object(opp, "_async_chat", new=AsyncMock(return_value=fake_response)):
+            result = asyncio.run(opp.async_respond("Hi", state))
+
+        assert result["response"] == "Recovered."
+        assert "X" in state.C

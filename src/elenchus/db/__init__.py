@@ -15,6 +15,7 @@ The scale path beyond a single process is Postgres, not multi-process
 DuckDB.
 """
 
+from .asyncio import run_blocking, run_in_db
 from .registry import BaseHandle, DBRegistry, get_registry, init_registry, registry
 
 __all__ = [
@@ -23,4 +24,6 @@ __all__ = [
     "get_registry",
     "init_registry",
     "registry",
+    "run_blocking",
+    "run_in_db",
 ]

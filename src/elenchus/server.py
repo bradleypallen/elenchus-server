@@ -199,15 +199,19 @@ def get_dialectic(name: str):
 
 
 @app.post("/api/dialectics/{name}/message")
-def send_message(name: str, req: MessageRequest):
+async def send_message(name: str, req: MessageRequest):
     """
     Send a natural language message from the respondent.
     The opponent parses it, updates state, proposes tensions,
     and responds.
+
+    Async because the LLM call dominates this route (5–30 s). Using
+    `await opponent.async_respond(...)` frees the event loop to service
+    other requests during the wait.
     """
     state = _get_state(name)
     try:
-        result = opponent.respond(req.message, state, action_context=req.context)
+        result = await opponent.async_respond(req.message, state, action_context=req.context)
         return {
             "response": result.get("response", ""),
             "speech_acts": result.get("speech_acts", []),

@@ -4,7 +4,7 @@ import contextlib
 import logging
 import os
 import tempfile
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -166,7 +166,7 @@ class TestDeriveEndpoint:
 
 
 class TestMessageEndpoint:
-    @patch("elenchus.server.opponent.respond")
+    @patch("elenchus.server.opponent.async_respond", new_callable=AsyncMock)
     def test_send_message(self, mock_respond):
         mock_respond.return_value = {
             "response": "Interesting claim.",
@@ -180,7 +180,7 @@ class TestMessageEndpoint:
         assert data["response"] == "Interesting claim."
         assert len(data["speech_acts"]) == 1
 
-    @patch("elenchus.server.opponent.respond")
+    @patch("elenchus.server.opponent.async_respond", new_callable=AsyncMock)
     def test_message_to_nonexistent_dialectic(self, mock_respond):
         r = client.post("/api/dialectics/nope/message", json={"message": "Hello"})
         assert r.status_code == 404

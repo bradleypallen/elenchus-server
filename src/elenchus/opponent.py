@@ -11,8 +11,8 @@ import json
 import logging
 import os
 
-from anthropic import Anthropic
-from openai import OpenAI
+from anthropic import Anthropic, AsyncAnthropic
+from openai import AsyncOpenAI, OpenAI
 
 from .dialectical_state import DialecticalState
 
@@ -133,6 +133,7 @@ class Opponent:
         self._api_key = api_key
         self.protocol = protocol or self._detect_protocol(base_url)
         self.client = self._build_client()
+        self.async_client = self._build_async_client()
         self._has_api_key = bool(api_key or self._env_api_key())
         logger.info(
             "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s",
@@ -162,6 +163,7 @@ class Opponent:
         elif base_url is not None:
             self.protocol = self._detect_protocol(self.base_url)
         self.client = self._build_client()
+        self.async_client = self._build_async_client()
         logger.info(
             "Opponent reconfigured: protocol=%s, model=%s, base_url=%s, api_key_updated=%s",
             self.protocol,
@@ -188,7 +190,8 @@ class Opponent:
         return os.environ.get("ANTHROPIC_API_KEY")
 
     def _build_client(self):
-        """Build the appropriate SDK client."""
+        """Build the appropriate sync SDK client. Used by the CLI and by
+        any sync code path that wants a blocking LLM call."""
         if self.protocol == "openai":
             kwargs = {}
             if self._api_key:
@@ -204,10 +207,32 @@ class Opponent:
                 kwargs["base_url"] = self.base_url
             return Anthropic(**kwargs)
 
+    def _build_async_client(self):
+        """Build the appropriate async SDK client. Used by the FastAPI
+        routes so the event loop can handle other requests during the
+        5–30 s LLM call. Mirrors `_build_client` exactly except for the
+        SDK class."""
+        if self.protocol == "openai":
+            kwargs = {}
+            if self._api_key:
+                kwargs["api_key"] = self._api_key
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            return AsyncOpenAI(**kwargs)
+        else:
+            kwargs = {}
+            if self._api_key:
+                kwargs["api_key"] = self._api_key
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            return AsyncAnthropic(**kwargs)
+
     def _chat(
         self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
     ) -> str:
-        """Unified chat call that works with both Anthropic and OpenAI-compatible APIs."""
+        """Unified sync chat call (CLI and any blocking caller). Mirrors
+        `_async_chat` — same request shape, same return value, only the
+        SDK call style differs."""
         if self.protocol == "openai":
             oai_messages = []
             if system:
@@ -226,24 +251,50 @@ class Opponent:
             response = self.client.messages.create(**kwargs)
             return response.content[0].text
 
-    def respond(
+    async def _async_chat(
+        self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
+    ) -> str:
+        """Unified async chat call (FastAPI route handlers). Mirrors
+        `_chat` — same request shape, same return value, only awaited.
+
+        Letting the LLM call be truly async (rather than blocking inside
+        FastAPI's default threadpool) lets the event loop service other
+        requests during the 5–30 s LLM wait. This is what makes
+        multi-user concurrency feel responsive on cheap requests even
+        while one user is mid-turn.
+        """
+        if self.protocol == "openai":
+            oai_messages = []
+            if system:
+                oai_messages.append({"role": "system", "content": system})
+            oai_messages.extend(messages)
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=oai_messages,
+            )
+            return response.choices[0].message.content
+        else:
+            kwargs = {"model": self.model, "max_tokens": max_tokens, "messages": messages}
+            if system:
+                kwargs["system"] = system
+            response = await self.async_client.messages.create(**kwargs)
+            return response.content[0].text
+
+    def _build_request_messages(
         self,
         user_message: str,
         state: DialecticalState,
-        context_turns: int = 6,
-        action_context: dict | None = None,
-    ) -> dict:
-        """
-        Send the respondent's message + dialectical state to the LLM.
+        context_turns: int,
+        action_context: dict | None,
+    ) -> list[dict]:
+        """Build the `messages` list sent to the LLM.
 
-        The formal state (C, D, T, I) is always sent in full — it's
-        compact. Conversation history is windowed to the last N turns
-        for continuity, plus a summary of earlier discussion.
-
-        Parse the structured response. Apply state transitions.
-        Return the result.
+        Pure function over the state (read-only on DuckDB) plus the
+        user's prose and optional action context. Shared by the sync
+        `respond` and async `async_respond` paths so the actual LLM call
+        is the only thing that differs between them.
         """
-        # Build the formal state block (always complete, always compact)
         s = state.to_dict()
         row = state.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()
         tid = row[0]
@@ -266,7 +317,6 @@ Contested tensions:{self._fmt_tensions(s["contested"])}
 Material implications (I):{self._fmt_implications(s["implications"])}
 Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
 
-        # Build message with respondent's input
         # Detect UI-driven actions and inject a reminder so the model
         # doesn't say "that's already been done" (the state was updated
         # before this message was sent — that's by design).
@@ -277,9 +327,6 @@ Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
             or msg_lower.startswith("i contest tension")
             or msg_lower.startswith("i retract")
         ):
-            # Build a specific note with tension details so the LLM knows
-            # exactly which tension was acted on (it may no longer appear
-            # in open tensions after the UI applied the action).
             detail = ""
             if action_context:
                 ctx_id = action_context.get("tension_id")
@@ -304,13 +351,12 @@ Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
 
 RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
-        # Get windowed conversation history
-        # The formal state above makes the full history unnecessary —
-        # we only need recent turns for conversational continuity
+        # Windowed conversation history. The formal state above makes the
+        # full history unnecessary — we only need recent turns for
+        # conversational continuity.
         history = state.get_conversation()
 
-        # If history is longer than the window, prepend a summary
-        messages = []
+        messages: list[dict] = []
         if len(history) > context_turns * 2:
             summary = state.get_summary()
             if summary:
@@ -325,25 +371,59 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
         messages.extend(history)
         messages.append({"role": "user", "content": user_content})
+        return messages
 
-        # Call API
+    def respond(
+        self,
+        user_message: str,
+        state: DialecticalState,
+        context_turns: int = 6,
+        action_context: dict | None = None,
+    ) -> dict:
+        """Sync entry point. Used by the CLI and any blocking caller.
+
+        Sends the respondent's message + dialectical state to the LLM,
+        parses the structured response, applies state transitions,
+        returns the result. The async sibling `async_respond` has the
+        same contract; only the LLM call differs.
+        """
+        messages = self._build_request_messages(user_message, state, context_turns, action_context)
         raw_text = self._chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
+        return self._record_and_apply(user_message, raw_text, state)
 
-        # Store in conversation history (full, for the record)
+    async def async_respond(
+        self,
+        user_message: str,
+        state: DialecticalState,
+        context_turns: int = 6,
+        action_context: dict | None = None,
+    ) -> dict:
+        """Async entry point. Used by FastAPI route handlers so the event
+        loop can service other requests during the 5–30 s LLM call.
+
+        Mirrors `respond` exactly except that `_async_chat` is awaited
+        instead of `_chat` being called synchronously. State mutations
+        (conversation insert, _apply) remain synchronous against DuckDB
+        — they're fast (≪ 100 ms each) and per-base serialization lands
+        in Week 1 D5 via the per-base async lock.
+        """
+        messages = self._build_request_messages(user_message, state, context_turns, action_context)
+        raw_text = await self._async_chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
+        return self._record_and_apply(user_message, raw_text, state)
+
+    def _record_and_apply(self, user_message: str, raw_text: str, state: DialecticalState) -> dict:
+        """Common post-LLM bookkeeping: store conversation, parse, apply
+        state transitions, periodically update the rolling summary."""
         state.add_conversation("user", user_message)
         state.add_conversation("assistant", raw_text)
 
-        # Periodically update the summary (every 10 turns)
+        # Periodically update the summary (every 20 stored messages).
         total_turns = len(state.get_conversation())
         if total_turns > 0 and total_turns % 20 == 0:
             self._update_summary(state)
 
-        # Parse
         parsed = self._parse_response(raw_text)
-
-        # Apply state transitions
         self._apply(parsed, state)
-
         return parsed
 
     def generate_summary(self, state: DialecticalState) -> str:
