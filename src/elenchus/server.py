@@ -760,6 +760,41 @@ def consume_participant_token(token: str, response: Response):
     }
 
 
+# ─── Phase D/9: per-study data export ────────────────────────────
+
+
+@app.post("/api/admin/study/{study_id}/export")
+def admin_export_study(
+    study_id: str,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Build the analysis-ready archive for one study. Returns the
+    archive path, the (separately held) pseudonym-map path, and the
+    per-session outcome list. Individual session failures are
+    reported, not fatal.
+
+    The archive lands under `{data_dir}/exports/` on the server; the
+    researcher retrieves it out-of-band (scp, sftp) — streaming a
+    multi-hundred-MB tar through the API isn't worth the complexity
+    at pilot scale."""
+    from . import study_export
+
+    sessions = pdb.list_sessions_for_study(get_registry().platform_con(), study_id)
+    if not sessions:
+        raise HTTPException(404, f"No sessions found for study {study_id!r}")
+
+    result = study_export.export_study(study_id)
+    logger.info(
+        "Study export: study=%s archive=%s exported=%d failed=%d (by actor %d)",
+        study_id,
+        result["archive"],
+        len(result["sessions_exported"]),
+        len(result["sessions_failed"]),
+        actor["id"],
+    )
+    return result
+
+
 # ─── Phase D/8: post-session questionnaires ──────────────────────
 
 

@@ -523,6 +523,23 @@ def advance_session_state(con, session_id: int, to_state: str) -> dict | None:
     return find_study_session(con, session_id)
 
 
+def list_sessions_for_study(con, study_id: str) -> list[dict]:
+    """Every session belonging to a study, oldest first. The link runs
+    through `participant_session_tokens` (sessions.study_token →
+    tokens.token, tokens.study_id) since sessions don't carry study_id
+    directly."""
+    rows = con.execute(
+        "SELECT s.id, s.actor_id, s.base_id, s.opened_at, s.closed_at, "
+        "s.status, s.state, s.state_changed_at, s.study_token, s.condition "
+        "FROM sessions s "
+        "JOIN participant_session_tokens t ON t.token = s.study_token "
+        "WHERE t.study_id = ? "
+        "ORDER BY s.opened_at",
+        [study_id],
+    ).fetchall()
+    return [_row_to_study_session(r) for r in rows]
+
+
 def attach_base_to_session(con, session_id: int, base_id: str) -> bool:
     """Bind a dialectic base to a session. Called when the
     participant transitions from `tutorial` to `active` and a
@@ -804,6 +821,29 @@ def list_assignments_for_judge(
             "ORDER BY assigned_at",
             [judge_actor_id, status],
         ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "judge_actor_id": r[1],
+            "package_id": r[2],
+            "assigned_at": r[3],
+            "assigned_by": r[4],
+            "status": r[5],
+        }
+        for r in rows
+    ]
+
+
+def list_assignments_for_package(con, package_id: int) -> list[dict]:
+    """Every assignment of a package, oldest first. Export + researcher
+    dashboard surface."""
+    rows = con.execute(
+        "SELECT id, judge_actor_id, package_id, assigned_at, "
+        "assigned_by, status "
+        "FROM judge_assignments WHERE package_id = ? "
+        "ORDER BY assigned_at",
+        [package_id],
+    ).fetchall()
     return [
         {
             "id": r[0],
