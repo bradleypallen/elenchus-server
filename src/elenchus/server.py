@@ -375,6 +375,27 @@ def admin_list_backups(actor: dict = Depends(auth.require_admin)):
     return {"backups": backup_mod.list_backups(output_dir), "output_dir": output_dir}
 
 
+@app.get("/api/admin/usage")
+def admin_usage(
+    days: int = 30,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Cost / token rollup for the admin dashboard.
+
+    Returns the total over the requested window, per-day buckets for
+    plotting, and a per-actor breakdown so the admin can see who's
+    driving usage. `days` defaults to 30 — Phase C's budget alerts
+    (next commit) will hook into the same data."""
+    reg = get_registry()
+    con = reg.platform_con()
+    return {
+        "window_days": days,
+        "total": pdb.total_cost(con),
+        "by_day": pdb.daily_cost(con, days=days),
+        "by_actor": pdb.cost_by_actor(con),
+    }
+
+
 @app.get("/api/admin/audit")
 def admin_audit(actor: dict = Depends(auth.require_admin)):
     """Run the cross-DB / filesystem audit and return the structured
@@ -618,6 +639,8 @@ async def send_message(
             handle.state,
             action_context=req.context,
             lock=handle.lock,
+            actor_id=actor["id"],
+            base_id=name,
         )
         return {
             "response": result.get("response", ""),

@@ -467,3 +467,133 @@ def set_setting(con, key: str, value: str) -> None:
         "INSERT OR REPLACE INTO platform_settings (key, value) VALUES (?, ?)",
         [key, value],
     )
+
+
+# ─── Usage / cost tracking ────────────────────────────────────────────
+
+
+def record_usage(
+    con,
+    *,
+    actor_id: int | None,
+    base_id: str | None,
+    model: str,
+    category: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_usd: float,
+    attempts: int,
+    latency_ms: int,
+) -> int:
+    """Insert one row into `usage`. Returns the new row's id.
+
+    `actor_id` and `base_id` are nullable — system calls (summaries,
+    batch jobs) may have neither. `category` is the `ChatCategory`
+    string value; failure rows are recorded too so the dashboard can
+    surface error rates alongside cost."""
+    row = con.execute(
+        "INSERT INTO usage "
+        "(actor_id, base_id, model, category, prompt_tokens, "
+        "completion_tokens, cost_usd, attempts, latency_ms) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            actor_id,
+            base_id,
+            model,
+            category,
+            prompt_tokens,
+            completion_tokens,
+            cost_usd,
+            attempts,
+            latency_ms,
+        ],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def total_cost(con, *, since: str | None = None, until: str | None = None) -> dict:
+    """Sum cost + token counts over a time window (ISO timestamps or
+    None to mean unbounded on that end). Returns
+    {cost_usd, prompt_tokens, completion_tokens, calls,
+    successful_calls}."""
+    clauses = []
+    params: list = []
+    if since is not None:
+        clauses.append("occurred_at >= ?")
+        params.append(since)
+    if until is not None:
+        clauses.append("occurred_at < ?")
+        params.append(until)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    row = con.execute(
+        f"SELECT COALESCE(SUM(cost_usd), 0), "
+        f"COALESCE(SUM(prompt_tokens), 0), "
+        f"COALESCE(SUM(completion_tokens), 0), "
+        f"COUNT(*), "
+        f"COUNT(*) FILTER (WHERE category = 'success') "
+        f"FROM usage {where}",
+        params,
+    ).fetchone()
+    return {
+        "cost_usd": float(row[0] or 0.0),
+        "prompt_tokens": int(row[1] or 0),
+        "completion_tokens": int(row[2] or 0),
+        "calls": int(row[3] or 0),
+        "successful_calls": int(row[4] or 0),
+    }
+
+
+def daily_cost(con, *, days: int = 30) -> list[dict]:
+    """Per-day cost rollup for the last `days` days, newest first."""
+    rows = con.execute(
+        "SELECT CAST(occurred_at AS DATE) AS day, "
+        "SUM(cost_usd), SUM(prompt_tokens) + SUM(completion_tokens), "
+        "COUNT(*) "
+        "FROM usage "
+        "WHERE occurred_at >= CURRENT_TIMESTAMP - INTERVAL (?) DAY "
+        "GROUP BY day ORDER BY day DESC",
+        [days],
+    ).fetchall()
+    return [
+        {
+            "day": str(r[0]),
+            "cost_usd": float(r[1] or 0.0),
+            "tokens": int(r[2] or 0),
+            "calls": int(r[3] or 0),
+        }
+        for r in rows
+    ]
+
+
+def cost_by_actor(con, *, since: str | None = None) -> list[dict]:
+    """Per-actor cost rollup, joined to actors.email for readability.
+    Includes a NULL bucket for system calls."""
+    clauses = []
+    params: list = []
+    if since is not None:
+        clauses.append("u.occurred_at >= ?")
+        params.append(since)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = con.execute(
+        f"SELECT u.actor_id, a.email, a.display_name, "
+        f"SUM(u.cost_usd), "
+        f"SUM(u.prompt_tokens) + SUM(u.completion_tokens), "
+        f"COUNT(*) "
+        f"FROM usage u "
+        f"LEFT JOIN actors a ON a.id = u.actor_id "
+        f"{where} "
+        f"GROUP BY u.actor_id, a.email, a.display_name "
+        f"ORDER BY SUM(u.cost_usd) DESC",
+        params,
+    ).fetchall()
+    return [
+        {
+            "actor_id": r[0],
+            "email": r[1],
+            "display_name": r[2],
+            "cost_usd": float(r[3] or 0.0),
+            "tokens": int(r[4] or 0),
+            "calls": int(r[5] or 0),
+        }
+        for r in rows
+    ]

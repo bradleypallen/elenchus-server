@@ -10,6 +10,7 @@ Supports Anthropic directly and any OpenAI-compatible endpoint (e.g. OpenRouter)
 import asyncio
 import logging
 import os
+from collections.abc import Callable
 
 from anthropic import Anthropic, AsyncAnthropic
 from openai import AsyncOpenAI, OpenAI
@@ -18,6 +19,59 @@ from .dialectical_state import DialecticalState
 from .llm_client import ChatResult, LLMClient
 
 logger = logging.getLogger(__name__)
+
+
+def _make_usage_recorder(
+    *,
+    actor_id: int | None,
+    base_id: str | None,
+) -> Callable[[ChatResult], None] | None:
+    """Return an `on_result` callback that writes one `usage` row per
+    LLM call. Returns None if the platform DB isn't reachable (CLI,
+    test in-memory bases) — in that case the call still happens, just
+    without cost tracking.
+
+    The recorder is built per-call so each call carries its own
+    actor/base context. The platform DB lock is acquired briefly to
+    serialize writes; the lookup happens lazily so importing
+    opponent.py doesn't require an initialized registry."""
+
+    def _record(result: ChatResult) -> None:
+        try:
+            # Local imports so the opponent module stays importable
+            # without a live registry (CLI, tests with no platform DB).
+            from . import pricing
+            from .db import get_registry
+            from .db import platform as pdb
+
+            reg = get_registry()
+            con = reg.platform_con()
+            cost = pricing.compute_cost(
+                result.model, result.prompt_tokens, result.completion_tokens
+            )
+            with reg.platform_lock:
+                pdb.record_usage(
+                    con,
+                    actor_id=actor_id,
+                    base_id=base_id,
+                    model=result.model,
+                    category=str(result.category),
+                    prompt_tokens=result.prompt_tokens,
+                    completion_tokens=result.completion_tokens,
+                    cost_usd=cost,
+                    attempts=result.attempts,
+                    latency_ms=result.latency_ms,
+                )
+        except RuntimeError as e:
+            # `get_registry()` raises RuntimeError if no registry is
+            # initialized (CLI path, in-memory test). Silently skip.
+            logger.debug("usage recording skipped (no registry): %s", e)
+        except Exception:
+            # Any other failure: log but don't propagate. Cost
+            # tracking must never break the user-facing path.
+            logger.exception("usage recording failed; continuing")
+
+    return _record
 
 
 class LLMCallError(RuntimeError):
@@ -447,30 +501,52 @@ class Opponent:
         )
 
     def _chat(
-        self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
+        self,
+        messages: list[dict],
+        system: str | None = None,
+        max_tokens: int = 2000,
+        on_result: "Callable[[ChatResult], None] | None" = None,
     ) -> str:
         """Sync chat call. Delegates to the LLMClient for
         classification + retry; on failure surfaces an exception so
         the caller's existing error path runs (the message route
         translates it to a 500 with the category in the body).
 
-        The structured `ChatResult` is logged at INFO/ERROR by the
-        client itself; we keep this signature returning `str` for
-        backwards compatibility with callers that don't need the
-        metadata."""
+        `on_result` is an optional callback invoked with the structured
+        `ChatResult` regardless of success or failure. Used by the
+        cost-tracking layer so a failed call is still recorded
+        (latency, attempts, category) even though no tokens were
+        spent. Errors raised inside the callback are caught and
+        logged — usage recording should never break the user-facing
+        path."""
         result = self._llm_client.chat(messages, system=system, max_tokens=max_tokens)
+        if on_result is not None:
+            try:
+                on_result(result)
+            except Exception:
+                logger.exception("on_result callback raised; ignoring")
         if not result.ok:
             raise LLMCallError(result)
         return result.text
 
     async def _async_chat(
-        self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
+        self,
+        messages: list[dict],
+        system: str | None = None,
+        max_tokens: int = 2000,
+        on_result: "Callable[[ChatResult], None] | None" = None,
     ) -> str:
         """Async chat call. See `_chat` for the result-vs-exception
-        contract. Async callers in particular benefit because the
-        LLMClient uses `asyncio.sleep` for retry backoff, so the
-        event loop stays responsive while we wait out a rate-limit."""
+        contract and the `on_result` semantics. Async callers in
+        particular benefit because the LLMClient uses `asyncio.sleep`
+        for retry backoff, so the event loop stays responsive while
+        we wait out a rate-limit."""
         result = await self._llm_client.achat(messages, system=system, max_tokens=max_tokens)
+        if on_result is not None:
+            try:
+                on_result(result)
+            except Exception:
+                logger.exception("on_result callback raised; ignoring")
         if not result.ok:
             raise LLMCallError(result)
         return result.text
@@ -573,6 +649,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         state: DialecticalState,
         context_turns: int = 6,
         action_context: dict | None = None,
+        actor_id: int | None = None,
+        base_id: str | None = None,
     ) -> dict:
         """Sync entry point. Used by the CLI and any blocking caller.
 
@@ -580,9 +658,19 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         parses the structured response, applies state transitions,
         returns the result. The async sibling `async_respond` has the
         same contract; only the LLM call differs.
+
+        `actor_id` + `base_id` are passed through to the cost-tracking
+        recorder so this call is attributed correctly. Both default to
+        None for CLI use (no platform DB).
         """
         messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        raw_text = self._chat(messages, system=self._system_prompt(), max_tokens=2000)
+        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+        raw_text = self._chat(
+            messages,
+            system=self._system_prompt(),
+            max_tokens=2000,
+            on_result=recorder,
+        )
         return self._record_and_apply(user_message, raw_text, state)
 
     async def async_respond(
@@ -592,6 +680,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         context_turns: int = 6,
         action_context: dict | None = None,
         lock: asyncio.Lock | None = None,
+        actor_id: int | None = None,
+        base_id: str | None = None,
     ) -> dict:
         """Async entry point. Used by FastAPI route handlers so the event
         loop can service other requests during the 5–30 s LLM call.
@@ -613,7 +703,13 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         DBRegistry.
         """
         messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        raw_text = await self._async_chat(messages, system=self._system_prompt(), max_tokens=2000)
+        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+        raw_text = await self._async_chat(
+            messages,
+            system=self._system_prompt(),
+            max_tokens=2000,
+            on_result=recorder,
+        )
         if lock is None:
             return self._record_and_apply(user_message, raw_text, state)
         async with lock:
