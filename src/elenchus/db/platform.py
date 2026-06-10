@@ -469,6 +469,150 @@ def set_setting(con, key: str, value: str) -> None:
     )
 
 
+# ─── Participant session tokens (Sloan study) ─────────────────────────
+
+
+def create_participant_token(
+    con,
+    *,
+    token: str,
+    actor_id: int,
+    study_id: str,
+    condition: str,
+    issued_by: int,
+    scheduled_start: str | None = None,
+    scheduled_end: str | None = None,
+    notes: str = "",
+) -> None:
+    """Insert one participant_session_tokens row. The caller has
+    already validated condition; the DB has its own CHECK as a
+    backstop."""
+    con.execute(
+        "INSERT INTO participant_session_tokens "
+        "(token, actor_id, study_id, condition, issued_by, "
+        "scheduled_start, scheduled_end, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            token,
+            actor_id,
+            study_id,
+            condition,
+            issued_by,
+            scheduled_start,
+            scheduled_end,
+            notes,
+        ],
+    )
+
+
+def find_participant_token(con, token: str) -> dict | None:
+    """Look up a participant token. Returns None if not found.
+
+    The result includes the token's status and used_at so callers can
+    decide whether it's still consumable without re-querying."""
+    row = con.execute(
+        "SELECT token, actor_id, study_id, condition, scheduled_start, "
+        "scheduled_end, issued_by, issued_at, used_at, session_id, "
+        "status, notes "
+        "FROM participant_session_tokens WHERE token = ?",
+        [token],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "token": row[0],
+        "actor_id": row[1],
+        "study_id": row[2],
+        "condition": row[3],
+        "scheduled_start": row[4],
+        "scheduled_end": row[5],
+        "issued_by": row[6],
+        "issued_at": row[7],
+        "used_at": row[8],
+        "session_id": row[9],
+        "status": row[10],
+        "notes": row[11],
+    }
+
+
+def consume_participant_token(con, token: str) -> dict | None:
+    """Atomically mark a `scheduled` token as `active` with used_at =
+    now, returning the row. Returns None if the token doesn't exist,
+    is in a non-consumable status, or is outside its scheduled window.
+
+    Single-use semantics: the WHERE clause makes the UPDATE a no-op
+    on a second call, so a participant who reloads the link doesn't
+    accidentally double-trigger.
+    """
+    rows = con.execute(
+        "UPDATE participant_session_tokens "
+        "SET status = 'active', used_at = CURRENT_TIMESTAMP "
+        "WHERE token = ? AND status = 'scheduled' "
+        "AND (scheduled_start IS NULL OR scheduled_start <= CURRENT_TIMESTAMP) "
+        "AND (scheduled_end   IS NULL OR scheduled_end   >  CURRENT_TIMESTAMP) "
+        "RETURNING token",
+        [token],
+    ).fetchall()
+    if not rows:
+        return None
+    return find_participant_token(con, token)
+
+
+def void_participant_token(con, token: str) -> bool:
+    """Mark a still-`scheduled` token as `voided`. Idempotent on
+    already-voided / used tokens (returns False)."""
+    rows = con.execute(
+        "UPDATE participant_session_tokens SET status = 'voided' "
+        "WHERE token = ? AND status = 'scheduled' RETURNING token",
+        [token],
+    ).fetchall()
+    return bool(rows)
+
+
+def list_participant_tokens(
+    con,
+    *,
+    study_id: str | None = None,
+    condition: str | None = None,
+) -> list[dict]:
+    """List tokens, newest first, optionally filtered by study or
+    condition. Researchers use this for cohort overview."""
+    clauses: list[str] = []
+    params: list = []
+    if study_id is not None:
+        clauses.append("study_id = ?")
+        params.append(study_id)
+    if condition is not None:
+        clauses.append("condition = ?")
+        params.append(condition)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = con.execute(
+        f"SELECT token, actor_id, study_id, condition, scheduled_start, "
+        f"scheduled_end, issued_by, issued_at, used_at, session_id, "
+        f"status, notes "
+        f"FROM participant_session_tokens {where} "
+        f"ORDER BY issued_at DESC",
+        params,
+    ).fetchall()
+    return [
+        {
+            "token": r[0],
+            "actor_id": r[1],
+            "study_id": r[2],
+            "condition": r[3],
+            "scheduled_start": r[4],
+            "scheduled_end": r[5],
+            "issued_by": r[6],
+            "issued_at": r[7],
+            "used_at": r[8],
+            "session_id": r[9],
+            "status": r[10],
+            "notes": r[11],
+        }
+        for r in rows
+    ]
+
+
 # ─── Usage / cost tracking ────────────────────────────────────────────
 
 

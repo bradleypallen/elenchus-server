@@ -248,6 +248,19 @@ class InviteCreateRequest(BaseModel):
     ttl_days: int | None = 30
 
 
+class ParticipantTokenRequest(BaseModel):
+    """Body for `POST /api/admin/study/tokens`. Researchers issue one
+    of these per (participant, condition) — within-subjects design
+    means the same participant gets two tokens (elenchus + baseline)."""
+
+    study_id: str
+    condition: str  # 'elenchus' | 'baseline'
+    display_name: str  # researcher's label for this participant
+    scheduled_start: str | None = None  # ISO timestamp
+    scheduled_end: str | None = None
+    notes: str | None = ""
+
+
 # ── API Routes ──
 
 # ─── Auth ─────────────────────────────────────────────────────────────
@@ -557,6 +570,165 @@ def admin_list_users(actor: dict = Depends(auth.require_admin)):
             for r in rows
         ]
     }
+
+
+# ─── Study harness: participant session tokens (Phase D) ─────────────
+
+
+@app.post("/api/admin/study/tokens")
+def admin_issue_participant_token(
+    req: ParticipantTokenRequest,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Researcher issues one participant token. Creates a fresh
+    `kind='participant'` actor with no password (the token itself is
+    the credential — single-use, single-session) and binds the new
+    token to it.
+
+    The condition column drives the within-subjects design: the same
+    physical participant gets one token for the Elenchus condition
+    and one for the baseline condition, issued separately so the
+    researcher controls condition order.
+    """
+    if req.condition not in ("elenchus", "baseline"):
+        raise HTTPException(400, "condition must be 'elenchus' or 'baseline'")
+    if not req.study_id.strip():
+        raise HTTPException(400, "study_id is required")
+    if not req.display_name.strip():
+        raise HTTPException(400, "display_name is required")
+
+    reg = get_registry()
+    con = reg.platform_con()
+    token = auth.generate_token()
+    with reg.platform_lock:
+        # Create the participant actor first — passwordless. The token
+        # IS the credential; consuming it issues a session cookie tied
+        # to this actor.
+        participant_id = pdb.create_actor(
+            con,
+            kind="participant",
+            email=None,
+            display_name=req.display_name.strip(),
+            password_hash=None,
+        )
+        pdb.create_participant_token(
+            con,
+            token=token,
+            actor_id=participant_id,
+            study_id=req.study_id.strip(),
+            condition=req.condition,
+            issued_by=actor["id"],
+            scheduled_start=req.scheduled_start,
+            scheduled_end=req.scheduled_end,
+            notes=(req.notes or "").strip(),
+        )
+    logger.info(
+        "Issued participant token: study=%s condition=%s actor=%d (by %d)",
+        req.study_id,
+        req.condition,
+        participant_id,
+        actor["id"],
+    )
+    return {
+        "token": token,
+        "participant_actor_id": participant_id,
+        "study_id": req.study_id,
+        "condition": req.condition,
+        "display_name": req.display_name,
+    }
+
+
+@app.get("/api/admin/study/tokens")
+def admin_list_participant_tokens(
+    study_id: str | None = None,
+    condition: str | None = None,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """List participant tokens, newest first. Filter by `study_id`
+    and/or `condition` for cohort views."""
+    return {
+        "tokens": pdb.list_participant_tokens(
+            get_registry().platform_con(),
+            study_id=study_id,
+            condition=condition,
+        )
+    }
+
+
+@app.delete("/api/admin/study/tokens/{token}")
+def admin_void_participant_token(
+    token: str,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Void a still-scheduled token. Idempotent — a token that's
+    already been used / voided / expired returns 404."""
+    reg = get_registry()
+    with reg.platform_lock:
+        ok = pdb.void_participant_token(reg.platform_con(), token)
+    if not ok:
+        raise HTTPException(404, "Token not found or already used / voided")
+    return {"status": "voided", "token": token}
+
+
+@app.post("/api/study/{token}")
+def consume_participant_token(token: str, response: Response):
+    """Public endpoint — the participant clicks the emailed link and
+    this trades the token for a session cookie tied to the underlying
+    participant actor.
+
+    Single-use: the SQL `UPDATE ... WHERE status='scheduled'` makes
+    repeat-clicks idempotent (the second request gets 410 Gone).
+    Outside the scheduled window: 410 with the same body shape so
+    the frontend renders one message.
+    """
+    reg = get_registry()
+    with reg.platform_lock:
+        consumed = pdb.consume_participant_token(reg.platform_con(), token)
+    if consumed is None:
+        existing = pdb.find_participant_token(reg.platform_con(), token)
+        if existing is None:
+            raise HTTPException(404, "Token not found")
+        # Token exists but isn't consumable — used, voided, expired,
+        # or outside its scheduled window. Surface a structured detail.
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "status": existing["status"],
+                "user_message": _participant_token_message(existing),
+            },
+        )
+
+    # Issue a session cookie for the participant actor. Same shape
+    # as the regular login flow.
+    session_token = auth.create_session(consumed["actor_id"])
+    _set_session_cookie(response, session_token)
+    logger.info(
+        "Participant token consumed: study=%s condition=%s actor=%d",
+        consumed["study_id"],
+        consumed["condition"],
+        consumed["actor_id"],
+    )
+    return {
+        "study_id": consumed["study_id"],
+        "condition": consumed["condition"],
+        "actor_id": consumed["actor_id"],
+    }
+
+
+def _participant_token_message(existing: dict) -> str:
+    """Map a non-consumable token's status to a friendly message."""
+    status = existing.get("status")
+    if status == "voided":
+        return "This study link has been cancelled. Please contact the researcher."
+    if status == "expired":
+        return "This study link has expired. Please contact the researcher."
+    if status in ("active", "complete") or existing.get("used_at"):
+        return "This study link has already been used."
+    # Within scheduled window check failed.
+    return (
+        "This study link can't be used right now — it may be outside its "
+        "scheduled window. Please check the time, or contact the researcher."
+    )
 
 
 # ─── Existing routes follow ──────────────────────────────────────────

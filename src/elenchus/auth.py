@@ -217,6 +217,19 @@ def require_admin(request: Request) -> dict:
     return actor
 
 
+def require_researcher(request: Request) -> dict:
+    """FastAPI dependency: allows kind in {'researcher', 'admin'}.
+
+    The Sloan study has researchers who can issue participant tokens
+    and view per-study data, but who don't need full platform admin
+    privileges (e.g. they shouldn't deactivate users). Admins are a
+    superset — they can do everything a researcher can."""
+    actor = current_actor(request)
+    if actor.get("kind") not in ("researcher", "admin"):
+        raise HTTPException(status_code=403, detail="Researcher privilege required")
+    return actor
+
+
 def require_base_owner(base_id: str, actor: dict) -> dict:
     """Assert that `actor` owns the given base. Raises 403 otherwise.
     Returns the base dict on success, 404 if the base doesn't exist."""
