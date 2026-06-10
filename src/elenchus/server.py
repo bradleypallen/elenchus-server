@@ -760,6 +760,96 @@ def consume_participant_token(token: str, response: Response):
     }
 
 
+# ─── Phase D/8: post-session questionnaires ──────────────────────
+
+
+class SurveySubmission(BaseModel):
+    """Body for `POST /api/study/session/{id}/survey`. `responses`
+    maps item id → integer value; validation against the instrument
+    definition is strict (every item, no extras, in range)."""
+
+    instrument: str
+    responses: dict
+
+
+@app.get("/api/study/instruments")
+def study_instruments(actor: dict = Depends(auth.current_actor)):
+    """The four post-session instrument definitions, with version.
+    The frontend renders these dynamically; the export reproduces
+    exactly what each participant saw."""
+    from . import questionnaires
+
+    return {"instruments": questionnaires.list_instruments()}
+
+
+@app.post("/api/study/session/{session_id}/survey")
+def submit_survey(
+    session_id: int,
+    req: SurveySubmission,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Store one questionnaire submission for a session. Owner /
+    admin / researcher. Rejected whole on any validation error —
+    partial submissions would poison the study data."""
+    from . import questionnaires
+
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None:
+        raise HTTPException(404, f"Session #{session_id} not found")
+    if actor["id"] != session["actor_id"] and actor.get("kind") not in (
+        "admin",
+        "researcher",
+    ):
+        raise HTTPException(403, "Not authorized to submit for this session")
+
+    errors = questionnaires.validate_responses(req.instrument, req.responses)
+    if errors:
+        raise HTTPException(status_code=400, detail={"errors": errors})
+
+    with reg.platform_lock:
+        rid = pdb.record_survey_response(
+            con,
+            session_id=session_id,
+            instrument=req.instrument,
+            instrument_version=questionnaires.INSTRUMENT_VERSION,
+            responses=req.responses,
+        )
+    logger.info("Survey stored: id=%d session=%d instrument=%s", rid, session_id, req.instrument)
+    return {"id": rid, "session_id": session_id, "instrument": req.instrument}
+
+
+@app.get("/api/study/session/{session_id}/surveys")
+def list_session_surveys(
+    session_id: int,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Submissions for one session, newest first. Owner / admin /
+    researcher. The frontend uses this to mark instruments done."""
+    con = get_registry().platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None:
+        raise HTTPException(404, f"Session #{session_id} not found")
+    if actor["id"] != session["actor_id"] and actor.get("kind") not in (
+        "admin",
+        "researcher",
+    ):
+        raise HTTPException(403, "Not authorized to view this session's surveys")
+    return {"surveys": pdb.list_survey_responses_for_session(con, session_id)}
+
+
+@app.get("/api/admin/study/surveys")
+def admin_list_surveys(
+    instrument: str | None = None,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Researcher cohort view of all questionnaire submissions."""
+    return {
+        "surveys": pdb.list_survey_responses(get_registry().platform_con(), instrument=instrument)
+    }
+
+
 # ─── Phase D/7: blinded judge interface ──────────────────────────
 
 

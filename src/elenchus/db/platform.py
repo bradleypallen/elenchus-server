@@ -588,6 +588,75 @@ def set_setting(con, key: str, value: str) -> None:
     )
 
 
+# ─── Survey responses (Sloan post-session questionnaires) ─────────────
+
+
+def record_survey_response(
+    con,
+    *,
+    session_id: int,
+    instrument: str,
+    instrument_version: str,
+    responses: dict,
+) -> int:
+    """Insert one questionnaire submission. A re-submission inserts a
+    new row; analysis takes the newest per (session, instrument)."""
+    row = con.execute(
+        "INSERT INTO survey_responses "
+        "(session_id, instrument, instrument_version, responses) "
+        "VALUES (?, ?, ?, ?) RETURNING id",
+        [session_id, instrument, instrument_version, json.dumps(responses)],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def list_survey_responses_for_session(con, session_id: int) -> list[dict]:
+    """Every submission for a session, newest first. The frontend uses
+    this to show which instruments are already done."""
+    rows = con.execute(
+        "SELECT id, session_id, instrument, instrument_version, "
+        "responses, submitted_at "
+        "FROM survey_responses WHERE session_id = ? "
+        "ORDER BY submitted_at DESC",
+        [session_id],
+    ).fetchall()
+    return [_row_to_survey_response(r) for r in rows]
+
+
+def list_survey_responses(con, *, instrument: str | None = None) -> list[dict]:
+    """Cohort view for researchers, newest first."""
+    if instrument is None:
+        rows = con.execute(
+            "SELECT id, session_id, instrument, instrument_version, "
+            "responses, submitted_at "
+            "FROM survey_responses ORDER BY submitted_at DESC"
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, session_id, instrument, instrument_version, "
+            "responses, submitted_at "
+            "FROM survey_responses WHERE instrument = ? "
+            "ORDER BY submitted_at DESC",
+            [instrument],
+        ).fetchall()
+    return [_row_to_survey_response(r) for r in rows]
+
+
+def _row_to_survey_response(row) -> dict:
+    try:
+        responses = json.loads(row[4]) if row[4] else {}
+    except (json.JSONDecodeError, TypeError):
+        responses = {}
+    return {
+        "id": row[0],
+        "session_id": row[1],
+        "instrument": row[2],
+        "instrument_version": row[3],
+        "responses": responses,
+        "submitted_at": row[5],
+    }
+
+
 # ─── Blinded judging (Sloan study) ────────────────────────────────────
 
 
