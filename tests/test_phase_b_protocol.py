@@ -1,15 +1,29 @@
 """Tests for Phase B protocol extensions.
 
-Three new speech acts route theory articulation directly into the
-material base, bypassing the tension loop:
+Three speech acts route theory articulation directly into the material
+base, bypassing the tension loop:
 
   * ASSERT_IMPLICATION  — directly add a rule {γ} |~ {δ}
   * INTRODUCE_BEARER    — add an atom to L_B without committing/denying
   * RETRACT_IMPLICATION — withdraw a rule by id
 
-Tests cover the DialecticalState API, the Opponent dispatch, the
-provenance JSON shape, and the interactions with derivability /
-existing-tension flows.
+These are **firewalled from the live message route by default** so the
+Sloan-condition deployment matches the proposal's speech-act vocabulary
+exactly ({COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION, RETRACT,
+REFINE}). Operators outside the study opt in via
+`ELENCHUS_ENABLE_PHASE_B=1`.
+
+DialecticalState.assert_implication / introduce_bearer /
+retract_implication remain reachable for admin tooling, batch import,
+and testing regardless of the flag — what's gated is Opponent's
+dispatch of the corresponding speech act types.
+
+Tests cover:
+  * the DialecticalState API (unchanged behavior, always available)
+  * the Opponent dispatch with the flag on (TestOpponentApply,
+    TestOntologyArticulation)
+  * the firewall when the flag is off (TestPhaseBFirewall)
+  * system prompt content per setting (TestSystemPrompt)
 """
 
 import json
@@ -159,11 +173,16 @@ class TestRetractImplication:
 # ─── Opponent dispatch ────────────────────────────────────────────────
 
 
-def _opp():
-    """Build an Opponent with a no-op LLM (we only exercise `_apply`)."""
+def _opp(enable_phase_b: bool = True):
+    """Build an Opponent with a no-op LLM (we only exercise `_apply`).
+
+    Phase B is firewalled in production; these tests target the
+    unlocked behavior, so they pass `enable_phase_b=True` by default.
+    The disabled path is exercised by `TestPhaseBFirewall` below.
+    """
     from elenchus.opponent import Opponent
 
-    return Opponent(api_key=None, model="test")
+    return Opponent(api_key=None, model="test", enable_phase_b=enable_phase_b)
 
 
 class TestOpponentApply:
@@ -317,3 +336,131 @@ class TestOntologyArticulation:
         )
         assert len(state.I) == 2
         assert all(i["delta"] != ["X has fur"] for i in state.I)
+
+
+# ─── Phase B firewall ─────────────────────────────────────────────────
+#
+# The default Elenchus deployment must match the Sloan proposal's
+# Elenchus-condition speech-act vocabulary exactly: {COMMIT, DENY,
+# ACCEPT_TENSION, CONTEST_TENSION, RETRACT, REFINE} plus opponent-side
+# tension proposals. The three Phase B speech acts must be silently
+# dropped if an LLM emits them while the flag is off, and the system
+# prompt sent to the LLM must not mention them at all. These tests
+# enforce both.
+
+
+class TestPhaseBFirewall:
+    def test_default_opponent_has_phase_b_disabled(self):
+        from elenchus.opponent import Opponent
+
+        opp = Opponent(api_key=None, model="test")
+        assert opp.enable_phase_b is False, (
+            "Default deployment must be Sloan-compliant; "
+            "Phase B speech acts opt in via ELENCHUS_ENABLE_PHASE_B."
+        )
+
+    def test_assert_implication_dropped_when_disabled(self, state, caplog):
+        opp = _opp(enable_phase_b=False)
+        with caplog.at_level("INFO", logger="elenchus.opponent"):
+            opp._apply(
+                {
+                    "speech_acts": [
+                        {
+                            "type": "ASSERT_IMPLICATION",
+                            "gamma": ["a"],
+                            "delta": ["b"],
+                            "reason": "should be firewalled",
+                        }
+                    ]
+                },
+                state,
+            )
+        assert state.I == [], "ASSERT_IMPLICATION must not land when the flag is off"
+        assert any(
+            "Firewall" in rec.message and "ASSERT_IMPLICATION" in rec.message
+            for rec in caplog.records
+        ), "firewall drop should be logged for audit"
+
+    def test_introduce_bearer_dropped_when_disabled(self, state):
+        opp = _opp(enable_phase_b=False)
+        opp._apply(
+            {"speech_acts": [{"type": "INTRODUCE_BEARER", "proposition": "X is alive"}]},
+            state,
+        )
+        assert state.base.atoms == frozenset(), (
+            "INTRODUCE_BEARER must not add to L_B when the flag is off"
+        )
+
+    def test_retract_implication_dropped_when_disabled(self, state):
+        opp_unlocked = _opp(enable_phase_b=True)
+        iid = state.assert_implication(["a"], ["b"])
+        assert state.I and state.I[0]["id"] == iid
+
+        opp_locked = _opp(enable_phase_b=False)
+        opp_locked._apply(
+            {"speech_acts": [{"type": "RETRACT_IMPLICATION", "implication_id": iid}]},
+            state,
+        )
+        # The rule is still there — RETRACT_IMPLICATION was dropped.
+        assert state.I and state.I[0]["id"] == iid
+        _ = opp_unlocked  # silence unused
+
+    def test_classical_speech_acts_still_work_when_disabled(self, state):
+        """The firewall must not affect COMMIT/DENY/etc."""
+        opp = _opp(enable_phase_b=False)
+        opp._apply(
+            {
+                "speech_acts": [
+                    {"type": "COMMIT", "proposition": "Sky is blue."},
+                    {"type": "DENY", "proposition": "Sky is green."},
+                ]
+            },
+            state,
+        )
+        assert "Sky is blue." in state.C
+        assert "Sky is green." in state.D
+
+
+class TestSystemPrompt:
+    """The Sloan-default prompt must omit any reference to Phase B
+    speech acts so the LLM is never told they exist."""
+
+    def test_sloan_prompt_omits_phase_b_keywords(self):
+        from elenchus.opponent import SLOAN_SYSTEM_PROMPT
+
+        for kw in ("ASSERT_IMPLICATION", "INTRODUCE_BEARER", "RETRACT_IMPLICATION"):
+            assert kw not in SLOAN_SYSTEM_PROMPT, (
+                f"Sloan prompt mentions {kw!r}; this leaks Phase B "
+                "speech acts to the LLM in the default deployment."
+            )
+
+    def test_sloan_prompt_includes_core_speech_acts(self):
+        from elenchus.opponent import SLOAN_SYSTEM_PROMPT
+
+        for kw in (
+            "COMMIT",
+            "DENY",
+            "ACCEPT_TENSION",
+            "CONTEST_TENSION",
+            "RETRACT",
+            "REFINE",
+        ):
+            assert kw in SLOAN_SYSTEM_PROMPT
+
+    def test_phase_b_prompt_includes_phase_b_keywords(self):
+        from elenchus.opponent import PHASE_B_SYSTEM_PROMPT
+
+        for kw in ("ASSERT_IMPLICATION", "INTRODUCE_BEARER", "RETRACT_IMPLICATION"):
+            assert kw in PHASE_B_SYSTEM_PROMPT
+
+    def test_default_opponent_uses_sloan_prompt(self):
+        from elenchus.opponent import SLOAN_SYSTEM_PROMPT, Opponent
+
+        opp = Opponent(api_key=None, model="test")
+        assert opp._system_prompt() == SLOAN_SYSTEM_PROMPT
+
+    def test_phase_b_opponent_uses_phase_b_prompt(self):
+        from elenchus.opponent import PHASE_B_SYSTEM_PROMPT, Opponent
+
+        opp = Opponent(api_key=None, model="test", enable_phase_b=True)
+        assert opp._system_prompt() == PHASE_B_SYSTEM_PROMPT

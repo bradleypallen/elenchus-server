@@ -3,6 +3,27 @@
 All notable changes to Elenchus are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **Phase B speech acts are now firewalled from the live message route
+  by default**. The Sloan proposal's Elenchus condition assumes a
+  speech-act vocabulary of exactly `{COMMIT, DENY, ACCEPT_TENSION,
+  CONTEST_TENSION, RETRACT, REFINE}` plus opponent-side tension
+  proposals. The Phase B additions (`ASSERT_IMPLICATION` /
+  `INTRODUCE_BEARER` / `RETRACT_IMPLICATION`) would corrupt the
+  within-subjects comparison between AI-as-collaborator and AI-as-tool
+  by letting collaborator-condition participants articulate theory
+  directly. Opting in requires `ELENCHUS_ENABLE_PHASE_B=1`; the
+  underlying `DialecticalState` methods remain reachable for admin
+  tooling, batch imports, and tests.
+- The system prompt sent to the LLM in the default deployment no longer
+  mentions the Phase B speech acts (`SLOAN_SYSTEM_PROMPT`). The Phase B
+  prompt (`PHASE_B_SYSTEM_PROMPT`) is only used when the flag is on.
+- 10 new tests in `tests/test_phase_b_protocol.py` enforce the
+  firewall: default-off, dropped-when-disabled, prompt-content checks.
+
 ## [0.2.0] — Phase A: Multi-User Platform Foundation
 
 The single-user install becomes a multi-user platform with

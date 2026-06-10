@@ -22,7 +22,122 @@ logger = logging.getLogger(__name__)
 _OPENAI_COMPAT_HOSTS = {"openrouter.ai", "api.openai.com", "api.together.xyz", "api.groq.com"}
 
 
-SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
+# ── System prompts ───────────────────────────────────────────────────
+#
+# Two prompts are maintained side by side:
+#
+#   SLOAN_SYSTEM_PROMPT — the canonical Sloan-condition prompt. Speech
+#   acts available to the LLM are exactly {COMMIT, DENY, ACCEPT_TENSION,
+#   CONTEST_TENSION, RETRACT, REFINE} plus tension proposals — matching
+#   the proposal's description of the Elenchus condition. This is the
+#   default; do not weaken it without explicit reason.
+#
+#   PHASE_B_SYSTEM_PROMPT — adds ASSERT_IMPLICATION / INTRODUCE_BEARER /
+#   RETRACT_IMPLICATION for theory articulation. Only sent to the LLM
+#   when Opponent.enable_phase_b is True (gated by the
+#   ELENCHUS_ENABLE_PHASE_B env var). NOT for the Sloan study.
+#
+# The two share most content; if you tune one, audit the other.
+# `test_opponent.TestSystemPrompt` asserts the Sloan prompt excludes
+# Phase B keywords so accidental cross-contamination is caught.
+
+
+SLOAN_SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
+
+YOUR ROLE:
+- Parse the respondent's natural language into formal speech acts
+- Maintain the bilateral state [C : D] (commitments and denials)
+- Detect and propose tensions (incoherences in the position)
+- Be charitable: interpret claims in their strongest plausible form
+- Be relentless but patient
+
+SPEECH ACT RECOGNITION:
+When the respondent speaks, classify their utterances:
+- COMMIT: asserting/endorsing a proposition (becomes part of C in [C:D])
+- DENY: rejecting a proposition (becomes part of D in [C:D])
+- ACCEPT_TENSION: agreeing a tension is genuine (by number)
+- CONTEST_TENSION: rejecting a tension (by number)
+- RETRACT: withdrawing a previous commitment or denial
+- REFINE: replacing a commitment with a more precise version
+
+RESPONSE FORMAT — respond ONLY with this JSON. No markdown fences, no prose preamble, no trailing commentary. The FIRST character of your reply MUST be `{` and the LAST character MUST be `}`. Anything you want the respondent to read goes inside the "response" field — NEVER outside the JSON object.
+{
+  "speech_acts": [
+    {"type": "COMMIT"|"DENY"|"ACCEPT_TENSION"|"CONTEST_TENSION"|"RETRACT"|"REFINE",
+     "proposition": "the natural language proposition",
+     "target_tension_id": null,
+     "old_proposition": null}
+  ],
+  "new_tensions": [
+    {"gamma": ["premise from C", "another premise from C"], "delta": ["conclusion", "optional further conclusion"], "reason": "why incoherent"}
+  ],
+  "response": "Your natural language response. Be conversational, Socratic, probing."
+}
+
+PROPOSITION QUALITY:
+- Every proposition must be a clean, atomic, declarative sentence
+- NEVER include metadata annotations like "(DENIED)", "(COMMITTED)", "(from C)" etc.
+- NEVER include justifications, conjunctions, or multiple claims in one proposition
+- BAD: "Since anyone can die, no one should start collecting" (contains justification)
+- GOOD: "No one of any age should start a bonsai collection"
+- For RETRACT/REFINE: old_proposition must EXACTLY match the wording in C or D
+
+TENSION CONSTRUCTION — {gamma} |~ {delta}:
+A tension means: "If you accept ALL of gamma, you are materially committed to ALL of delta — which conflicts with your position."
+
+Both gamma and delta are SETS of propositions. A sequent may have multiple premises and multiple conclusions.
+
+- gamma: Each element must be COPIED VERBATIM from the current commitments (C). Do not paraphrase, abridge, or annotate. Use the exact strings shown in the state.
+- delta: One or more clean propositions that LOGICALLY FOLLOW from the gamma premises taken together. Each element of delta is a genuine material consequence — something the gamma premises commit the respondent to, which creates a problem for their overall position. Use multiple conclusions when the premises jointly entail several distinct problematic consequences.
+- PREFER tensions where delta contains or entails a proposition the respondent has DENIED (in D). These are the sharpest tensions: they show that the respondent's commitments materially entail something they explicitly reject. If D is non-empty, actively look for such C-vs-D incoherences before proposing tensions with novel delta propositions.
+- reason: A brief explanation of WHY gamma entails delta and why that is problematic.
+- Do NOT put justifications or causal connectives in delta. The "reason" field is where you explain the inference.
+- Do NOT propose tensions where delta does not actually follow from gamma. The inference must be defensible.
+
+RULES:
+- For ACCEPT_TENSION, include target_tension_id
+- For CONTEST_TENSION, include target_tension_id
+- For REFINE, include old_proposition (what's replaced) and proposition (the new version)
+- Your "response" is what the respondent reads — make it a real philosophical conversation
+
+UI-DRIVEN ACTIONS (CRITICAL — read carefully):
+The respondent can accept tensions, contest tensions, and retract propositions via buttons in the UI. The state is updated BEFORE you receive the message. This means:
+- An accepted tension will already appear in Material Implications, not Open Tensions.
+- A contested tension will already appear in the Contested list.
+- A retracted proposition will already appear in the Retracted list.
+
+You MUST treat these as decisions the respondent JUST made right now. NEVER say "that has already been done", "that's already been retracted", "I don't see that tension", or any variation. The state reflects the action they are telling you about — that is expected and correct.
+
+Do NOT emit ACCEPT_TENSION, CONTEST_TENSION, or RETRACT speech_acts for these — the state change is already applied.
+
+Instead, respond as a philosophical interlocutor:
+- For accepted tensions: discuss what this new material implication means for their position, what further consequences or pressures it creates
+- For contested tensions: probe WHY they reject the inference, ask what they think is wrong with it, explore the philosophical stakes
+- For retractions: discuss what retracting this proposition changes in their overall position, what commitments remain that depended on it, what new space opens up
+- You may propose new_tensions if the updated position warrants them
+
+TENSION QUEUE (CRITICAL — read carefully):
+The respondent addresses tensions ONE AT A TIME to avoid cognitive overload. Only the focal tension is shown to the respondent in the UI — any additional tensions you propose are placed on a hidden queue and surface automatically as each is resolved.
+
+- You will see ONLY the focal tension in "Open tensions (T)" — the count of queued tensions follows as a hint.
+- In your "response" text, discuss ONLY the focal tension. Do NOT reference queued tensions by ID (the respondent cannot see them) and do NOT pile on additional incoherences in prose.
+- You MAY still propose multiple new_tensions in a single turn — they will queue up — but prefer proposing one sharp, well-motivated tension per turn.
+- Do NOT re-propose a tension that is already focal or queued. The "Next tension ID" reflects all tensions ever proposed, including queued.
+
+IDENTIFIERS:
+Use the identifiers shown in the state when referring to items in your response:
+- Atoms: P1, P2, P3, ... (e.g., "P3 commits you to...")
+- Tensions: T1, T2, ... (e.g., "tension T7 shows...")
+- Implications: I1, I2, ... (e.g., "implication I3 establishes...")
+Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3, I3."""
+
+
+# ── Phase B prompt (opt-in only) ─────────────────────────────────────
+# Only sent to the LLM when Opponent.enable_phase_b is True. Adds three
+# theory-articulation speech acts that bypass the tension loop. Not for
+# the Sloan study — see the firewall rationale in the Opponent docstring.
+
+PHASE_B_SYSTEM_PROMPT = """You are the opponent in an Elenchus dialectic (Allen 2026). You are conducting a prover-skeptic dialogue where the human respondent develops a bilateral position on a topic.
 
 YOUR ROLE:
 - Parse the respondent's natural language into formal speech acts
@@ -162,7 +277,26 @@ class Opponent:
         api_key: str | None = None,
         base_url: str | None = None,
         protocol: str | None = None,
+        enable_phase_b: bool = False,
     ):
+        """Configure the LLM opponent.
+
+        `enable_phase_b` gates the Phase B speech acts
+        (ASSERT_IMPLICATION, INTRODUCE_BEARER, RETRACT_IMPLICATION).
+        When False (default), the system prompt makes no mention of
+        them and `_apply` silently drops any the LLM tries to emit.
+        This keeps the live message route compliant with the Sloan
+        proposal's Elenchus condition, whose speech-act vocabulary is
+        explicitly `{COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION,
+        RETRACT, REFINE}` plus opponent-side tension proposals — and
+        only those. Operators running outside that study can opt in
+        via the `ELENCHUS_ENABLE_PHASE_B` env var.
+
+        The underlying `DialecticalState.assert_implication`,
+        `introduce_bearer`, and `retract_implication` methods stay
+        available for admin tooling, batch imports, and tests
+        regardless of the flag.
+        """
         self.model = model
         self.base_url = base_url
         self._api_key = api_key
@@ -170,12 +304,14 @@ class Opponent:
         self.client = self._build_client()
         self.async_client = self._build_async_client()
         self._has_api_key = bool(api_key or self._env_api_key())
+        self.enable_phase_b = enable_phase_b
         logger.info(
-            "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s",
+            "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s, phase_b=%s",
             self.protocol,
             model,
             base_url or "(default)",
             self._has_api_key,
+            "ON" if enable_phase_b else "off (Sloan-default)",
         )
 
     def reconfigure(
@@ -184,6 +320,7 @@ class Opponent:
         api_key: str | None = None,
         base_url: str | None = None,
         protocol: str | None = None,
+        enable_phase_b: bool | None = None,
     ):
         """Recreate the client with new settings."""
         if model:
@@ -197,15 +334,28 @@ class Opponent:
             self.protocol = protocol
         elif base_url is not None:
             self.protocol = self._detect_protocol(self.base_url)
+        if enable_phase_b is not None:
+            self.enable_phase_b = enable_phase_b
         self.client = self._build_client()
         self.async_client = self._build_async_client()
         logger.info(
-            "Opponent reconfigured: protocol=%s, model=%s, base_url=%s, api_key_updated=%s",
+            "Opponent reconfigured: protocol=%s, model=%s, base_url=%s, "
+            "api_key_updated=%s, phase_b=%s",
             self.protocol,
             self.model,
             self.base_url or "(default)",
             bool(api_key),
+            "ON" if self.enable_phase_b else "off (Sloan-default)",
         )
+
+    def _system_prompt(self) -> str:
+        """Return the system prompt for the current Phase B setting.
+
+        Sloan-default returns SLOAN_SYSTEM_PROMPT (no mention of the
+        theory-articulation acts). With the flag on it returns
+        PHASE_B_SYSTEM_PROMPT, which is the same prompt with three
+        extra speech acts described."""
+        return PHASE_B_SYSTEM_PROMPT if self.enable_phase_b else SLOAN_SYSTEM_PROMPT
 
     @staticmethod
     def _detect_protocol(base_url: str | None) -> str:
@@ -423,7 +573,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         same contract; only the LLM call differs.
         """
         messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        raw_text = self._chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
+        raw_text = self._chat(messages, system=self._system_prompt(), max_tokens=2000)
         return self._record_and_apply(user_message, raw_text, state)
 
     async def async_respond(
@@ -454,7 +604,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         DBRegistry.
         """
         messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        raw_text = await self._async_chat(messages, system=SYSTEM_PROMPT, max_tokens=2000)
+        raw_text = await self._async_chat(messages, system=self._system_prompt(), max_tokens=2000)
         if lock is None:
             return self._record_and_apply(user_message, raw_text, state)
         async with lock:
@@ -668,47 +818,60 @@ Recent exchanges:
                         )
 
             # ── Phase B speech acts ────────────────────────────────
-            elif atype == "ASSERT_IMPLICATION":
-                gamma = act.get("gamma", [])
-                delta = act.get("delta", [])
-                reason = act.get("reason", "")
-                if gamma or delta:
-                    iid = state.assert_implication(gamma, delta, reason=reason)
+            # Firewalled by Opponent.enable_phase_b. When disabled
+            # (default), the LLM hasn't been told these acts exist —
+            # but if it emits one anyway (stale conversation context,
+            # prompt drift, adversarial respondent), we silently drop
+            # it and log so an audit can spot the attempt. The
+            # underlying DialecticalState methods stay reachable for
+            # admin tooling regardless.
+            elif atype in ("ASSERT_IMPLICATION", "INTRODUCE_BEARER", "RETRACT_IMPLICATION"):
+                if not self.enable_phase_b:
                     logger.info(
-                        "Applied ASSERT_IMPLICATION → assessments.id=%d (γ=%d, δ=%d)",
-                        iid,
-                        len(gamma),
-                        len(delta),
+                        "Firewall: dropped Phase B speech act %r (ELENCHUS_ENABLE_PHASE_B is off)",
+                        atype,
                     )
-                else:
-                    logger.warning("Skipped ASSERT_IMPLICATION with empty γ and δ")
-
-            elif atype == "INTRODUCE_BEARER":
-                if prop:
-                    description = act.get("description", "")
-                    state.introduce_bearer(prop, description=description)
-                    logger.info("Applied INTRODUCE_BEARER %r", prop)
-                else:
-                    logger.warning("Skipped INTRODUCE_BEARER with no proposition")
-
-            elif atype == "RETRACT_IMPLICATION":
-                iid_raw = act.get("implication_id")
-                try:
-                    iid = int(iid_raw) if iid_raw is not None else None
-                except (TypeError, ValueError):
-                    iid = None
-                if iid is not None:
-                    ok = state.retract_implication(iid)
-                    if not ok:
+                    continue
+                if atype == "ASSERT_IMPLICATION":
+                    gamma = act.get("gamma", [])
+                    delta = act.get("delta", [])
+                    reason = act.get("reason", "")
+                    if gamma or delta:
+                        iid = state.assert_implication(gamma, delta, reason=reason)
                         logger.info(
-                            "Skipped RETRACT_IMPLICATION #%s (already retracted or not found)",
+                            "Applied ASSERT_IMPLICATION → assessments.id=%d (γ=%d, δ=%d)",
                             iid,
+                            len(gamma),
+                            len(delta),
                         )
-                else:
-                    logger.warning(
-                        "Skipped RETRACT_IMPLICATION: missing or non-integer implication_id (%r)",
-                        iid_raw,
-                    )
+                    else:
+                        logger.warning("Skipped ASSERT_IMPLICATION with empty γ and δ")
+                elif atype == "INTRODUCE_BEARER":
+                    if prop:
+                        description = act.get("description", "")
+                        state.introduce_bearer(prop, description=description)
+                        logger.info("Applied INTRODUCE_BEARER %r", prop)
+                    else:
+                        logger.warning("Skipped INTRODUCE_BEARER with no proposition")
+                else:  # RETRACT_IMPLICATION
+                    iid_raw = act.get("implication_id")
+                    try:
+                        iid = int(iid_raw) if iid_raw is not None else None
+                    except (TypeError, ValueError):
+                        iid = None
+                    if iid is not None:
+                        ok = state.retract_implication(iid)
+                        if not ok:
+                            logger.info(
+                                "Skipped RETRACT_IMPLICATION #%s (already retracted or not found)",
+                                iid,
+                            )
+                    else:
+                        logger.warning(
+                            "Skipped RETRACT_IMPLICATION: missing or non-integer "
+                            "implication_id (%r)",
+                            iid_raw,
+                        )
 
         for t in parsed.get("new_tensions", []):
             gamma = t.get("gamma", [])

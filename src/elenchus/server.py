@@ -59,11 +59,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="Elenchus", version="0.1.0", lifespan=lifespan)
+
+
+def _env_phase_b_enabled() -> bool:
+    """Parse ELENCHUS_ENABLE_PHASE_B as a boolean. The default
+    deployment must be Sloan-compliant (Phase B off), so anything
+    other than an explicit truthy value resolves to False."""
+    return os.environ.get("ELENCHUS_ENABLE_PHASE_B", "").lower() in ("1", "true", "yes", "on")
+
+
 opponent = Opponent(
     model=os.environ.get("ELENCHUS_MODEL", "claude-opus-4-6"),
     api_key=os.environ.get("ELENCHUS_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
     base_url=os.environ.get("ELENCHUS_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL"),
     protocol=os.environ.get("ELENCHUS_PROTOCOL"),
+    enable_phase_b=_env_phase_b_enabled(),
 )
 
 

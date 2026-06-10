@@ -47,8 +47,20 @@ def main():
         state = DialecticalState.in_memory(args.name)
         print(f"In-memory session: {args.name}")
 
+    # ELENCHUS_ENABLE_PHASE_B opts in to the theory-articulation speech
+    # acts. Default off (Sloan-compliant).
+    enable_phase_b = os.environ.get("ELENCHUS_ENABLE_PHASE_B", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     opp = Opponent(
-        model=args.model, api_key=args.api_key, base_url=args.base_url, protocol=args.protocol
+        model=args.model,
+        api_key=args.api_key,
+        base_url=args.base_url,
+        protocol=args.protocol,
+        enable_phase_b=enable_phase_b,
     )
 
     # Show current state

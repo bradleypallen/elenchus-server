@@ -212,6 +212,12 @@ Environment variables:
 - `BCRYPT_ROUNDS`: bcrypt cost factor for password hashing (default 12).
   Tests override this to 4 to keep the suite fast — do not lower in
   production.
+- `ELENCHUS_ENABLE_PHASE_B`: opt-in flag for the theory-articulation
+  speech acts (`ASSERT_IMPLICATION`, `INTRODUCE_BEARER`,
+  `RETRACT_IMPLICATION`). **Off by default**: the live message route
+  exposes only `{COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION, RETRACT,
+  REFINE}` to match the Sloan study's Elenchus-condition vocabulary.
+  Set to `1`/`true` outside study contexts.
 
 ### Using OpenRouter
 

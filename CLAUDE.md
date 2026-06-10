@@ -54,6 +54,11 @@ pytest -v
 - `SESSION_COOKIE_SECURE` — set to `true` behind HTTPS in production
 - `BCRYPT_ROUNDS` — bcrypt cost factor (default 12; tests use 4 for speed)
 - `ELENCHUS_ADMIN_PASSWORD` — non-interactive password for `admin create`
+- `ELENCHUS_ENABLE_PHASE_B` — opt in to the theory-articulation speech acts
+  (`ASSERT_IMPLICATION` / `INTRODUCE_BEARER` / `RETRACT_IMPLICATION`).
+  **Off by default** so the live message route matches the Sloan proposal's
+  Elenchus-condition speech-act vocabulary exactly. Set to `1`/`true`/`yes`/
+  `on` outside study contexts.
 
 ## Architecture
 
