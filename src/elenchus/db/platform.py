@@ -588,6 +588,97 @@ def set_setting(con, key: str, value: str) -> None:
     )
 
 
+# ─── Study reports (Sloan blinded judging) ────────────────────────────
+
+
+def record_study_report(
+    con,
+    *,
+    session_id: int,
+    condition: str,
+    content: str,
+    generator_model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_usd: float,
+    metadata: dict | None = None,
+) -> int:
+    """Insert one structured report row. Returns the new row id."""
+    row = con.execute(
+        "INSERT INTO study_reports "
+        "(session_id, condition, content, generator_model, "
+        "prompt_tokens, completion_tokens, cost_usd, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            session_id,
+            condition,
+            content,
+            generator_model,
+            prompt_tokens,
+            completion_tokens,
+            cost_usd,
+            json.dumps(metadata or {}),
+        ],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def find_study_report_for_session(con, session_id: int) -> dict | None:
+    """Return the most recent report for a session, or None if none
+    has been generated yet."""
+    row = con.execute(
+        "SELECT id, session_id, condition, generated_at, content, "
+        "generator_model, prompt_tokens, completion_tokens, cost_usd, "
+        "metadata "
+        "FROM study_reports WHERE session_id = ? "
+        "ORDER BY generated_at DESC LIMIT 1",
+        [session_id],
+    ).fetchone()
+    return _row_to_study_report(row)
+
+
+def list_study_reports(con, *, condition: str | None = None) -> list[dict]:
+    """All reports, newest first. Researcher dashboard surface."""
+    if condition is None:
+        rows = con.execute(
+            "SELECT id, session_id, condition, generated_at, content, "
+            "generator_model, prompt_tokens, completion_tokens, cost_usd, "
+            "metadata "
+            "FROM study_reports ORDER BY generated_at DESC"
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, session_id, condition, generated_at, content, "
+            "generator_model, prompt_tokens, completion_tokens, cost_usd, "
+            "metadata "
+            "FROM study_reports WHERE condition = ? "
+            "ORDER BY generated_at DESC",
+            [condition],
+        ).fetchall()
+    return [_row_to_study_report(r) for r in rows if r is not None]
+
+
+def _row_to_study_report(row) -> dict | None:
+    if row is None:
+        return None
+    try:
+        metadata = json.loads(row[9]) if row[9] else {}
+    except (json.JSONDecodeError, TypeError):
+        metadata = {}
+    return {
+        "id": row[0],
+        "session_id": row[1],
+        "condition": row[2],
+        "generated_at": row[3],
+        "content": row[4],
+        "generator_model": row[5],
+        "prompt_tokens": row[6],
+        "completion_tokens": row[7],
+        "cost_usd": row[8],
+        "metadata": metadata,
+    }
+
+
 # ─── Participant session tokens (Sloan study) ─────────────────────────
 
 

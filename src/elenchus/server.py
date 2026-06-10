@@ -760,6 +760,152 @@ def consume_participant_token(token: str, response: Response):
     }
 
 
+# ─── Phase D/5: structured report generation ──────────────────────
+
+
+@app.post("/api/study/session/{session_id}/generate-report")
+async def generate_session_report(
+    session_id: int,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Generate the structured report for a study session and store
+    it. Idempotent in the sense that a second call generates a
+    second row (so a researcher can regenerate after tuning the
+    template); `find_study_report_for_session` returns the newest.
+
+    Authorization: the session's actor (the participant), an admin,
+    or a researcher can trigger generation. Regular users can't
+    touch other users' sessions because the lookup is keyed on
+    session_id and we check ownership.
+    """
+    from . import study_reports as study_reports_mod
+
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None:
+        raise HTTPException(404, f"Session #{session_id} not found")
+    # Authorization: own session, admin, or researcher.
+    if actor["id"] != session["actor_id"] and actor.get("kind") not in (
+        "admin",
+        "researcher",
+    ):
+        raise HTTPException(403, "Not authorized to generate this session's report")
+    if not session.get("base_id"):
+        raise HTTPException(
+            400,
+            "Session has no base attached yet — generate-report requires "
+            "completing the dialectic / chat first.",
+        )
+    if not session.get("condition"):
+        raise HTTPException(
+            400,
+            "Session has no condition set — not a study session.",
+        )
+
+    # Load the per-base state.
+    base_id = session["base_id"]
+    try:
+        state = reg.get(base_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, f"Base '{base_id}' file not found") from e
+    except ValueError as e:
+        raise HTTPException(422, f"Base '{base_id}' is corrupt: {e}") from e
+
+    # Generate. LLMCallError propagates up; the existing message-route
+    # handler converts it to the structured user-facing body for free
+    # — same exception path.
+    try:
+        result = await study_reports_mod.generate_report(
+            state,
+            condition=session["condition"],
+            opponent=opponent,
+            session_id=session_id,
+            actor_id=actor["id"],
+            base_id=base_id,
+        )
+    except LLMCallError as e:
+        status = _http_status_for_chat_category(e.result.category)
+        raise HTTPException(
+            status_code=status,
+            detail={
+                "category": e.result.category.value,
+                "attempts": e.result.attempts,
+                "user_message": _user_message_for_chat_category(e.result.category),
+            },
+        ) from e
+
+    # Persist with pricing applied (matching the usage-table convention).
+    from . import pricing
+
+    cost = pricing.compute_cost(
+        result["model"], result["prompt_tokens"], result["completion_tokens"]
+    )
+    with reg.platform_lock:
+        rid = pdb.record_study_report(
+            con,
+            session_id=session_id,
+            condition=session["condition"],
+            content=result["content"],
+            generator_model=result["model"],
+            prompt_tokens=result["prompt_tokens"],
+            completion_tokens=result["completion_tokens"],
+            cost_usd=cost,
+            metadata={"attempts": result["attempts"], "latency_ms": result["latency_ms"]},
+        )
+    logger.info(
+        "Generated study report id=%d session=%d condition=%s tokens=%d cost=%.4f",
+        rid,
+        session_id,
+        session["condition"],
+        result["prompt_tokens"] + result["completion_tokens"],
+        cost,
+    )
+    return {
+        "id": rid,
+        "session_id": session_id,
+        "condition": session["condition"],
+        "content": result["content"],
+        "model": result["model"],
+        "cost_usd": cost,
+    }
+
+
+@app.get("/api/study/session/{session_id}/report")
+def fetch_session_report(
+    session_id: int,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Retrieve the most recent stored report for a session.
+
+    Authorization: own session, admin, or researcher. Judges go
+    through a separate (blinded) interface — see Phase D/7."""
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None:
+        raise HTTPException(404, f"Session #{session_id} not found")
+    if actor["id"] != session["actor_id"] and actor.get("kind") not in (
+        "admin",
+        "researcher",
+    ):
+        raise HTTPException(403, "Not authorized to view this session's report")
+    report = pdb.find_study_report_for_session(con, session_id)
+    if report is None:
+        raise HTTPException(404, "No report generated for this session yet")
+    return report
+
+
+@app.get("/api/admin/study/reports")
+def admin_list_reports(
+    condition: str | None = None,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Researcher cohort view — every report, newest first, optionally
+    filtered by condition for cross-condition comparison."""
+    return {"reports": pdb.list_study_reports(get_registry().platform_con(), condition=condition)}
+
+
 # ─── Phase D/2: participant session state machine ──────────────────
 
 
