@@ -565,6 +565,87 @@ def daily_cost(con, *, days: int = 30) -> list[dict]:
     ]
 
 
+def usage_for_base(con, base_id: str) -> dict:
+    """Per-base integrity rollup over the entire history of the base.
+
+    Returns:
+      * `total`: aggregate cost + tokens + call counts (success vs all).
+      * `by_category`: per-ChatCategory breakdown of call counts +
+        total cost. Captures the failure profile (rate_limit storms,
+        token-overflow incidents, etc.) alongside successful calls.
+      * `latency_ms`: median + p95 over all calls (DuckDB
+        `quantile_cont` — exact, fine at our scale).
+      * `attempts`: mean attempts per call (>1 = retries fired).
+      * `first_call_at` / `last_call_at`: span of activity.
+    """
+    total = total_cost_for_base(con, base_id)
+
+    rows = con.execute(
+        "SELECT category, COUNT(*), SUM(cost_usd) "
+        "FROM usage WHERE base_id = ? "
+        "GROUP BY category ORDER BY category",
+        [base_id],
+    ).fetchall()
+    by_category = [
+        {"category": r[0], "calls": int(r[1]), "cost_usd": float(r[2] or 0.0)} for r in rows
+    ]
+
+    latency_row = con.execute(
+        "SELECT "
+        "quantile_cont(latency_ms, 0.5) AS p50, "
+        "quantile_cont(latency_ms, 0.95) AS p95, "
+        "AVG(attempts) AS mean_attempts, "
+        "MIN(occurred_at) AS first_at, "
+        "MAX(occurred_at) AS last_at "
+        "FROM usage WHERE base_id = ?",
+        [base_id],
+    ).fetchone()
+    if latency_row is None or latency_row[3] is None:
+        latency = {"median_ms": 0, "p95_ms": 0}
+        mean_attempts = 0.0
+        first_at = None
+        last_at = None
+    else:
+        latency = {
+            "median_ms": int(latency_row[0] or 0),
+            "p95_ms": int(latency_row[1] or 0),
+        }
+        mean_attempts = float(latency_row[2] or 0.0)
+        first_at = str(latency_row[3]) if latency_row[3] is not None else None
+        last_at = str(latency_row[4]) if latency_row[4] is not None else None
+
+    return {
+        "total": total,
+        "by_category": by_category,
+        "latency_ms": latency,
+        "mean_attempts": mean_attempts,
+        "first_call_at": first_at,
+        "last_call_at": last_at,
+    }
+
+
+def total_cost_for_base(con, base_id: str) -> dict:
+    """Like `total_cost` but filtered to one base. Lives next to the
+    other rollups so the integrity report can fetch both with the
+    same locking discipline."""
+    row = con.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0), "
+        "COALESCE(SUM(prompt_tokens), 0), "
+        "COALESCE(SUM(completion_tokens), 0), "
+        "COUNT(*), "
+        "COUNT(*) FILTER (WHERE category = 'success') "
+        "FROM usage WHERE base_id = ?",
+        [base_id],
+    ).fetchone()
+    return {
+        "cost_usd": float(row[0] or 0.0),
+        "prompt_tokens": int(row[1] or 0),
+        "completion_tokens": int(row[2] or 0),
+        "calls": int(row[3] or 0),
+        "successful_calls": int(row[4] or 0),
+    }
+
+
 def cost_by_actor(con, *, since: str | None = None) -> list[dict]:
     """Per-actor cost rollup, joined to actors.email for readability.
     Includes a NULL bucket for system calls."""

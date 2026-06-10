@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from . import audit as audit_mod
 from . import auth, invites
 from . import backup as backup_mod
+from . import integrity as integrity_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
 from .dialectical_state import DialecticalState
@@ -373,6 +374,26 @@ def admin_list_backups(actor: dict = Depends(auth.require_admin)):
     """List every backup archive currently on disk, newest first."""
     output_dir = os.path.join(DATA_DIR, "backups")
     return {"backups": backup_mod.list_backups(output_dir), "output_dir": output_dir}
+
+
+@app.get("/api/admin/integrity")
+def admin_integrity_summary(actor: dict = Depends(auth.require_admin)):
+    """One row per registered base: total calls, cost, tokens. Sorted
+    by cost descending. Cheap (usage-table-only); doesn't open any
+    per-base files."""
+    return {"bases": integrity_mod.list_base_integrity_summaries()}
+
+
+@app.get("/api/admin/integrity/{base_id}")
+def admin_integrity_detail(
+    base_id: str,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Full integrity report for one base. Joins usage-table stats
+    (calls by category, p50/p95 latency, mean attempts, total cost)
+    with per-base content metrics (|C|, |D|, tensions by status,
+    implications, conversation turns)."""
+    return integrity_mod.compute_base_integrity(base_id)
 
 
 @app.get("/api/admin/usage")
