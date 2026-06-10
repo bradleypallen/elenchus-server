@@ -346,6 +346,33 @@ Use the identifiers shown in the state when referring to items in your response:
 Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3, I3."""
 
 
+# ── Baseline condition prompt (Sloan AI-as-tool) ─────────────────────
+# Used by participants whose session.condition == 'baseline'. No
+# Socratic / opponent framing — this is meant to represent a
+# naturalistic free-form chat with a helpful LLM, the AI-as-tool half
+# of the Sloan study's within-subjects comparison. Length and tone
+# are tuned to be comparable to the SLOAN_SYSTEM_PROMPT so the
+# contrast between conditions is interaction structure, not prompt
+# quality.
+
+BASELINE_SYSTEM_PROMPT = """You are a helpful AI assistant. A domain expert is working on a conceptual specification of their research area — identifying the key concepts, the relationships between them, and the rules that govern them.
+
+YOUR ROLE:
+- Answer questions about the domain when asked.
+- Help the expert structure their thinking: list concepts, propose relationships, draft definitions, suggest distinctions.
+- Take direction from the expert. They are the authority on what matters in their domain; your job is to support their work.
+- When asked to draft text or list items, do so cleanly and concisely.
+
+STYLE:
+- Conversational and professional.
+- When the expert asks for definitions or examples, give them.
+- When the expert asks you to draft or list, draft or list.
+- When the expert asks for your opinion, give it briefly without grandstanding.
+- Avoid filler phrases ("Great question!", "Absolutely!"). Get to the substance.
+
+The expert will use this conversation to develop a conceptual specification of their domain. The conversation transcript itself is the deliverable — make it useful."""
+
+
 def _parse_tension_id(tid) -> int:
     """Parse a tension ID that may have a 'T' prefix (e.g. 'T1' -> 1, 1 -> 1)."""
     s = str(tid).strip().upper()
@@ -723,6 +750,80 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
             return self._record_and_apply(user_message, raw_text, state)
         async with lock:
             return self._record_and_apply(user_message, raw_text, state)
+
+    async def async_baseline_respond(
+        self,
+        user_message: str,
+        state: DialecticalState,
+        context_turns: int = 8,
+        lock: asyncio.Lock | None = None,
+        actor_id: int | None = None,
+        base_id: str | None = None,
+    ) -> dict:
+        """Baseline (AI-as-tool) chat path for Sloan-condition participants.
+
+        Differences from `async_respond`:
+          * Uses BASELINE_SYSTEM_PROMPT (no opponent / Socratic framing).
+          * Plain-text response — no JSON schema, no speech-act parsing,
+            no `[C : D] / T / I` state mutations.
+          * Stores both turns in `conversation` (same table as the
+            dialectic path), so the per-base file IS the transcript and
+            Phase D/5's report generator can read either condition the
+            same way.
+
+        Cost tracking, alerting, retry, and LLMCallError surfacing all
+        come for free from the shared `_async_chat` chokepoint.
+        """
+        history = state.get_conversation()
+        if context_turns > 0:
+            history = history[-(context_turns * 2) :]
+        messages = list(history)
+        messages.append({"role": "user", "content": user_message})
+
+        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+        raw_text = await self._async_chat(
+            messages,
+            system=BASELINE_SYSTEM_PROMPT,
+            max_tokens=2000,
+            on_result=recorder,
+        )
+
+        # Persist the transcript turn (no speech-act dispatch). The
+        # per-base lock serializes concurrent baseline turns on the
+        # same session so the transcript stays ordered.
+        if lock is None:
+            self._record_baseline_turn(user_message, raw_text, state)
+        else:
+            async with lock:
+                self._record_baseline_turn(user_message, raw_text, state)
+
+        # Match the dialectic path's response shape so frontend code
+        # doesn't have to branch.
+        return {
+            "response": raw_text,
+            "speech_acts": [],
+            "new_tensions": [],
+        }
+
+    def _record_baseline_turn(
+        self, user_message: str, response: str, state: DialecticalState
+    ) -> None:
+        """Append both messages to the conversation log.
+
+        Runs inside an explicit transaction so a crash between the two
+        writes leaves the transcript in a consistent state — never one
+        turn ahead of the other."""
+        state.base.con.execute("BEGIN")
+        try:
+            state.add_conversation("user", user_message)
+            state.add_conversation("assistant", response)
+            state.base.con.execute("COMMIT")
+        except Exception:
+            try:
+                state.base.con.execute("ROLLBACK")
+            except Exception:
+                logger.exception("Rollback failed in _record_baseline_turn")
+            raise
 
     def _record_and_apply(self, user_message: str, raw_text: str, state: DialecticalState) -> dict:
         """Common post-LLM bookkeeping: store conversation, parse, apply

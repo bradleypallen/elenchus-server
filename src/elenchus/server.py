@@ -185,6 +185,31 @@ def _user_message_for_chat_category(category: ChatCategory) -> str:
     )
 
 
+def _is_baseline_for_actor_and_base(actor_id: int, base_id: str) -> bool:
+    """Whether `actor_id` has a live participant session in the
+    `baseline` condition whose `base_id` matches the request's base.
+
+    Used by the message route to choose between the dialectic
+    opponent (Elenchus condition) and the free-form chat path
+    (baseline). Returns False for any actor without a live session,
+    or with a session bound to a different base — i.e. the default
+    is always the dialectic path.
+    """
+    try:
+        session = pdb.find_live_session_for_actor(get_registry().platform_con(), actor_id)
+    except Exception:
+        # Don't crash the message route on a routing-lookup failure;
+        # fall back to dialectic mode (the safe default for any
+        # actor who isn't a Sloan participant).
+        logger.exception("Baseline-routing lookup failed; defaulting to dialectic")
+        return False
+    if session is None:
+        return False
+    if session.get("condition") != "baseline":
+        return False
+    return session.get("base_id") == base_id
+
+
 # ── API Models ──
 
 
@@ -964,20 +989,39 @@ async def send_message(
         logger.error("Corrupt dialectic file for '%s': %s", name, e)
         raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
 
+    # Sloan-condition routing: if the caller has an active study session
+    # in the BASELINE condition bound to *this* base, dispatch to the
+    # AI-as-tool free-form chat path. Everything else (regular users,
+    # admins, and Elenchus-condition participants) uses the dialectic
+    # opponent. The check is at message-time rather than at base-create
+    # time because the session.condition is set when the token is
+    # consumed, not when the base is created.
+    is_baseline = _is_baseline_for_actor_and_base(actor["id"], name)
+
     try:
-        result = await opponent.async_respond(
-            req.message,
-            handle.state,
-            action_context=req.context,
-            lock=handle.lock,
-            actor_id=actor["id"],
-            base_id=name,
-        )
+        if is_baseline:
+            result = await opponent.async_baseline_respond(
+                req.message,
+                handle.state,
+                lock=handle.lock,
+                actor_id=actor["id"],
+                base_id=name,
+            )
+        else:
+            result = await opponent.async_respond(
+                req.message,
+                handle.state,
+                action_context=req.context,
+                lock=handle.lock,
+                actor_id=actor["id"],
+                base_id=name,
+            )
         return {
             "response": result.get("response", ""),
             "speech_acts": result.get("speech_acts", []),
             "new_tensions": result.get("new_tensions", []),
             "state": handle.state.to_dict(),
+            "condition": "baseline" if is_baseline else "elenchus",
         }
     except LLMCallError as e:
         # The LLMClient already classified the failure, recorded
