@@ -680,6 +680,11 @@ def consume_participant_token(token: str, response: Response):
     repeat-clicks idempotent (the second request gets 410 Gone).
     Outside the scheduled window: 410 with the same body shape so
     the frontend renders one message.
+
+    Token consumption also opens a `sessions` row in the `briefing`
+    state — that's the participant's lifecycle anchor. The
+    `GET /api/study/session` route reads from it, the `advance`
+    route writes to it.
     """
     reg = get_registry()
     with reg.platform_lock:
@@ -698,21 +703,88 @@ def consume_participant_token(token: str, response: Response):
             },
         )
 
+    # Open the participant's lifecycle session in the briefing state
+    # in the same lock-held transaction so a crash between the two
+    # writes can't leave a consumed-but-stateless token.
+    with reg.platform_lock:
+        session_id = pdb.create_study_session(
+            reg.platform_con(),
+            actor_id=consumed["actor_id"],
+            study_token=token,
+            condition=consumed["condition"],
+            initial_state="briefing",
+        )
+
     # Issue a session cookie for the participant actor. Same shape
     # as the regular login flow.
     session_token = auth.create_session(consumed["actor_id"])
     _set_session_cookie(response, session_token)
     logger.info(
-        "Participant token consumed: study=%s condition=%s actor=%d",
+        "Participant token consumed: study=%s condition=%s actor=%d session_id=%d",
         consumed["study_id"],
         consumed["condition"],
         consumed["actor_id"],
+        session_id,
     )
     return {
         "study_id": consumed["study_id"],
         "condition": consumed["condition"],
         "actor_id": consumed["actor_id"],
+        "session_id": session_id,
+        "state": "briefing",
     }
+
+
+# ─── Phase D/2: participant session state machine ──────────────────
+
+
+class AdvanceSessionRequest(BaseModel):
+    """Body for `POST /api/study/session/advance`."""
+
+    to_state: str
+
+
+@app.get("/api/study/session")
+def study_session_current(actor: dict = Depends(auth.current_actor)):
+    """Return the participant's currently-live session, or 404 if
+    they don't have one. The frontend hits this on every page load
+    to decide whether to show the briefing / tutorial / dialectic
+    interface / post-session summary / questionnaire."""
+    session = pdb.find_live_session_for_actor(get_registry().platform_con(), actor["id"])
+    if session is None:
+        raise HTTPException(404, "No active study session for this participant")
+    return session
+
+
+@app.post("/api/study/session/advance")
+def study_session_advance(
+    req: AdvanceSessionRequest,
+    actor: dict = Depends(auth.current_actor),
+):
+    """Move the participant forward in the state machine. Validates
+    the requested transition against `study_flow.ALLOWED_TRANSITIONS`;
+    rejects with 400 on an invalid move."""
+    reg = get_registry()
+    session = pdb.find_live_session_for_actor(reg.platform_con(), actor["id"])
+    if session is None:
+        raise HTTPException(404, "No active study session for this participant")
+
+    with reg.platform_lock:
+        updated = pdb.advance_session_state(reg.platform_con(), session["id"], req.to_state)
+    if updated is None:
+        # find_study_session would have failed already if the session
+        # vanished; the only other reason is invalid transition.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "current_state": session["state"],
+                "requested_state": req.to_state,
+                "user_message": (
+                    f"Can't move from '{session['state']}' to '{req.to_state}' — please try again."
+                ),
+            },
+        )
+    return updated
 
 
 def _participant_token_message(existing: dict) -> str:

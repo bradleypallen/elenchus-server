@@ -430,6 +430,125 @@ def close_session(con, session_id: int) -> None:
     )
 
 
+def create_study_session(
+    con,
+    *,
+    actor_id: int,
+    study_token: str,
+    condition: str,
+    initial_state: str = "briefing",
+) -> int:
+    """Create a participant session row in the requested initial state.
+
+    Unlike `create_session`, this allows base_id=NULL (the dialectic
+    base doesn't exist yet during briefing/tutorial) and stamps the
+    state-machine columns added in migration 0004."""
+    session_id = con.execute("SELECT nextval('sessions_id_seq')").fetchone()[0]
+    con.execute(
+        "INSERT INTO sessions "
+        "(id, actor_id, base_id, opened_at, status, "
+        "state, state_changed_at, study_token, condition) "
+        "VALUES (?, ?, NULL, CURRENT_TIMESTAMP, 'open', "
+        "?, CURRENT_TIMESTAMP, ?, ?)",
+        [session_id, actor_id, initial_state, study_token, condition],
+    )
+    return session_id
+
+
+def find_study_session(con, session_id: int) -> dict | None:
+    """Like `find_session` but returns the state-machine columns too."""
+    row = con.execute(
+        "SELECT id, actor_id, base_id, opened_at, closed_at, status, "
+        "state, state_changed_at, study_token, condition "
+        "FROM sessions WHERE id = ?",
+        [session_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_study_session(row)
+
+
+def find_live_session_for_actor(con, actor_id: int) -> dict | None:
+    """Return the actor's currently-live session (state IN briefing,
+    tutorial, active, post_session, surveyed), newest first. Returns
+    None if they don't have one. Used by `GET /api/study/session` so
+    the frontend can route the participant to the right screen."""
+    row = con.execute(
+        "SELECT id, actor_id, base_id, opened_at, closed_at, status, "
+        "state, state_changed_at, study_token, condition "
+        "FROM sessions "
+        "WHERE actor_id = ? "
+        "AND state IN ('briefing','tutorial','active','post_session','surveyed') "
+        "ORDER BY opened_at DESC LIMIT 1",
+        [actor_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_study_session(row)
+
+
+def advance_session_state(con, session_id: int, to_state: str) -> dict | None:
+    """Atomically move a session to `to_state` if the documented
+    transition is allowed. Returns the updated row, or None if the
+    session doesn't exist or the transition is invalid.
+
+    Transition validation runs in Python (via `study_flow`) BEFORE
+    the UPDATE so the SQL stays simple — we just guard on
+    `state = <current>` to detect a concurrent modification."""
+    from .. import study_flow  # local import — avoids a startup cycle
+
+    current = find_study_session(con, session_id)
+    if current is None:
+        return None
+    try:
+        from_state = study_flow.parse_state(current["state"])
+        target = study_flow.parse_state(to_state)
+        study_flow.assert_transition(from_state, target)
+    except ValueError:
+        return None
+
+    rows = con.execute(
+        "UPDATE sessions SET state = ?, state_changed_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND state = ? RETURNING id",
+        [to_state, session_id, current["state"]],
+    ).fetchall()
+    if not rows:
+        return None
+    # If we just hit a terminal state, also close the session row.
+    if study_flow.is_terminal(target):
+        con.execute(
+            "UPDATE sessions SET closed_at = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?",
+            [session_id],
+        )
+    return find_study_session(con, session_id)
+
+
+def attach_base_to_session(con, session_id: int, base_id: str) -> bool:
+    """Bind a dialectic base to a session. Called when the
+    participant transitions from `tutorial` to `active` and a
+    fresh per-base file is created for their study task."""
+    rows = con.execute(
+        "UPDATE sessions SET base_id = ? WHERE id = ? AND base_id IS NULL RETURNING id",
+        [base_id, session_id],
+    ).fetchall()
+    return bool(rows)
+
+
+def _row_to_study_session(row) -> dict:
+    return {
+        "id": row[0],
+        "actor_id": row[1],
+        "base_id": row[2],
+        "opened_at": row[3],
+        "closed_at": row[4],
+        "status": row[5],
+        "state": row[6],
+        "state_changed_at": row[7],
+        "study_token": row[8],
+        "condition": row[9],
+    }
+
+
 def list_sessions_for_actor(con, actor_id: int, *, status: str | None = "open") -> list[dict]:
     sql = (
         "SELECT id, actor_id, base_id, opened_at, closed_at, status "
