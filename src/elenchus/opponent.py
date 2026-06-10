@@ -15,8 +15,29 @@ from anthropic import Anthropic, AsyncAnthropic
 from openai import AsyncOpenAI, OpenAI
 
 from .dialectical_state import DialecticalState
+from .llm_client import ChatResult, LLMClient
 
 logger = logging.getLogger(__name__)
+
+
+class LLMCallError(RuntimeError):
+    """Raised by `Opponent._chat` / `_async_chat` when the underlying
+    `LLMClient` returns a non-success `ChatResult`. Carries the result
+    so the route handler can surface the category to the user without
+    rebuilding it from a bare exception message.
+
+    Catching it: `except LLMCallError as e: e.result.category` gives
+    you a `ChatCategory` you can map to an HTTP status / user message
+    / alert severity."""
+
+    def __init__(self, result: ChatResult):
+        self.result = result
+        super().__init__(
+            f"LLM call failed: category={result.category.value} "
+            f"attempts={result.attempts} latency_ms={result.latency_ms} "
+            f"error={result.error_message!r}"
+        )
+
 
 # Known OpenAI-compatible base URLs (auto-detect API protocol)
 _OPENAI_COMPAT_HOSTS = {"openrouter.ai", "api.openai.com", "api.together.xyz", "api.groq.com"}
@@ -305,6 +326,7 @@ class Opponent:
         self.async_client = self._build_async_client()
         self._has_api_key = bool(api_key or self._env_api_key())
         self.enable_phase_b = enable_phase_b
+        self._llm_client = self._build_llm_client()
         logger.info(
             "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s, phase_b=%s",
             self.protocol,
@@ -338,6 +360,7 @@ class Opponent:
             self.enable_phase_b = enable_phase_b
         self.client = self._build_client()
         self.async_client = self._build_async_client()
+        self._llm_client = self._build_llm_client()
         logger.info(
             "Opponent reconfigured: protocol=%s, model=%s, base_url=%s, "
             "api_key_updated=%s, phase_b=%s",
@@ -412,59 +435,45 @@ class Opponent:
                 kwargs["base_url"] = self.base_url
             return AsyncAnthropic(**kwargs)
 
+    def _build_llm_client(self):
+        """Build the LLMClient wrapper that owns classification +
+        retry. Re-created on every reconfigure since the model name
+        and underlying SDK clients can change."""
+        return LLMClient(
+            protocol=self.protocol,
+            model=self.model,
+            sync_client=self.client,
+            async_client=self.async_client,
+        )
+
     def _chat(
         self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
     ) -> str:
-        """Unified sync chat call (CLI and any blocking caller). Mirrors
-        `_async_chat` — same request shape, same return value, only the
-        SDK call style differs."""
-        if self.protocol == "openai":
-            oai_messages = []
-            if system:
-                oai_messages.append({"role": "system", "content": system})
-            oai_messages.extend(messages)
-            response = self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=oai_messages,
-            )
-            return response.choices[0].message.content
-        else:
-            kwargs = {"model": self.model, "max_tokens": max_tokens, "messages": messages}
-            if system:
-                kwargs["system"] = system
-            response = self.client.messages.create(**kwargs)
-            return response.content[0].text
+        """Sync chat call. Delegates to the LLMClient for
+        classification + retry; on failure surfaces an exception so
+        the caller's existing error path runs (the message route
+        translates it to a 500 with the category in the body).
+
+        The structured `ChatResult` is logged at INFO/ERROR by the
+        client itself; we keep this signature returning `str` for
+        backwards compatibility with callers that don't need the
+        metadata."""
+        result = self._llm_client.chat(messages, system=system, max_tokens=max_tokens)
+        if not result.ok:
+            raise LLMCallError(result)
+        return result.text
 
     async def _async_chat(
         self, messages: list[dict], system: str | None = None, max_tokens: int = 2000
     ) -> str:
-        """Unified async chat call (FastAPI route handlers). Mirrors
-        `_chat` — same request shape, same return value, only awaited.
-
-        Letting the LLM call be truly async (rather than blocking inside
-        FastAPI's default threadpool) lets the event loop service other
-        requests during the 5–30 s LLM wait. This is what makes
-        multi-user concurrency feel responsive on cheap requests even
-        while one user is mid-turn.
-        """
-        if self.protocol == "openai":
-            oai_messages = []
-            if system:
-                oai_messages.append({"role": "system", "content": system})
-            oai_messages.extend(messages)
-            response = await self.async_client.chat.completions.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=oai_messages,
-            )
-            return response.choices[0].message.content
-        else:
-            kwargs = {"model": self.model, "max_tokens": max_tokens, "messages": messages}
-            if system:
-                kwargs["system"] = system
-            response = await self.async_client.messages.create(**kwargs)
-            return response.content[0].text
+        """Async chat call. See `_chat` for the result-vs-exception
+        contract. Async callers in particular benefit because the
+        LLMClient uses `asyncio.sleep` for retry backoff, so the
+        event loop stays responsive while we wait out a rate-limit."""
+        result = await self._llm_client.achat(messages, system=system, max_tokens=max_tokens)
+        if not result.ok:
+            raise LLMCallError(result)
+        return result.text
 
     def _build_request_messages(
         self,

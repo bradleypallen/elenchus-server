@@ -353,3 +353,87 @@ class TestAsyncRespond:
 
         assert result["response"] == "Recovered."
         assert "X" in state.C
+
+
+# ── LLM client integration ────────────────────────────────────────────
+
+
+class TestOpponentLLMClientIntegration:
+    """Opponent's chat shims are now thin wrappers over LLMClient.
+    These tests prove the structured ChatResult flows through
+    correctly, and that classified failures surface as LLMCallError
+    (carrying the result for the caller's error path)."""
+
+    def _make_opponent(self):
+        opp = Opponent(api_key=None, model="test")
+        return opp
+
+    def test_chat_returns_text_on_success(self):
+        from elenchus.llm_client import ChatCategory, ChatResult
+
+        opp = self._make_opponent()
+        success = ChatResult(
+            category=ChatCategory.SUCCESS,
+            text="ok",
+            attempts=1,
+            latency_ms=12,
+            prompt_tokens=10,
+            completion_tokens=2,
+            model="test",
+        )
+        with patch.object(opp._llm_client, "chat", return_value=success):
+            assert opp._chat([{"role": "user", "content": "hi"}]) == "ok"
+
+    def test_chat_raises_llmcallerror_on_failure(self):
+        from elenchus.llm_client import ChatCategory, ChatResult
+        from elenchus.opponent import LLMCallError
+
+        opp = self._make_opponent()
+        fail = ChatResult(
+            category=ChatCategory.RATE_LIMIT,
+            text="",
+            attempts=3,
+            latency_ms=7000,
+            model="test",
+            error_message="429",
+            exception_type="RateLimitError",
+        )
+        with patch.object(opp._llm_client, "chat", return_value=fail):
+            try:
+                opp._chat([{"role": "user", "content": "hi"}])
+            except LLMCallError as e:
+                assert e.result.category == ChatCategory.RATE_LIMIT
+                assert e.result.attempts == 3
+                assert "rate_limit" in str(e)
+            else:
+                raise AssertionError("expected LLMCallError")
+
+    def test_async_chat_raises_llmcallerror_on_failure(self):
+        from elenchus.llm_client import ChatCategory, ChatResult
+        from elenchus.opponent import LLMCallError
+
+        opp = self._make_opponent()
+        fail = ChatResult(
+            category=ChatCategory.AUTH_FAILURE,
+            text="",
+            attempts=1,
+            model="test",
+            error_message="invalid key",
+            exception_type="AuthenticationError",
+        )
+        with patch.object(opp._llm_client, "achat", new=AsyncMock(return_value=fail)):
+            try:
+                asyncio.run(opp._async_chat([{"role": "user", "content": "hi"}]))
+            except LLMCallError as e:
+                assert e.result.category == ChatCategory.AUTH_FAILURE
+            else:
+                raise AssertionError("expected LLMCallError")
+
+    def test_reconfigure_rebuilds_llm_client(self):
+        """Changing the model has to flow through to the LLMClient so
+        retries hit the right model name."""
+        opp = self._make_opponent()
+        original = opp._llm_client
+        opp.reconfigure(model="claude-sonnet-5-0")
+        assert opp._llm_client is not original
+        assert opp._llm_client.model == "claude-sonnet-5-0"
