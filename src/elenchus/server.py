@@ -30,7 +30,8 @@ from . import integrity as integrity_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
 from .dialectical_state import DialecticalState
-from .opponent import Opponent
+from .llm_client import ChatCategory
+from .opponent import LLMCallError, Opponent
 from .pdf_report import generate_pdf_report
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,71 @@ def _authorize_and_get_state(name: str, actor: dict) -> DialecticalState:
     """Combine authorization and state lookup for protected routes."""
     _authorize_base_access(name, actor)
     return _get_state(name)
+
+
+# ── LLM failure → HTTP response mapping ──────────────────────────────
+#
+# When an LLM call fails after retries, the Opponent raises LLMCallError
+# carrying a classified ChatResult. The two helpers below translate the
+# category into (a) an HTTP status that downstream tools (probes, error
+# trackers) can group on, and (b) a user-facing string the frontend
+# shows verbatim. The frontend doesn't need to know which categories
+# exist — it just renders `detail.user_message`.
+
+_HTTP_STATUS_BY_CATEGORY: dict[ChatCategory, int] = {
+    ChatCategory.AUTH_FAILURE: 503,  # platform issue, not the user's fault
+    ChatCategory.RATE_LIMIT: 503,
+    ChatCategory.PROVIDER_ERROR: 503,
+    ChatCategory.TIMEOUT: 504,
+    ChatCategory.NETWORK_ERROR: 503,
+    ChatCategory.CONTENT_POLICY: 422,  # the request itself was refused
+    ChatCategory.TOKEN_OVERFLOW: 413,  # payload too large
+    ChatCategory.BAD_REQUEST: 400,
+    ChatCategory.UNKNOWN: 500,
+}
+
+_USER_MESSAGE_BY_CATEGORY: dict[ChatCategory, str] = {
+    ChatCategory.AUTH_FAILURE: (
+        "The AI service can't be reached right now. The administrator has been notified."
+    ),
+    ChatCategory.RATE_LIMIT: (
+        "The AI service is busy. Pausing for a moment — please try "
+        "your message again in a few seconds."
+    ),
+    ChatCategory.PROVIDER_ERROR: (
+        "The AI service is temporarily unavailable. Please try again shortly."
+    ),
+    ChatCategory.TIMEOUT: (
+        "The AI took too long to respond. Try a shorter message, or try again."
+    ),
+    ChatCategory.NETWORK_ERROR: (
+        "Couldn't reach the AI service over the network. Please try again."
+    ),
+    ChatCategory.CONTENT_POLICY: ("The AI declined to respond to this message. Try rephrasing."),
+    ChatCategory.TOKEN_OVERFLOW: (
+        "This conversation has grown too long for the AI to read in "
+        "one go. Consider starting a fresh dialectic on the same topic."
+    ),
+    ChatCategory.BAD_REQUEST: (
+        "Something was wrong with the request. Please contact your "
+        "administrator if this keeps happening."
+    ),
+    ChatCategory.UNKNOWN: (
+        "An unexpected error occurred. Please try again, or contact "
+        "your administrator if it persists."
+    ),
+}
+
+
+def _http_status_for_chat_category(category: ChatCategory) -> int:
+    return _HTTP_STATUS_BY_CATEGORY.get(category, 500)
+
+
+def _user_message_for_chat_category(category: ChatCategory) -> str:
+    return _USER_MESSAGE_BY_CATEGORY.get(
+        category,
+        "Something went wrong. Please try again.",
+    )
 
 
 # ── API Models ──
@@ -669,7 +735,23 @@ async def send_message(
             "new_tensions": result.get("new_tensions", []),
             "state": handle.state.to_dict(),
         }
+    except LLMCallError as e:
+        # The LLMClient already classified the failure, recorded
+        # usage, and dispatched an alert. Surface the category to the
+        # frontend in a structured body so the UI can show a
+        # user-friendly message ("pausing — handling a technical
+        # issue") keyed to the category instead of a raw stack trace.
+        status = _http_status_for_chat_category(e.result.category)
+        raise HTTPException(
+            status_code=status,
+            detail={
+                "category": e.result.category.value,
+                "attempts": e.result.attempts,
+                "user_message": _user_message_for_chat_category(e.result.category),
+            },
+        ) from e
     except Exception as e:
+        logger.exception("Unhandled error in message route for base %r", name)
         raise HTTPException(500, f"Opponent error: {str(e)}") from e
 
 

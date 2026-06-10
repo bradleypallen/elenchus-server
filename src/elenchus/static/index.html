@@ -180,6 +180,17 @@ async function api(path, opts = {}) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
+    // The LLM-failure path returns a structured detail object:
+    //   { category, attempts, user_message }
+    // Render `user_message` verbatim and attach the category so callers
+    // (e.g. the message bar) can style the error differently from a
+    // generic backend exception.
+    if (err.detail && typeof err.detail === 'object' && err.detail.user_message) {
+      const e = new Error(err.detail.user_message);
+      e.category = err.detail.category;
+      e.attempts = err.detail.attempts;
+      throw e;
+    }
     throw new Error(err.detail || res.statusText);
   }
   return res.json();
