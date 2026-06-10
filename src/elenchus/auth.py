@@ -230,6 +230,20 @@ def require_researcher(request: Request) -> dict:
     return actor
 
 
+def require_judge(request: Request) -> dict:
+    """FastAPI dependency for the blinded-judge interface.
+
+    Allows kind in {'judge', 'admin'}. Admins can act as judges for
+    smoke-testing the workflow; production judges have kind='judge'
+    (invited like any other role). Researchers are NOT allowed —
+    they assemble packages and view ratings but should not also rate,
+    to keep the analysis chain clean."""
+    actor = current_actor(request)
+    if actor.get("kind") not in ("judge", "admin"):
+        raise HTTPException(status_code=403, detail="Judge privilege required")
+    return actor
+
+
 def require_base_owner(base_id: str, actor: dict) -> dict:
     """Assert that `actor` owns the given base. Raises 403 otherwise.
     Returns the base dict on success, 404 if the base doesn't exist."""

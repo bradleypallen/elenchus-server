@@ -760,6 +760,248 @@ def consume_participant_token(token: str, response: Response):
     }
 
 
+# ─── Phase D/7: blinded judge interface ──────────────────────────
+
+
+class JudgePackageRequest(BaseModel):
+    """Body for `POST /api/admin/study/judge-packages`."""
+
+    study_id: str
+    report_id_elenchus: int  # which Elenchus-condition report
+    report_id_baseline: int  # which baseline-condition report
+    randomize_slots: bool = True  # if False, elenchus → slot A
+    notes: str | None = ""
+
+
+class JudgeAssignmentRequest(BaseModel):
+    """Body for `POST /api/admin/study/judge-assignments`."""
+
+    judge_actor_id: int
+    package_id: int
+
+
+class JudgeRatingRequest(BaseModel):
+    """Body for `POST /api/judge/assignments/{id}/rate`. `ratings` is
+    a free-form dict mapping dimension name → {a: 1-7, b: 1-7}; the
+    front-end decides which dimensions to surface."""
+
+    ratings: dict
+    justification_a: str = ""
+    justification_b: str = ""
+    pairwise_winner: str  # 'a' | 'b' | 'tie'
+    condition_guess_a: str | None = None  # 'elenchus' | 'baseline' | 'unsure'
+    condition_guess_b: str | None = None
+    confidence: int | None = None  # 1-7
+
+
+@app.post("/api/admin/study/judge-packages")
+def admin_create_judge_package(
+    req: JudgePackageRequest,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Create a judge package from two reports. Slot assignment is
+    randomized by default so the judge can't use position as a tell
+    (the slot ordering across packages they see is uncorrelated with
+    the condition)."""
+    import secrets
+
+    reg = get_registry()
+    con = reg.platform_con()
+    # Validate both reports exist and have the right conditions.
+    rows = con.execute(
+        "SELECT id, condition FROM study_reports WHERE id IN (?, ?)",
+        [req.report_id_elenchus, req.report_id_baseline],
+    ).fetchall()
+    if len(rows) != 2:
+        raise HTTPException(400, "Both reports must exist")
+    by_id = {r[0]: r[1] for r in rows}
+    if by_id.get(req.report_id_elenchus) != "elenchus":
+        raise HTTPException(400, "report_id_elenchus must reference an Elenchus-condition report")
+    if by_id.get(req.report_id_baseline) != "baseline":
+        raise HTTPException(400, "report_id_baseline must reference a baseline-condition report")
+
+    # Random A/B slot assignment.
+    elenchus_in_a = secrets.randbelow(2) == 0 if req.randomize_slots else True
+    if elenchus_in_a:
+        slot_a_report = req.report_id_elenchus
+        slot_b_report = req.report_id_baseline
+        slot_a_cond = "elenchus"
+        slot_b_cond = "baseline"
+    else:
+        slot_a_report = req.report_id_baseline
+        slot_b_report = req.report_id_elenchus
+        slot_a_cond = "baseline"
+        slot_b_cond = "elenchus"
+
+    with reg.platform_lock:
+        pid = pdb.create_judge_package(
+            con,
+            study_id=req.study_id,
+            slot_a_report_id=slot_a_report,
+            slot_b_report_id=slot_b_report,
+            slot_a_condition=slot_a_cond,
+            slot_b_condition=slot_b_cond,
+            created_by=actor["id"],
+            notes=(req.notes or "").strip(),
+        )
+    logger.info(
+        "Created judge package id=%d study=%s a=%s b=%s",
+        pid,
+        req.study_id,
+        slot_a_cond,
+        slot_b_cond,
+    )
+    # Researchers DO see the slot→condition mapping; this is the
+    # unblinding side. The judge route never returns these fields.
+    return pdb.find_judge_package(con, pid)
+
+
+@app.get("/api/admin/study/judge-packages")
+def admin_list_judge_packages(
+    study_id: str | None = None,
+    actor: dict = Depends(auth.require_researcher),
+):
+    return {"packages": pdb.list_judge_packages(get_registry().platform_con(), study_id=study_id)}
+
+
+@app.post("/api/admin/study/judge-assignments")
+def admin_create_judge_assignment(
+    req: JudgeAssignmentRequest,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Assign a package to a judge. Same package can go to multiple
+    judges for inter-rater reliability."""
+    reg = get_registry()
+    con = reg.platform_con()
+    judge = pdb.find_actor_by_id(con, req.judge_actor_id)
+    if judge is None or judge.get("kind") not in ("judge", "admin"):
+        raise HTTPException(400, "judge_actor_id must reference a judge actor")
+    if pdb.find_judge_package(con, req.package_id) is None:
+        raise HTTPException(400, f"Package {req.package_id} not found")
+    with reg.platform_lock:
+        aid = pdb.create_judge_assignment(
+            con,
+            judge_actor_id=req.judge_actor_id,
+            package_id=req.package_id,
+            assigned_by=actor["id"],
+        )
+    return pdb.find_judge_assignment(con, aid)
+
+
+@app.get("/api/judge/queue")
+def judge_queue(
+    status: str | None = None,
+    actor: dict = Depends(auth.require_judge),
+):
+    """The judge's queue. `status='pending'` filters to unrated
+    packages; default returns everything."""
+    return {
+        "assignments": pdb.list_assignments_for_judge(
+            get_registry().platform_con(),
+            actor["id"],
+            status=status,
+        )
+    }
+
+
+@app.get("/api/judge/assignments/{assignment_id}")
+def judge_view_assignment(
+    assignment_id: int,
+    actor: dict = Depends(auth.require_judge),
+):
+    """Return the package's two outputs under NEUTRAL slot labels.
+    Condition labels are stripped — the judge sees only `slot_a` and
+    `slot_b` with content and report_id. The judge's own assignment
+    and any existing rating are included so the UI can render edit
+    affordances."""
+    con = get_registry().platform_con()
+    assignment = pdb.find_judge_assignment(con, assignment_id)
+    if assignment is None:
+        raise HTTPException(404, "Assignment not found")
+    if assignment["judge_actor_id"] != actor["id"] and actor.get("kind") != "admin":
+        raise HTTPException(403, "Not your assignment")
+    package = pdb.find_judge_package(con, assignment["package_id"])
+    if package is None:
+        raise HTTPException(404, "Package gone — researcher deleted it?")
+    # Pull the two reports — content only. The judge route NEVER
+    # surfaces condition. We also strip generator_model and cost
+    # fields so a clever judge can't infer condition from those.
+    rows = con.execute(
+        "SELECT id, content FROM study_reports WHERE id IN (?, ?)",
+        [package["slot_a_report_id"], package["slot_b_report_id"]],
+    ).fetchall()
+    by_id = {r[0]: r[1] for r in rows}
+    rating = pdb.find_rating_for_assignment(con, assignment_id)
+    return {
+        "assignment_id": assignment_id,
+        "status": assignment["status"],
+        "slot_a": {
+            "report_id": package["slot_a_report_id"],
+            "content": by_id.get(package["slot_a_report_id"], ""),
+        },
+        "slot_b": {
+            "report_id": package["slot_b_report_id"],
+            "content": by_id.get(package["slot_b_report_id"], ""),
+        },
+        "rating": rating,
+    }
+
+
+@app.post("/api/judge/assignments/{assignment_id}/rate")
+def judge_submit_rating(
+    assignment_id: int,
+    req: JudgeRatingRequest,
+    actor: dict = Depends(auth.require_judge),
+):
+    """Submit a rating for an assignment. Validates fields, inserts
+    one row, marks the assignment completed. A second submission is
+    allowed (idempotent regeneration); only the newest row counts at
+    analysis time."""
+    if req.pairwise_winner not in ("a", "b", "tie"):
+        raise HTTPException(400, "pairwise_winner must be 'a', 'b', or 'tie'")
+    if req.condition_guess_a is not None and req.condition_guess_a not in (
+        "elenchus",
+        "baseline",
+        "unsure",
+    ):
+        raise HTTPException(
+            400, "condition_guess_a must be 'elenchus', 'baseline', 'unsure', or null"
+        )
+    if req.condition_guess_b is not None and req.condition_guess_b not in (
+        "elenchus",
+        "baseline",
+        "unsure",
+    ):
+        raise HTTPException(
+            400, "condition_guess_b must be 'elenchus', 'baseline', 'unsure', or null"
+        )
+    if req.confidence is not None and not (1 <= req.confidence <= 7):
+        raise HTTPException(400, "confidence must be between 1 and 7")
+
+    reg = get_registry()
+    con = reg.platform_con()
+    assignment = pdb.find_judge_assignment(con, assignment_id)
+    if assignment is None:
+        raise HTTPException(404, "Assignment not found")
+    if assignment["judge_actor_id"] != actor["id"] and actor.get("kind") != "admin":
+        raise HTTPException(403, "Not your assignment")
+
+    with reg.platform_lock:
+        rid = pdb.record_judge_rating(
+            con,
+            assignment_id=assignment_id,
+            ratings=req.ratings,
+            justification_a=req.justification_a or "",
+            justification_b=req.justification_b or "",
+            pairwise_winner=req.pairwise_winner,
+            condition_guess_a=req.condition_guess_a,
+            condition_guess_b=req.condition_guess_b,
+            confidence=req.confidence,
+        )
+        pdb.mark_assignment_completed(con, assignment_id)
+    return {"id": rid, "assignment_id": assignment_id, "status": "submitted"}
+
+
 # ─── Phase D/5: structured report generation ──────────────────────
 
 

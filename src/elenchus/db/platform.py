@@ -588,6 +588,237 @@ def set_setting(con, key: str, value: str) -> None:
     )
 
 
+# ─── Blinded judging (Sloan study) ────────────────────────────────────
+
+
+def create_judge_package(
+    con,
+    *,
+    study_id: str,
+    slot_a_report_id: int,
+    slot_b_report_id: int,
+    slot_a_condition: str,
+    slot_b_condition: str,
+    created_by: int,
+    notes: str = "",
+) -> int:
+    """Insert one judge package. The caller decides slot assignment
+    (typically random). Returns the new id."""
+    row = con.execute(
+        "INSERT INTO judge_packages "
+        "(study_id, slot_a_report_id, slot_b_report_id, "
+        "slot_a_condition, slot_b_condition, created_by, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            study_id,
+            slot_a_report_id,
+            slot_b_report_id,
+            slot_a_condition,
+            slot_b_condition,
+            created_by,
+            notes,
+        ],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def find_judge_package(con, package_id: int) -> dict | None:
+    row = con.execute(
+        "SELECT id, study_id, slot_a_report_id, slot_b_report_id, "
+        "slot_a_condition, slot_b_condition, created_by, created_at, notes "
+        "FROM judge_packages WHERE id = ?",
+        [package_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "study_id": row[1],
+        "slot_a_report_id": row[2],
+        "slot_b_report_id": row[3],
+        "slot_a_condition": row[4],
+        "slot_b_condition": row[5],
+        "created_by": row[6],
+        "created_at": row[7],
+        "notes": row[8],
+    }
+
+
+def list_judge_packages(con, *, study_id: str | None = None) -> list[dict]:
+    if study_id is None:
+        rows = con.execute(
+            "SELECT id, study_id, slot_a_report_id, slot_b_report_id, "
+            "slot_a_condition, slot_b_condition, created_by, created_at, notes "
+            "FROM judge_packages ORDER BY created_at DESC"
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, study_id, slot_a_report_id, slot_b_report_id, "
+            "slot_a_condition, slot_b_condition, created_by, created_at, notes "
+            "FROM judge_packages WHERE study_id = ? "
+            "ORDER BY created_at DESC",
+            [study_id],
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "study_id": r[1],
+            "slot_a_report_id": r[2],
+            "slot_b_report_id": r[3],
+            "slot_a_condition": r[4],
+            "slot_b_condition": r[5],
+            "created_by": r[6],
+            "created_at": r[7],
+            "notes": r[8],
+        }
+        for r in rows
+    ]
+
+
+def create_judge_assignment(
+    con,
+    *,
+    judge_actor_id: int,
+    package_id: int,
+    assigned_by: int,
+) -> int:
+    row = con.execute(
+        "INSERT INTO judge_assignments "
+        "(judge_actor_id, package_id, assigned_by) "
+        "VALUES (?, ?, ?) RETURNING id",
+        [judge_actor_id, package_id, assigned_by],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def find_judge_assignment(con, assignment_id: int) -> dict | None:
+    row = con.execute(
+        "SELECT id, judge_actor_id, package_id, assigned_at, "
+        "assigned_by, status "
+        "FROM judge_assignments WHERE id = ?",
+        [assignment_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "judge_actor_id": row[1],
+        "package_id": row[2],
+        "assigned_at": row[3],
+        "assigned_by": row[4],
+        "status": row[5],
+    }
+
+
+def list_assignments_for_judge(
+    con,
+    judge_actor_id: int,
+    *,
+    status: str | None = None,
+) -> list[dict]:
+    """The judge's queue. Default returns every assignment ordered by
+    assigned_at; pass `status='pending'` to filter."""
+    if status is None:
+        rows = con.execute(
+            "SELECT id, judge_actor_id, package_id, assigned_at, "
+            "assigned_by, status "
+            "FROM judge_assignments WHERE judge_actor_id = ? "
+            "ORDER BY assigned_at",
+            [judge_actor_id],
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, judge_actor_id, package_id, assigned_at, "
+            "assigned_by, status "
+            "FROM judge_assignments "
+            "WHERE judge_actor_id = ? AND status = ? "
+            "ORDER BY assigned_at",
+            [judge_actor_id, status],
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "judge_actor_id": r[1],
+            "package_id": r[2],
+            "assigned_at": r[3],
+            "assigned_by": r[4],
+            "status": r[5],
+        }
+        for r in rows
+    ]
+
+
+def mark_assignment_completed(con, assignment_id: int) -> bool:
+    rows = con.execute(
+        "UPDATE judge_assignments SET status = 'completed' "
+        "WHERE id = ? AND status = 'pending' RETURNING id",
+        [assignment_id],
+    ).fetchall()
+    return bool(rows)
+
+
+def record_judge_rating(
+    con,
+    *,
+    assignment_id: int,
+    ratings: dict,
+    justification_a: str,
+    justification_b: str,
+    pairwise_winner: str,
+    condition_guess_a: str | None,
+    condition_guess_b: str | None,
+    confidence: int | None,
+) -> int:
+    """Insert one rating row. `ratings` is JSON-encoded; the rest are
+    validated against table CHECKs."""
+    row = con.execute(
+        "INSERT INTO judge_ratings "
+        "(assignment_id, ratings, justification_a, justification_b, "
+        "pairwise_winner, condition_guess_a, condition_guess_b, confidence) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            assignment_id,
+            json.dumps(ratings or {}),
+            justification_a,
+            justification_b,
+            pairwise_winner,
+            condition_guess_a,
+            condition_guess_b,
+            confidence,
+        ],
+    ).fetchone()
+    return int(row[0]) if row else -1
+
+
+def find_rating_for_assignment(con, assignment_id: int) -> dict | None:
+    row = con.execute(
+        "SELECT id, assignment_id, submitted_at, ratings, "
+        "justification_a, justification_b, pairwise_winner, "
+        "condition_guess_a, condition_guess_b, confidence "
+        "FROM judge_ratings WHERE assignment_id = ? "
+        "ORDER BY submitted_at DESC LIMIT 1",
+        [assignment_id],
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        ratings = json.loads(row[3]) if row[3] else {}
+    except (json.JSONDecodeError, TypeError):
+        ratings = {}
+    return {
+        "id": row[0],
+        "assignment_id": row[1],
+        "submitted_at": row[2],
+        "ratings": ratings,
+        "justification_a": row[4],
+        "justification_b": row[5],
+        "pairwise_winner": row[6],
+        "condition_guess_a": row[7],
+        "condition_guess_b": row[8],
+        "confidence": row[9],
+    }
+
+
 # ─── Study reports (Sloan blinded judging) ────────────────────────────
 
 
