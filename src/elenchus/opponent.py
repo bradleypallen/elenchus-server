@@ -37,9 +37,11 @@ def _make_usage_recorder(
     opponent.py doesn't require an initialized registry."""
 
     def _record(result: ChatResult) -> None:
+        # 1. Cost tracking. Skipped silently if the registry isn't
+        # initialized (CLI path, in-memory test).
         try:
             # Local imports so the opponent module stays importable
-            # without a live registry (CLI, tests with no platform DB).
+            # without a live registry.
             from . import pricing
             from .db import get_registry
             from .db import platform as pdb
@@ -63,13 +65,20 @@ def _make_usage_recorder(
                     latency_ms=result.latency_ms,
                 )
         except RuntimeError as e:
-            # `get_registry()` raises RuntimeError if no registry is
-            # initialized (CLI path, in-memory test). Silently skip.
             logger.debug("usage recording skipped (no registry): %s", e)
         except Exception:
-            # Any other failure: log but don't propagate. Cost
-            # tracking must never break the user-facing path.
             logger.exception("usage recording failed; continuing")
+
+        # 2. Alerting. Independent of cost tracking — even if usage
+        # recording fails, operators still see the alert. Dispatch
+        # only on non-success; the dispatcher itself handles dedup.
+        if not result.ok:
+            try:
+                from . import alerting
+
+                alerting.dispatch_for_chat_failure(result, actor_id=actor_id, base_id=base_id)
+            except Exception:
+                logger.exception("alert dispatch failed; continuing")
 
     return _record
 

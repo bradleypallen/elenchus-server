@@ -59,6 +59,11 @@ pytest -v
   **Off by default** so the live message route matches the Sloan proposal's
   Elenchus-condition speech-act vocabulary exactly. Set to `1`/`true`/`yes`/
   `on` outside study contexts.
+- `ELENCHUS_PRICING_JSON` — JSON object mapping model → `{input_per_1m,
+  output_per_1m}` USD rates. Overrides the defaults in `pricing.py`.
+- `ALERT_EMAIL_TO` — recipient for the email alert channel. Unset = console-only.
+- `ALERT_EMAIL_MIN_SEVERITY` — `critical|high|medium|low` (default `high`).
+- `ALERT_DEDUP_MINUTES` — dedup window for repeated alerts (default `5`).
 
 ## Architecture
 
