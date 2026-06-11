@@ -7,9 +7,9 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/static/icon-192.png" />
 <link rel="manifest" href="/static/manifest.json" />
-<meta name="theme-color" content="#12121e" />
+<meta name="theme-color" content="#f5f5f7" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -17,11 +17,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
 <script>
-  // Prevent flash on light theme — runs synchronously before React
+  // Day mode is the default; dark is opt-in. Apply the light theme
+  // synchronously before React so there's no flash for the default and
+  // light cases. Dark-preferring users fall through to the :root dark
+  // values below (also flash-free).
   (function() {
     try {
       var prefs = JSON.parse(localStorage.getItem('elenchus-display'));
-      if (prefs && prefs.theme === 'light') {
+      if (!prefs || prefs.theme !== 'dark') {
         var s = document.documentElement.style;
         s.setProperty('--bg', '#f5f5f7');
         s.setProperty('--surface', '#ffffff');
@@ -98,7 +101,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ── Display preferences ──
 
 const DEFAULT_DISPLAY = {
-  theme: 'dark',
+  theme: 'light',
   fontScale: 1.0,
   colors: {
     commit: '#3de0b0',
@@ -142,7 +145,7 @@ function hexToRgba(hex, alpha) {
 
 function applyDisplayPrefs(prefs) {
   const root = document.documentElement;
-  const theme = THEMES[prefs.theme] || THEMES.dark;
+  const theme = THEMES[prefs.theme] || THEMES.light;
 
   // Set theme structural CSS vars
   Object.entries(theme).forEach(([k, v]) => root.style.setProperty(k, v));
