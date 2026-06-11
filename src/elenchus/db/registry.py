@@ -86,6 +86,82 @@ class BaseHandle:
         self.last_used = time.monotonic()
 
 
+class _BufferedResult:
+    """Holds rows already fetched under the lock, so the caller's
+    `fetchone()` / `fetchall()` read from memory and never race another
+    thread's query on the shared connection."""
+
+    __slots__ = ("_rows", "_i")
+
+    def __init__(self, rows: list):
+        self._rows = rows
+        self._i = 0
+
+    def fetchone(self):
+        if self._i < len(self._rows):
+            row = self._rows[self._i]
+            self._i += 1
+            return row
+        return None
+
+    def fetchall(self) -> list:
+        rest = self._rows[self._i :]
+        self._i = len(self._rows)
+        return rest
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class _SerializedConnection:
+    """Serializes every query against the single platform DuckDB
+    connection under a reentrant lock.
+
+    A bare DuckDB connection object is not safe for concurrent use across
+    threads: `execute()` and the follow-up `fetch*()` share result state
+    on the connection, so two threads interleaving clobber each other —
+    observed as intermittently-empty session lookups (→ random 401s) when
+    a browser fires several authenticated requests at once and FastAPI
+    services them on its threadpool. Each `execute()` here holds the lock
+    across the query *and eagerly buffers the rows*, so the returned
+    object can be drained later without contending. Platform code uses
+    only `fetchone`/`fetchall` and no explicit transactions (pure
+    autocommit), which is what makes buffering transparent.
+
+    Writers already wrap their mutations in `platform_lock`; the lock is
+    reentrant, so those nest without deadlock.
+    """
+
+    def __init__(self, con, lock: threading.RLock):
+        self._con = con
+        self._lock = lock
+
+    def execute(self, sql: str, parameters=None) -> _BufferedResult:
+        with self._lock:
+            rel = (
+                self._con.execute(sql, parameters)
+                if parameters is not None
+                else self._con.execute(sql)
+            )
+            try:
+                rows = rel.fetchall()
+            except Exception:
+                # DDL / statements with no result set — nothing to buffer.
+                rows = []
+            return _BufferedResult(rows)
+
+    def executemany(self, sql: str, parameters) -> _BufferedResult:
+        with self._lock:
+            self._con.executemany(sql, parameters)
+            return _BufferedResult([])
+
+    def __getattr__(self, name):
+        # Pass through everything else (close, etc.) to the real
+        # connection. Attribute reads aren't the concurrency hazard;
+        # interleaved execute/fetch is.
+        return getattr(self._con, name)
+
+
 class DBRegistry:
     """Process-wide owner of DuckDB connections.
 
@@ -117,6 +193,10 @@ class DBRegistry:
         # acquires it for the lazy-init check.
         self._platform_con: duckdb.DuckDBPyConnection | None = None
         self._platform_lock = threading.RLock()
+        # Serializing wrapper over `_platform_con`, built lazily on first
+        # access. See `_SerializedConnection` for why every platform query
+        # must go through the lock.
+        self._platform_proxy: _SerializedConnection | None = None
 
         self._check_fd_limit()
 
@@ -150,15 +230,20 @@ class DBRegistry:
         return self._platform_path
 
     def platform_con(self) -> duckdb.DuckDBPyConnection:
-        """Return the platform.duckdb connection, opening it on first
-        access. The connection is held for the registry's lifetime —
-        every request touches platform.duckdb (auth, authorization,
-        session lookup) so eviction is wasteful.
+        """Return the platform.duckdb connection (a serializing wrapper),
+        opening the underlying connection on first access and holding it
+        for the registry's lifetime — every request touches
+        platform.duckdb (auth, authorization, session lookup) so eviction
+        is wasteful.
 
-        Callers that *write* to the platform DB must hold
-        `platform_lock` (acquired via `acquire_platform_lock()`).
-        Read-only callers (auth_sessions lookup, base ownership check)
-        can read concurrently — DuckDB MVCC handles this.
+        The returned object serializes every `execute()` under
+        `platform_lock` and buffers the result, so concurrent requests
+        (FastAPI runs sync routes in a threadpool) can't clobber each
+        other's query state on the single DuckDB connection. Without this,
+        two requests interleaving `execute`/`fetch` on the same connection
+        intermittently return empty results — observed as random 401s on
+        session lookup under concurrent browser load. The lock is
+        reentrant, so write paths that already hold it nest cleanly.
         """
         with self._platform_lock:
             if self._platform_con is None:
@@ -167,8 +252,11 @@ class DBRegistry:
                 # different location (custom override).
                 os.makedirs(os.path.dirname(self._platform_path) or ".", exist_ok=True)
                 self._platform_con = duckdb.connect(self._platform_path)
+                self._platform_proxy = _SerializedConnection(
+                    self._platform_con, self._platform_lock
+                )
                 logger.info("Opened platform DB at %s", self._platform_path)
-            return self._platform_con
+            return self._platform_proxy
 
     def migrate_platform(self) -> int:
         """Apply any unapplied platform-DB migrations. Idempotent.
@@ -366,6 +454,7 @@ class DBRegistry:
                 except Exception:
                     logger.warning("Failed to close platform DB connection", exc_info=True)
                 self._platform_con = None
+                self._platform_proxy = None
 
     # ── Introspection ──
 

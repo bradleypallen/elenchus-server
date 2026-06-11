@@ -212,3 +212,67 @@ class TestBaseHandleLock:
             return True
 
         assert asyncio.run(check()) is True
+
+
+class TestPlatformConnectionConcurrency:
+    """The single platform DuckDB connection is shared across FastAPI's
+    threadpool. A bare connection isn't safe for concurrent execute/fetch
+    — interleaved queries clobber each other's result state, so a session
+    lookup intermittently returns None → a spurious 401. The serializing
+    wrapper (`registry._SerializedConnection`) must make concurrent reads
+    deterministic. Regression for the bug the browser E2E surfaced.
+
+    This hammers the connection directly (not via TestClient, whose
+    single anyio portal serializes calls and would hide the race).
+    """
+
+    def test_concurrent_session_lookups_never_drop(self):
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+
+        from elenchus import auth
+        from elenchus.db import get_registry, init_registry
+        from elenchus.db import platform as pdb
+
+        # This file doesn't import elenchus.server, so the registry may not
+        # be initialized yet. Init only if needed (idempotent re-init would
+        # clobber the shared one other test files rely on).
+        try:
+            reg = get_registry()
+        except RuntimeError:
+            init_registry(os.environ["ELENCHUS_DATA"])
+            reg = get_registry()
+        reg.migrate_platform()
+        con = reg.platform_con()
+
+        email = "concurrency@example.com"
+        with reg.platform_lock:
+            existing = pdb.find_actor_by_email(con, email)
+            actor_id = (
+                existing["id"]
+                if existing
+                else pdb.create_actor(
+                    con,
+                    kind="user",
+                    email=email,
+                    display_name="Concurrency",
+                    password_hash=auth.hash_password("pw"),
+                )
+            )
+        token = auth.create_session(actor_id)
+
+        # Each worker resolves the session token AND does an unrelated
+        # read, the way several concurrent authenticated requests would.
+        def worker(_):
+            results = []
+            for _ in range(40):
+                a = auth.resolve_token(token)
+                b = pdb.find_actor_by_email(con, email)
+                results.append(a is not None and a["id"] == actor_id and b is not None)
+            return all(results)
+
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            outcomes = list(ex.map(worker, range(16)))
+
+        # Without serialization, some lookups return None → False here.
+        assert all(outcomes), "a concurrent session lookup spuriously returned None"
