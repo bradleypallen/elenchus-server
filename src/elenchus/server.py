@@ -1728,6 +1728,59 @@ def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
     raise HTTPException(404, f"Dialectic '{name}' not found")
 
 
+# ── Health check ──
+
+
+@app.get("/healthz")
+def healthz(response: Response):
+    """Unauthenticated liveness + readiness probe for external
+    monitoring (uptime checks, load-balancer health, systemd
+    watchdog). Returns 200 with `{status: "ok", ...}` when the
+    platform DB is reachable and migrated; 503 with
+    `{status: "degraded", ...}` otherwise.
+
+    Deliberately cheap: a single `SELECT 1`-class read against the
+    already-open platform connection. No per-base files are touched
+    (a corrupt base must not flap the health check), and no auth is
+    required (monitors don't carry credentials)."""
+    checks: dict[str, str] = {}
+    healthy = True
+
+    # Platform DB reachable + schema version readable.
+    try:
+        con = get_registry().platform_con()
+        row = con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        schema_version = int(row[0]) if row and row[0] else 0
+        checks["platform_db"] = "ok"
+    except Exception as e:
+        logger.warning("Health check: platform DB probe failed: %s", e)
+        checks["platform_db"] = f"error: {e}"
+        schema_version = None
+        healthy = False
+
+    # Data directory writable (backups, exports, new bases all need it).
+    try:
+        if os.access(DATA_DIR, os.W_OK):
+            checks["data_dir"] = "ok"
+        else:
+            checks["data_dir"] = "not writable"
+            healthy = False
+    except Exception as e:
+        checks["data_dir"] = f"error: {e}"
+        healthy = False
+
+    body = {
+        "status": "ok" if healthy else "degraded",
+        "schema_version": schema_version,
+        "phase_b_enabled": opponent.enable_phase_b,
+        "llm_configured": opponent._has_api_key,
+        "checks": checks,
+    }
+    if not healthy:
+        response.status_code = 503
+    return body
+
+
 # ── Static files ──
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")

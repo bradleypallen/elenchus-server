@@ -177,7 +177,16 @@ for how to add a new migration.
 
 ## Operations
 
+Full deployment guide — systemd unit, Nginx + TLS, backup cron, log
+rotation, and a pre-pilot checklist — is in
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md). Quick reference:
+
 ```bash
+# Liveness + readiness probe (unauthenticated; for uptime monitors).
+curl -sf http://localhost:8741/healthz
+# {"status":"ok","schema_version":7,"phase_b_enabled":false,
+#  "llm_configured":true,"checks":{"platform_db":"ok","data_dir":"ok"}}
+
 # Audit drift between platform.duckdb and the filesystem.
 elenchus audit
 
