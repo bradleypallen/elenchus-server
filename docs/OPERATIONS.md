@@ -251,6 +251,12 @@ sudo mkdir -p /var/log/elenchus && sudo chown elenchus:elenchus /var/log/elenchu
 
 Before the first participant session:
 
+- [ ] `elenchus sim` (scripted) passes — the full study flow runs green
+      end-to-end through every role. Then `elenchus sim --driver llm`
+      against the production model as a dress rehearsal: confirm real
+      participants/judges complete, check the cost + p95 latency the
+      report prints, and sanity-check that judge condition-guess
+      accuracy is near chance (the blinding holds).
 - [ ] `GET /healthz` returns 200 with `llm_configured:true` and
       `phase_b_enabled:false`.
 - [ ] Admin can log in; a test participant token consumes cleanly and

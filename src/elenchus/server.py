@@ -1950,6 +1950,25 @@ def _run_migrate_legacy(args) -> None:
             print(f"  {err['path']}: {err['error']}")
 
 
+def _run_sim(args) -> None:
+    """Run the agent-driven pilot simulation and print the report.
+    Exits non-zero if any problems were found, so CI fails on a broken
+    flow."""
+    import sys
+
+    from .sim import run_simulation
+    from .sim.report import render_text
+
+    report = run_simulation(
+        driver_mode=args.driver,
+        participants=args.participants,
+        judges=args.judges,
+        study_id=args.study_id,
+    )
+    print(render_text(report, show_timeline=not args.quiet))
+    sys.exit(0 if report.ok else 1)
+
+
 def main():
     import argparse
 
@@ -2002,6 +2021,23 @@ def main():
         help="Initial password for the admin if --create-admin is used (optional)",
     )
 
+    # `sim` subcommand — agent-driven pilot simulation.
+    sim = subparsers.add_parser(
+        "sim",
+        help="Run an agent-driven pilot-study simulation (platform robustness check)",
+    )
+    sim.add_argument(
+        "--driver",
+        choices=["scripted", "llm"],
+        default="scripted",
+        help="Persona engine: 'scripted' (free, deterministic, CI) or "
+        "'llm' (real LLM personas; needs an API key)",
+    )
+    sim.add_argument("--participants", type=int, default=4, help="Number of participants")
+    sim.add_argument("--judges", type=int, default=2, help="Number of judges")
+    sim.add_argument("--study-id", default="SIM", help="Study identifier")
+    sim.add_argument("--quiet", action="store_true", help="Suppress the step-by-step timeline")
+
     # Default to `serve` when invoked without a subcommand. Re-parse
     # under the serve subparser so its args are available.
     import sys
@@ -2024,6 +2060,8 @@ def main():
         _run_audit(args)
     elif args.command == "migrate-legacy":
         _run_migrate_legacy(args)
+    elif args.command == "sim":
+        _run_sim(args)
     else:
         parser.print_help()
 

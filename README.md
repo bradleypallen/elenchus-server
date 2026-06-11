@@ -197,7 +197,20 @@ python scripts/backup.py --email admin@local --password ...
 # Cron entry (3 AM daily, keep latest 14 archives):
 # 0 3 * * * ELENCHUS_BACKUP_EMAIL=admin@local ELENCHUS_BACKUP_PASSWORD=... \
 #           python /opt/elenchus/scripts/backup.py >> /var/log/elenchus-backup.log 2>&1
+
+# Agent-driven pilot simulation — robustness check before a live study.
+# Drives researcher + participants (both conditions) + judges + export
+# end-to-end against the real API. 'scripted' is free + deterministic
+# (CI gate); 'llm' uses real personas for a pre-pilot dress rehearsal.
+elenchus sim                       # 4 participants, 2 judges, scripted
+elenchus sim --driver llm          # real LLM personas (needs an API key)
 ```
+
+> The simulation validates the **platform** (every role, every
+> transition, blinding mechanics, cost, error handling under the real
+> request stack) — not the **science**. LLM participants prove the
+> machinery is robust; whether the two conditions produce
+> different-quality outputs is what the human pilot measures.
 
 DuckDB is a single-writer-per-file store, so the production server
 runs as **one process**; horizontal scaling means migrating the
