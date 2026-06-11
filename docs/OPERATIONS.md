@@ -275,4 +275,7 @@ Before the first participant session:
 - [ ] Backup cron has run once and produced a readable archive.
 - [ ] TLS valid; `SESSION_COOKIE_SECURE=true`; cookies flow.
 - [ ] EEQ questionnaire wording reviewed and signed off (the eight
-      items in `questionnaires.py` ship as a draft).
+      items in `questionnaires.py` ship as a draft). Review packet with
+      per-item construct/concern analysis + a decision sheet:
+      [`docs/eeq-review.md`](eeq-review.md). Any reword → bump
+      `INSTRUMENT_VERSION`.
