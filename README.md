@@ -227,6 +227,17 @@ python scripts/record_demo.py --out demo-videos            # scripted (free)
 python scripts/record_demo.py --driver llm                 # real dialogue
 ```
 
+```bash
+# Watch a dialectic unfold between two LLMs from a positum: a respondent
+# (a domain expert defending a posited paragraph) vs the real Elenchus
+# opponent. Prints the transcript + the resulting bilateral position
+# [C : D], accepted material implications, and open tensions.
+python scripts/run_dialectic.py                            # default sci-ontology positum
+python scripts/run_dialectic.py --positum @paragraph.txt \
+    --domain "the Gene Ontology" --turns 6 \
+    --respondent-model claude-sonnet-4-6 --out dialectic.json
+```
+
 DuckDB is a single-writer-per-file store, so the production server
 runs as **one process**; horizontal scaling means migrating the
 platform DB to Postgres (the `db/registry.py` boundary is shaped to
