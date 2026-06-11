@@ -3,20 +3,24 @@
 run_dialectic.py — watch a dialectic unfold between two LLMs.
 
 A respondent LLM plays a domain expert who *posits* a paragraph (by
-default a scientific upper-ontology specification) and then defends,
-refines, or concedes it under examination by the real Elenchus opponent
-LLM (the prover-skeptic). Both sides are LLMs; the opponent is the exact
-same engine the platform uses, so the commitments it extracts, the
-tensions it raises, and the material implications that form when a
-tension is accepted are all genuine.
+default a scientific upper-ontology specification) and then DEFENDS it
+under examination by the real Elenchus opponent LLM (the prover-skeptic).
+The respondent decides, for each tension the opponent raises, whether to
+CONTEST it (reject the inference or a premise — most objections have a
+principled answer) or ACCEPT it (genuinely grant the consequence, which
+becomes a material implication). It defends by default and concedes only
+under decisive pressure, so it does not cave at every objection.
 
-It drives `Opponent` + `DialecticalState` directly (in-process, like the
-CLI) — no server, no study scaffolding — and prints a readable transcript
-plus the resulting bilateral position [C : D], open tensions, and
-accepted implications.
+Both sides are LLMs; the opponent is the exact same engine the platform
+uses, so the extracted commitments, the tensions, the contests, and the
+accepted material implications are all genuine. It drives `Opponent` +
+`DialecticalState` directly (in-process, like the CLI) — no server, no
+study scaffolding — and prints the transcript plus the resulting
+bilateral position [C : D], accepted implications, contested tensions,
+and any still-open tension.
 
 Examples:
-    # default scientific-ontology positum, 5 exchanges, auto-accept tensions
+    # default scientific-ontology positum, 5 exchanges
     python scripts/run_dialectic.py
 
     # your own positum + domain, opponent and respondent on different models
@@ -33,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import textwrap
 
@@ -87,36 +92,83 @@ class LLMRespondent:
         self.positum = positum
         self.disposition = disposition
 
-    def reply(self, state: dict, opponent_text: str) -> str:
+    def reply(self, state: dict, opponent_text: str) -> tuple[str, str]:
+        """Return (verdict, prose). `verdict` is 'contest' | 'accept' |
+        'none'. The respondent DEFENDS: it contests tensions it judges
+        merely apparent and accepts only those it genuinely grants."""
         commitments = state.get("commitments", [])
         focal = (state.get("tensions") or [None])[0]
-        implications = state.get("implications", [])
+        has_tension = focal is not None
         system = (
-            f"You are a domain expert in {self.domain}. You are developing a "
-            f"conceptual specification through Socratic dialogue with an AI "
-            f"examiner who probes your position for hidden tensions. You posited "
-            f"the opening specification and you OWN it. Your disposition is "
-            f"'{self.disposition}'. Respond to the examiner's latest challenge in "
-            f"2-4 sentences of plain prose: defend the commitment, refine it, "
-            f"concede a point, or introduce a further commitment — whatever an "
-            f"honest expert would do. Do not use JSON, lists, or meta-commentary; "
-            f"speak as the expert."
+            f"You are a leading expert in {self.domain}, defending a considered "
+            f"specification under adversarial Socratic examination. You posited it "
+            f"and you stand behind it. The examiner's job is to find tensions; "
+            f"yours is to DEFEND.\n"
+            f"- Do NOT concede merely because you are pressed. Most objections have "
+            f"a principled answer that preserves your commitment: draw a "
+            f"distinction, clarify a term, reject a false dichotomy, deny a hidden "
+            f"premise, or show the putative tension dissolves under the correct "
+            f"reading. Push back on the examiner's framing when it smuggles in "
+            f"assumptions you do not hold.\n"
+            f"- Hold your core commitments firm. Refine wording only to sharpen the "
+            f"position, never as a retreat.\n"
+            f"- Concede ONLY when an objection is genuinely decisive and no "
+            f"distinction or refinement can save the commitment. That should be "
+            f"rare.\n"
+            f"Stance: {self.disposition}."
         )
-        lines = ["Your current commitments:\n- " + "\n- ".join(commitments[:12] or ["(none yet)"])]
-        if implications:
-            lines.append(f"\nAccepted implications so far: {len(implications)}.")
-        if focal:
+        lines = ["Your current commitments:\n- " + "\n- ".join(commitments[:14] or ["(none yet)"])]
+        if has_tension:
             g = ", ".join(focal.get("gamma", []))
             d = ", ".join(focal.get("delta", []))
-            lines.append(f"\nA tension is on the table: from [{g}] the examiner draws [{d}].")
-        lines.append(f"\nThe examiner just said:\n{opponent_text}\n\nYour reply:")
+            lines.append(
+                f"\nThe examiner has put a TENSION on the table: from [{g}] it infers [{d}]."
+            )
+            lines.append(f"\nThe examiner just said:\n{opponent_text}")
+            lines.append(
+                "\nDecide whether the tension is real, then answer. Begin with EXACTLY one line:\n"
+                "VERDICT: CONTEST  — you reject the inference or one of its premises; the tension is only apparent\n"
+                "VERDICT: ACCEPT   — you genuinely grant that your commitments force this consequence\n"
+                "Then 2-4 sentences of plain prose defending your decision, as the expert. "
+                "No JSON, no lists."
+            )
+        else:
+            lines.append(f"\nThe examiner just said:\n{opponent_text}")
+            lines.append(
+                "\nBegin with the line 'VERDICT: NONE', then reply in 2-4 sentences of "
+                "plain prose, as the expert."
+            )
         result = self._llm.chat(
             [{"role": "user", "content": "\n".join(lines)}],
             system=system,
-            max_tokens=300,
+            max_tokens=400,
             model=self._model or None,
         )
-        return result.text.strip() if result.ok else "Let me restate my position and continue."
+        text = (
+            result.text.strip()
+            if result.ok
+            else "VERDICT: CONTEST\nLet me restate and defend my position."
+        )
+        return self._split_verdict(text, has_tension)
+
+    @staticmethod
+    def _split_verdict(text: str, has_tension: bool) -> tuple[str, str]:
+        verdict = "none"
+        prose_lines = []
+        for i, ln in enumerate(text.splitlines()):
+            m = re.match(r"\s*VERDICT:\s*(CONTEST|ACCEPT|NONE)", ln, re.I)
+            if m and i < 3:
+                verdict = m.group(1).lower()
+                continue
+            prose_lines.append(ln)
+        prose = "\n".join(prose_lines).strip() or text
+        if not has_tension:
+            return "none", prose
+        # Defend by default: an unclear verdict on an open tension is a contest,
+        # not a concession.
+        if verdict not in ("contest", "accept"):
+            verdict = "contest"
+        return verdict, prose
 
 
 def _fmt_state(state: dict) -> str:
@@ -133,6 +185,14 @@ def _fmt_state(state: dict) -> str:
         d = ", ".join(im.get("delta", [])) if isinstance(im, dict) else ""
         out.append(f"    • {g}  |∼  {d}")
     if not imps:
+        out.append("    (none)")
+    contested = state.get("contested", [])
+    out.append(f"\n  Contested tensions (respondent defended) — {len(contested)}:")
+    for t in contested:
+        g = ", ".join(t.get("gamma", [])) if isinstance(t, dict) else str(t)
+        d = ", ".join(t.get("delta", [])) if isinstance(t, dict) else ""
+        out.append(f"    • denied: [{g}] ⊬ [{d}]")
+    if not contested:
         out.append("    (none)")
     open_t = (state.get("tensions") or []) + state.get("queued_tensions", [])
     out.append(f"\n  Open tensions — {len(open_t)}:")
@@ -160,11 +220,11 @@ def main() -> int:
     ap.add_argument(
         "--respondent-model", default=None, help="respondent model (default: same as opponent)"
     )
-    ap.add_argument("--disposition", default="rigorous and intellectually honest")
     ap.add_argument(
-        "--no-accept",
-        action="store_true",
-        help="don't auto-accept the focal tension each round (leave tensions open)",
+        "--disposition",
+        default="a leading expert who defends a considered position and concedes "
+        "only under decisive, unanswerable pressure",
+        help="the respondent's defensive stance",
     )
     ap.add_argument(
         "--out", default=None, help="write the full transcript + final state to this JSON file"
@@ -206,16 +266,22 @@ def main() -> int:
     for turn in range(args.turns):
         sd = state.to_dict()
         focal = (sd.get("tensions") or [None])[0]
-        # Optionally accept the focal tension → it becomes a material implication.
-        if focal and not args.no_accept:
-            state.accept_tension(focal["id"])
+        verdict, reply = respondent.reply(sd, result.get("response", ""))
+
+        # The respondent owns the decision: contest a tension it judges
+        # merely apparent, accept one it genuinely grants (→ implication).
+        if focal:
             g = ", ".join(focal.get("gamma", []))
             d = ", ".join(focal.get("delta", []))
-            note = f"[respondent ACCEPTS the tension → implication: {g} |∼ {d}]"
+            if verdict == "accept":
+                state.accept_tension(focal["id"])
+                note = f"[respondent ACCEPTS T{focal['id']} → implication:  {g}  |∼  {d}]"
+            else:
+                state.contest_tension(focal["id"])
+                note = f"[respondent CONTESTS T{focal['id']} — denies that {g} forces {d}]"
             print(_wrap(f"— turn {turn + 1} —", note, _SYS))
-            transcript.append({"role": "system", "content": note})
+            transcript.append({"role": "system", "content": note, "verdict": verdict})
 
-        reply = respondent.reply(state.to_dict(), result.get("response", ""))
         print(_wrap("RESPONDENT:", reply, _RESP))
         transcript.append({"role": "respondent", "content": reply})
 
