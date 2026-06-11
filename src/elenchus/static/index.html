@@ -1171,6 +1171,13 @@ function App() {
     </div>
   ) : null;
 
+  // ── Blinded judge interface ──
+  // Judges have their own full-screen surface; they never see the
+  // dialectic / home / admin chrome.
+  if (actor?.kind === 'judge') {
+    return <JudgeInterface fs={fs} logout={logout} />;
+  }
+
   // ── Study flow (Sloan participants) ──
   // Full-screen states are intercepted here; tutorial/active fall
   // through to the regular dialogue view (with the study strip in
@@ -2737,6 +2744,304 @@ function SurveyRunner({ fs, sessionId, onDone }) {
         </button>
         {error && <StudyError fs={fs} message={error} />}
       </div>
+    </div>
+  );
+}
+
+// ── Blinded judge interface (Sloan) ──
+
+// Quality dimensions presented to the judge. The backend stores
+// whatever keys it's sent under `ratings`, so the dimension set lives
+// here in the frontend and can evolve without a migration.
+const JUDGE_DIMENSIONS = [
+  { key: 'completeness', label: 'Completeness', help: 'Does it cover the important concepts and relationships of the domain?' },
+  { key: 'correctness', label: 'Correctness', help: 'Are the statements and rules accurate?' },
+  { key: 'conciseness', label: 'Conciseness', help: 'Is it free of redundancy and irrelevant material?' },
+  { key: 'fidelity', label: 'Fidelity', help: 'Does it faithfully represent expert understanding of the domain?' },
+  { key: 'coherence', label: 'Reasoning coherence', help: 'Are the inferential relationships well-motivated and mutually supporting?' },
+];
+
+function JudgeInterface({ fs, logout }) {
+  const [view, setView] = useState('queue'); // 'queue' | 'rate'
+  const [activeId, setActiveId] = useState(null);
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
+                onClick={() => { setView('queue'); setActiveId(null); }}>Elenchus</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>
+            Judge — blinded evaluation
+          </span>
+        </div>
+        <button onClick={logout} style={{
+          background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+          color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+          padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1, fontFamily: 'var(--mono)' }}>
+          SIGN OUT</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {view === 'queue'
+          ? <JudgeQueue fs={fs} onOpen={(id) => { setActiveId(id); setView('rate'); }} />
+          : <JudgeRate fs={fs} assignmentId={activeId} onDone={() => { setView('queue'); setActiveId(null); }} />}
+      </div>
+    </div>
+  );
+}
+
+function JudgeQueue({ fs, onOpen }) {
+  const [assignments, setAssignments] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try { setAssignments((await api('/api/judge/queue')).assignments || []); }
+      catch (e) { setError(e.message); }
+    })();
+  }, []);
+
+  if (error) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
+  if (!assignments) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+
+  const pending = assignments.filter(a => a.status === 'pending');
+  const done = assignments.filter(a => a.status !== 'pending');
+
+  return (
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>
+      <h1 style={{ fontSize: fs(22), fontWeight: 300, marginBottom: 6 }}>Your evaluation queue</h1>
+      <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(12), marginBottom: 24 }}>
+        Each item shows two anonymized outputs. Rate them on the quality dimensions; your judgements are confidential.
+      </p>
+
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        TO DO ({pending.length})
+      </div>
+      {pending.length === 0
+        ? <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontFamily: 'var(--sans)', marginBottom: 20 }}>Nothing to evaluate right now.</div>
+        : pending.map(a => (
+          <div key={a.id} onClick={() => onOpen(a.id)} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 14px', marginBottom: 6, borderRadius: 6,
+            background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+            <span style={{ fontFamily: 'var(--sans)', fontSize: fs(13) }}>Evaluation #{a.id}</span>
+            <span style={{ fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)', color: 'var(--accent)' }}>OPEN →</span>
+          </div>
+        ))}
+
+      {done.length > 0 && (
+        <>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', margin: '20px 0 8px' }}>
+            COMPLETED ({done.length})
+          </div>
+          {done.map(a => (
+            <div key={a.id} onClick={() => onOpen(a.id)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', marginBottom: 4, borderRadius: 6,
+              background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer', opacity: 0.7 }}>
+              <span style={{ fontFamily: 'var(--sans)', fontSize: fs(12) }}>Evaluation #{a.id}</span>
+              <span style={{ fontSize: fs(10), color: 'var(--commit)' }}>✓ submitted</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function JudgeRate({ fs, assignmentId, onDone }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  // form state
+  const [ratings, setRatings] = useState({}); // {dim: {a, b}}
+  const [justA, setJustA] = useState('');
+  const [justB, setJustB] = useState('');
+  const [winner, setWinner] = useState('');
+  const [guessA, setGuessA] = useState('');
+  const [guessB, setGuessB] = useState('');
+  const [confidence, setConfidence] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api(`/api/judge/assignments/${assignmentId}`);
+        setData(d);
+        if (d.rating) {
+          // Pre-fill from a prior submission (editable).
+          setRatings(d.rating.ratings || {});
+          setJustA(d.rating.justification_a || '');
+          setJustB(d.rating.justification_b || '');
+          setWinner(d.rating.pairwise_winner || '');
+          setGuessA(d.rating.condition_guess_a || '');
+          setGuessB(d.rating.condition_guess_b || '');
+          setConfidence(d.rating.confidence ?? null);
+        }
+      } catch (e) { setError(e.message); }
+    })();
+  }, [assignmentId]);
+
+  if (error && !data) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
+  if (!data) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+
+  const setDim = (dim, slot, val) => setRatings(r => ({ ...r, [dim]: { ...(r[dim] || {}), [slot]: val } }));
+  const allRated = JUDGE_DIMENSIONS.every(d => Number.isInteger(ratings[d.key]?.a) && Number.isInteger(ratings[d.key]?.b));
+  const canSubmit = allRated && (winner === 'a' || winner === 'b' || winner === 'tie') && !busy;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/judge/assignments/${assignmentId}/rate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ratings,
+          justification_a: justA,
+          justification_b: justB,
+          pairwise_winner: winner,
+          condition_guess_a: guessA || null,
+          condition_guess_b: guessB || null,
+          confidence: confidence ?? null,
+        }),
+      });
+      onDone();
+    } catch (e) {
+      setError(typeof e.message === 'string' ? e.message : 'Submission failed.');
+    }
+    setBusy(false);
+  };
+
+  const likert = (dim, slot) => (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {[1,2,3,4,5,6,7].map(n => (
+        <button key={n} onClick={() => setDim(dim, slot, n)} style={{
+          width: 28, height: 28, borderRadius: 14,
+          border: '1px solid ' + (ratings[dim]?.[slot] === n ? 'var(--accent)' : 'var(--border)'),
+          background: ratings[dim]?.[slot] === n ? 'var(--accent)' : 'var(--surface2)',
+          color: ratings[dim]?.[slot] === n ? '#111' : 'var(--text-dim)',
+          cursor: 'pointer', fontSize: fs(11), fontFamily: 'var(--mono)' }}>{n}</button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto', padding: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h1 style={{ fontSize: fs(20), fontWeight: 300 }}>Evaluation #{assignmentId}</h1>
+        <button onClick={onDone} style={{
+          background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+          color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+          padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1 }}>← QUEUE</button>
+      </div>
+
+      {/* Side-by-side outputs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+        {['a','b'].map(slot => (
+          <div key={slot} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '8px 14px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)',
+                          fontSize: fs(11), letterSpacing: 2, fontFamily: 'var(--mono)', color: 'var(--opp)' }}>
+              OUTPUT {slot.toUpperCase()}
+            </div>
+            <div style={{ padding: 14, fontSize: fs(12), fontFamily: 'var(--sans)', lineHeight: 1.6,
+                          whiteSpace: 'pre-wrap', maxHeight: 420, overflowY: 'auto' }}>
+              {data[`slot_${slot}`].content}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Dimension ratings */}
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
+        QUALITY RATINGS (1 = poor, 7 = excellent)
+      </div>
+      {JUDGE_DIMENSIONS.map(d => (
+        <div key={d.key} style={{ marginBottom: 16, padding: 14, borderRadius: 6,
+                                  background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div style={{ fontFamily: 'var(--sans)', fontSize: fs(13), marginBottom: 2 }}>{d.label}</div>
+          <div style={{ fontFamily: 'var(--sans)', fontSize: fs(11), color: 'var(--text-muted)', marginBottom: 10 }}>{d.help}</div>
+          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            <div><div style={{ fontSize: fs(10), color: 'var(--text-muted)', marginBottom: 5 }}>Output A</div>{likert(d.key, 'a')}</div>
+            <div><div style={{ fontSize: fs(10), color: 'var(--text-muted)', marginBottom: 5 }}>Output B</div>{likert(d.key, 'b')}</div>
+          </div>
+        </div>
+      ))}
+
+      {/* Justifications */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {[['a', justA, setJustA], ['b', justB, setJustB]].map(([slot, val, set]) => (
+          <div key={slot}>
+            <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>
+              JUSTIFICATION — OUTPUT {slot.toUpperCase()}
+            </div>
+            <textarea value={val} onChange={e => set(e.target.value)} rows={3} style={{
+              width: '100%', padding: 10, background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)',
+              outline: 'none', resize: 'vertical' }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Pairwise winner */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>
+          OVERALL — WHICH IS BETTER?
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[['a','Output A'],['tie','About equal'],['b','Output B']].map(([v,label]) => (
+            <button key={v} onClick={() => setWinner(v)} style={{
+              padding: '8px 16px', borderRadius: 6,
+              border: '1px solid ' + (winner === v ? 'var(--accent)' : 'var(--border)'),
+              background: winner === v ? 'var(--accent)' : 'var(--surface)',
+              color: winner === v ? '#111' : 'var(--text-dim)',
+              cursor: 'pointer', fontSize: fs(12), fontFamily: 'var(--sans)' }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Blinding-validation: condition guess + confidence (optional) */}
+      <div style={{ marginBottom: 16, padding: 14, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 4 }}>
+          OPTIONAL — IF YOU HAD TO GUESS
+        </div>
+        <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', marginBottom: 10 }}>
+          One output was produced through a structured back-and-forth dialogue; the other through free-form chat. Which do you think is which?
+        </div>
+        {[['A', guessA, setGuessA], ['B', guessB, setGuessB]].map(([label, val, set]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ width: 70, fontSize: fs(11), fontFamily: 'var(--sans)' }}>Output {label}</span>
+            {[['elenchus','dialogue'],['baseline','free-form'],['unsure','unsure']].map(([v,lbl]) => (
+              <button key={v} onClick={() => set(val === v ? '' : v)} style={{
+                padding: '4px 10px', borderRadius: 4,
+                border: '1px solid ' + (val === v ? 'var(--accent)' : 'var(--border)'),
+                background: val === v ? 'var(--accent)' : 'var(--surface2)',
+                color: val === v ? '#111' : 'var(--text-dim)',
+                cursor: 'pointer', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{lbl}</button>
+            ))}
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span style={{ width: 70, fontSize: fs(11), fontFamily: 'var(--sans)' }}>Confidence</span>
+          {[1,2,3,4,5,6,7].map(n => (
+            <button key={n} onClick={() => setConfidence(confidence === n ? null : n)} style={{
+              width: 26, height: 26, borderRadius: 13,
+              border: '1px solid ' + (confidence === n ? 'var(--accent)' : 'var(--border)'),
+              background: confidence === n ? 'var(--accent)' : 'var(--surface2)',
+              color: confidence === n ? '#111' : 'var(--text-dim)',
+              cursor: 'pointer', fontSize: fs(10), fontFamily: 'var(--mono)' }}>{n}</button>
+          ))}
+        </div>
+      </div>
+
+      <button onClick={submit} disabled={!canSubmit} style={{
+        width: '100%', padding: '12px 16px', marginBottom: 40,
+        background: canSubmit ? 'var(--accent)' : 'var(--surface)',
+        border: 'none', borderRadius: 6, color: '#111',
+        fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
+        cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.3 }}>
+        {busy ? '…' : (data.rating ? 'UPDATE EVALUATION' : 'SUBMIT EVALUATION')}
+      </button>
+      {error && <StudyError fs={fs} message={error} />}
     </div>
   );
 }
