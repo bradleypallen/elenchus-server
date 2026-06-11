@@ -27,7 +27,14 @@ from fastapi.testclient import TestClient
 class StepRecord:
     """One recorded interaction. `ok` is the 2xx test; the report's
     problems list is every record where `ok` is False and the caller
-    didn't mark the non-2xx as expected."""
+    didn't mark the non-2xx as expected.
+
+    Access probes (`is_probe=True`) invert the usual semantics: a
+    *correctly denied* request (the expected non-2xx) sets `ok=True`,
+    and a request that should have been denied but wasn't sets
+    `ok=False` — which is precisely a security finding, so the normal
+    problems filter catches it. `expect` is the human-readable set of
+    accepted statuses for the timeline."""
 
     actor: str
     action: str
@@ -38,6 +45,8 @@ class StepRecord:
     ok: bool
     note: str = ""
     expected_non_2xx: bool = False
+    is_probe: bool = False
+    expect: str = ""
 
 
 @dataclass
@@ -68,6 +77,14 @@ class SimClient:
 
         self._tc.cookies.set(auth.SESSION_COOKIE, token)
 
+    def session_token(self) -> str | None:
+        """The session token currently in this client's cookie jar (set
+        by login/signup/token-consume). Used to test that a revoked
+        token stops working."""
+        from .. import auth
+
+        return self._tc.cookies.get(auth.SESSION_COOKIE)
+
     def request(
         self,
         method: str,
@@ -93,6 +110,42 @@ class SimClient:
                 ok=ok,
                 note=note,
                 expected_non_2xx=expect_non_2xx,
+            )
+        )
+        return resp.status_code, _safe_json(resp)
+
+    def probe(
+        self,
+        method: str,
+        path: str,
+        *,
+        action: str,
+        expect,
+        json: Any = None,
+        note: str = "",
+    ) -> tuple[int, Any]:
+        """An access-control probe. `expect` is the status (int) or
+        statuses (iterable) that count as the *correct* outcome. The
+        recorded step's `ok` reflects whether the actual status matched
+        — so a request that should be denied (e.g. expect=404) but
+        returns 200 records `ok=False` and surfaces as a problem."""
+        accepted = {expect} if isinstance(expect, int) else set(expect)
+        t0 = time.monotonic()
+        resp = self._tc.request(method, path, json=json)
+        dt = int((time.monotonic() - t0) * 1000)
+        matched = resp.status_code in accepted
+        self._rec.record(
+            StepRecord(
+                actor=self.name,
+                action=action,
+                method=method,
+                path=path,
+                status=resp.status_code,
+                latency_ms=dt,
+                ok=matched,
+                note=note,
+                is_probe=True,
+                expect="|".join(str(s) for s in sorted(accepted)),
             )
         )
         return resp.status_code, _safe_json(resp)

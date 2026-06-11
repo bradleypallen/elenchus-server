@@ -27,6 +27,10 @@ class SimReport:
     blinding_total: int
     blinding_correct: int
     blinding_unsure: int
+    # Adversarial access/auth probes: how many ran and how many got the
+    # correct (usually denied) outcome. A failed probe is also a problem.
+    access_probes_total: int = 0
+    access_probes_passed: int = 0
     # LLM spend over the run (0 for scripted; populated from the usage
     # table for an `--driver llm` rehearsal — the go/no-go cost number).
     cost_usd: float = 0.0
@@ -75,6 +79,9 @@ def build_report(
     b_correct = sum(1 for r in blinding if r["guess"] == r["truth"])
     b_unsure = sum(1 for r in blinding if r["guess"] == "unsure")
 
+    probes = [s for s in rec.steps if s.is_probe]
+    probes_passed = sum(1 for s in probes if s.ok)
+
     u = usage or {}
 
     return SimReport(
@@ -89,6 +96,8 @@ def build_report(
         blinding_total=b_total,
         blinding_correct=b_correct,
         blinding_unsure=b_unsure,
+        access_probes_total=len(probes),
+        access_probes_passed=probes_passed,
         cost_usd=float(u.get("cost_usd", 0.0)),
         prompt_tokens=int(u.get("prompt_tokens", 0)),
         completion_tokens=int(u.get("completion_tokens", 0)),
@@ -110,6 +119,11 @@ def render_text(report: SimReport, *, show_timeline: bool = True) -> str:
     lines.append(f"  Reports generated:    {report.reports_generated}")
     lines.append(f"  Judge ratings:        {report.ratings_submitted}")
     lines.append(f"  Total HTTP steps:     {report.total_steps}")
+    if report.access_probes_total:
+        lines.append(
+            f"  Access/auth checks:   {report.access_probes_passed}/"
+            f"{report.access_probes_total} passed"
+        )
     lines.append(f"  Latency p50 / p95:    {report.p50_latency_ms} / {report.p95_latency_ms} ms")
 
     if report.llm_calls:
@@ -140,13 +154,29 @@ def render_text(report: SimReport, *, show_timeline: bool = True) -> str:
         lines.append("")
         lines.append(f"  ⚠ PROBLEMS ({len(report.problems)}):")
         for p in report.problems:
+            got = f"expected {p.expect}, got {p.status}" if p.is_probe else f"HTTP {p.status}"
+            tag = "ACCESS" if p.is_probe else "ERROR"
             lines.append(
-                f"      [{p.actor}] {p.action} {p.method} {p.path} → "
-                f"HTTP {p.status}" + (f"  ({p.note})" if p.note else "")
+                f"      [{tag}] [{p.actor}] {p.action} {p.method} {p.path} → "
+                f"{got}" + (f"  ({p.note})" if p.note else "")
             )
     else:
         lines.append("")
-        lines.append("  ✓ No unexpected non-2xx responses.")
+        lines.append("  ✓ No unexpected non-2xx responses; all access checks held.")
+
+    # Dedicated access/auth section so the security posture is legible
+    # at a glance, not buried in the full timeline.
+    probe_steps = [s for s in report.steps if s.is_probe]
+    if probe_steps:
+        lines.append("")
+        lines.append("  ─── Access & auth checks ───")
+        for s in probe_steps:
+            mark = "✓" if s.ok else "✗"
+            note = f"  · {s.note}" if s.note else ""
+            lines.append(
+                f"    {mark} [{s.actor:<14}] {s.action:<22} "
+                f"{s.method} {s.path} → {s.status} (want {s.expect}){note}"
+            )
 
     if show_timeline:
         lines.append("")

@@ -112,3 +112,46 @@ class TestScriptedSimulation:
         assert report.ok
         # Single participant, single judge → 1 package × 1 judge = 1 rating.
         assert report.ratings_submitted == 1
+
+
+class TestAccessProbes:
+    """The adversarial access/auth phase: every protected route must
+    reject unauthorized access with the right status, and the judge view
+    must never leak the condition. A failed probe is also a problem, so
+    `report.ok` already gates on these — but we assert the specifics so a
+    regression names the exact control that broke."""
+
+    def test_all_access_probes_pass(self):
+        report = run_simulation(driver_mode="scripted", participants=2, judges=2)
+        assert report.access_probes_total > 0
+        assert report.access_probes_passed == report.access_probes_total
+        assert report.ok
+
+    def test_critical_controls_exercised_and_held(self):
+        report = run_simulation(driver_mode="scripted", participants=2, judges=2)
+        passed = {s.action for s in report.steps if s.is_probe and s.ok}
+        # Each of these is a security control that must hold for the pilot.
+        for control in (
+            "login_bad_password",  # wrong password rejected
+            "me_unauth",  # no session → 401
+            "admin_unauth",  # unauth admin route → 401 (not 403)
+            "admin_gate",  # non-admin → 403
+            "judge_gate",  # non-judge → 403
+            "cross_tenant_read",  # one user can't read another's base (404)
+            "cross_tenant_write",
+            "revoked_token_reuse",  # logged-out token is dead
+            "signup_reuse_token",  # invites are single-use
+            "study_token_reuse",  # participant links are single-use (410)
+            "blinding_no_leak",  # judge view hides condition
+            "judge_view_foreign",  # a judge can't open another's assignment
+        ):
+            assert control in passed, f"access control {control!r} did not hold"
+
+    def test_blinding_leak_is_a_hard_failure(self):
+        """If the judge view ever exposed the ground-truth condition, the
+        blinding_no_leak probe would fail and pull report.ok to False —
+        guard that the check is actually wired into the gate."""
+        report = run_simulation(driver_mode="scripted", participants=2, judges=2)
+        leak_checks = [s for s in report.steps if s.action == "blinding_no_leak"]
+        assert leak_checks, "blinding leak check never ran"
+        assert all(s.ok for s in leak_checks)

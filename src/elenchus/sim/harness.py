@@ -42,6 +42,7 @@ class StudyHarness:
         self.judges = judges
         self.study_id = study_id
         self.rec = recorder or Recorder()
+        self.researcher: SimClient | None = None  # set in run()
         # Outcome tracking: label → condition → {session_id, report_id}
         self.outcomes: dict[str, dict[str, dict]] = {}
         # Blinding analysis rows: {guess, truth} per slot.
@@ -67,6 +68,7 @@ class StudyHarness:
 
     def run(self) -> Recorder:
         researcher = self._make_staff("admin", "researcher")
+        self.researcher = researcher  # retained for the access-probe phase
 
         for i, persona in enumerate(self.participants):
             # Counterbalance condition order across participants.
@@ -87,6 +89,16 @@ class StudyHarness:
             researcher.post(f"/api/admin/study/{self.study_id}/export", action="export_study")
         except Exception:
             logger.exception("Export crashed")
+
+        # Adversarial access/auth phase last, so it can reuse the real
+        # assignments the run produced. Runs after export so its
+        # throwaway probe users never land in the study archive.
+        try:
+            from .access import run_access_probes
+
+            run_access_probes(self)
+        except Exception:
+            logger.exception("Access-probe phase crashed")
 
         return self.rec
 
