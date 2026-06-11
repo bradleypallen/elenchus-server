@@ -27,6 +27,13 @@ class SimReport:
     blinding_total: int
     blinding_correct: int
     blinding_unsure: int
+    # LLM spend over the run (0 for scripted; populated from the usage
+    # table for an `--driver llm` rehearsal — the go/no-go cost number).
+    cost_usd: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    llm_calls: int = 0
+    llm_calls_ok: int = 0
     steps: list[StepRecord] = field(default_factory=list)
 
     @property
@@ -50,6 +57,7 @@ def build_report(
     participants_total: int,
     outcomes: dict,
     blinding: list[dict],
+    usage: dict | None = None,
 ) -> SimReport:
     problems = [s for s in rec.steps if not s.ok and not s.expected_non_2xx]
     latencies = [s.latency_ms for s in rec.steps]
@@ -67,6 +75,8 @@ def build_report(
     b_correct = sum(1 for r in blinding if r["guess"] == r["truth"])
     b_unsure = sum(1 for r in blinding if r["guess"] == "unsure")
 
+    u = usage or {}
+
     return SimReport(
         total_steps=len(rec.steps),
         problems=problems,
@@ -79,6 +89,11 @@ def build_report(
         blinding_total=b_total,
         blinding_correct=b_correct,
         blinding_unsure=b_unsure,
+        cost_usd=float(u.get("cost_usd", 0.0)),
+        prompt_tokens=int(u.get("prompt_tokens", 0)),
+        completion_tokens=int(u.get("completion_tokens", 0)),
+        llm_calls=int(u.get("calls", 0)),
+        llm_calls_ok=int(u.get("successful_calls", 0)),
         steps=list(rec.steps),
     )
 
@@ -96,6 +111,15 @@ def render_text(report: SimReport, *, show_timeline: bool = True) -> str:
     lines.append(f"  Judge ratings:        {report.ratings_submitted}")
     lines.append(f"  Total HTTP steps:     {report.total_steps}")
     lines.append(f"  Latency p50 / p95:    {report.p50_latency_ms} / {report.p95_latency_ms} ms")
+
+    if report.llm_calls:
+        toks = report.prompt_tokens + report.completion_tokens
+        lines.append(
+            f"  LLM cost / calls:     ${report.cost_usd:.4f} · "
+            f"{report.llm_calls_ok}/{report.llm_calls} ok · {toks:,} tokens"
+        )
+    else:
+        lines.append("  LLM cost / calls:     $0.0000 (scripted — no live calls)")
 
     if report.blinding_total:
         lines.append("")

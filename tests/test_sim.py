@@ -94,13 +94,15 @@ class TestScriptedSimulation:
 
     def test_scripted_run_is_free(self):
         """The canned model isn't in the pricing table, so scripted runs
-        record $0 — confirming no real LLM spend."""
-        run_simulation(driver_mode="scripted", participants=2, judges=2)
-        # The sim's own registry was torn down; the assertion lives in the
-        # fact that the run completed with the 'sim-canned' model. We
-        # re-run a tiny slice and inspect the usage rows before restore.
-        # (Simplest: trust the model name; a dedicated cost probe would
-        # need the sim's temp dir, which run_simulation discards.)
+        record $0 — confirming no real LLM spend. The report now carries
+        the usage figures (queried before the sim registry is torn down),
+        so we can assert it directly."""
+        report = run_simulation(driver_mode="scripted", participants=2, judges=2)
+        assert report.cost_usd == 0.0
+        # The canned client DID drive the whole stack — calls were made and
+        # all succeeded — they just priced to nothing.
+        assert report.llm_calls > 0
+        assert report.llm_calls_ok == report.llm_calls
 
     def test_problems_surface_does_not_abort(self):
         """A clean run has an empty problems list and ok=True; this is the

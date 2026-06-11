@@ -84,11 +84,18 @@ def run_simulation(
             study_id=study_id,
         )
         rec = harness.run()
+        # Query the usage table while the sim registry is still bound —
+        # the temp data dir is discarded after this returns. Scripted
+        # runs land here too (cost 0; the canned model isn't priced).
+        from ..db import platform as pdb
+
+        usage = pdb.total_cost(reg.platform_con())
         return build_report(
             rec,
             participants_total=len(pcts),
             outcomes=harness.outcomes,
             blinding=harness.blinding,
+            usage=usage,
         )
     finally:
         if saved_client is not None:
