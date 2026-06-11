@@ -467,18 +467,44 @@ function MagicLink({ onSwitchLogin }) {
 
 function AuthGate() {
   // Resolution states: 'pending' (initial check in flight), 'login',
-  // 'signup', 'magic', 'authed'.
+  // 'signup', 'magic', 'authed', 'study-error'.
   const [phase, setPhase] = useState('pending');
   const [actor, setActor] = useState(null);
   const [initialToken, setInitialToken] = useState(null);
+  const [studyError, setStudyError] = useState(null);
 
-  // On mount: check if there's a session, and look at ?token= so signup
-  // links land directly on the signup view.
+  // On mount: check the URL for a study token (?study=) or invite
+  // token (?token=), then fall back to an existing session.
   useEffect(() => {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('token');
+    const studyToken = url.searchParams.get('study');
 
     (async () => {
+      // Study link takes precedence: consuming it issues a session
+      // cookie for the participant actor in one step — no login.
+      if (studyToken) {
+        try {
+          await api(`/api/study/${encodeURIComponent(studyToken)}`, { method: 'POST' });
+          window.history.replaceState({}, '', window.location.pathname);
+          const me = await api('/api/auth/me');
+          setActor(me); setPhase('authed');
+          return;
+        } catch (e) {
+          // Already-used links are fine if we still hold the cookie —
+          // a participant refreshing the page lands here.
+          try {
+            const me = await api('/api/auth/me');
+            window.history.replaceState({}, '', window.location.pathname);
+            setActor(me); setPhase('authed');
+            return;
+          } catch (e2) {
+            setStudyError(e.message || 'This study link cannot be used.');
+            setPhase('study-error');
+            return;
+          }
+        }
+      }
       try {
         const me = await api('/api/auth/me');
         setActor(me); setPhase('authed');
@@ -544,6 +570,17 @@ function AuthGate() {
   if (phase === 'magic') {
     return <MagicLink onSwitchLogin={() => setPhase('login')} />;
   }
+  if (phase === 'study-error') {
+    return (
+      <AuthShell error={studyError}>
+        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
+                      fontFamily: 'var(--sans)', lineHeight: 1.7, padding: '8px 4px' }}>
+          This study link can't be used right now. If you believe this is a
+          mistake, please contact the researcher who sent it to you.
+        </div>
+      </AuthShell>
+    );
+  }
   // Authed.
   return (
     <AuthContext.Provider value={{ actor, logout }}>
@@ -574,6 +611,14 @@ function App() {
   const [settingsForm, setSettingsForm] = useState({ api_key: '', base_url: '', model: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  // ── Study flow (Sloan participants) ──
+  // Non-null only for actors with kind='participant' and a live study
+  // session. Drives the briefing → tutorial → active → post_session →
+  // surveyed → complete routing.
+  const [studySession, setStudySession] = useState(null);
+  const [studyBusy, setStudyBusy] = useState(false);
+  const isParticipant = actor?.kind === 'participant';
+  const isBaseline = studySession?.condition === 'baseline';
   const [displayPrefs, setDisplayPrefs] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('elenchus-display'));
@@ -652,6 +697,13 @@ function App() {
   const fs = useCallback((px) => Math.round(px * displayPrefs.fontScale), [displayPrefs.fontScale]);
 
   useEffect(() => {
+    if (isParticipant) {
+      // Participants are routed by their study session state, not by
+      // localStorage restore (a shared machine could carry another
+      // user's `elenchus-current`).
+      refreshStudySession();
+      return;
+    }
     loadDialectics();
     loadSettings();
     // Restore last-open dialectic on refresh
@@ -661,6 +713,60 @@ function App() {
       setCurrent(null); setState(null); setView('home'); setError(null);
     });
   }, []);
+
+  // ── Study flow actions ──
+
+  const refreshStudySession = async () => {
+    try {
+      const s = await api('/api/study/session');
+      setStudySession(s);
+      // Tutorial/active sessions re-open their working base on refresh.
+      if (s.state === 'tutorial') {
+        await openDialectic(`practice-${s.id}`).catch(() => {});
+      } else if (s.state === 'active' && s.base_id) {
+        await openDialectic(s.base_id).catch(() => {});
+      }
+    } catch (e) {
+      setStudySession(null); // participant with no live session
+    }
+  };
+
+  const studyBeginTutorial = async () => {
+    if (studyBusy) return;
+    setStudyBusy(true); setError(null);
+    try {
+      const s = await api('/api/study/session/begin-tutorial', { method: 'POST' });
+      setStudySession(s);
+      await openDialectic(s.practice_base_id);
+    } catch (e) { setError(e.message); }
+    setStudyBusy(false);
+  };
+
+  const studyBeginTask = async () => {
+    if (studyBusy) return;
+    if (!confirm('Start the real task? The practice conversation will be left behind.')) return;
+    setStudyBusy(true); setError(null);
+    try {
+      const s = await api('/api/study/session/begin-task', { method: 'POST' });
+      setStudySession(s);
+      setMessages([]); setState(null);
+      await openDialectic(s.task_base_id);
+    } catch (e) { setError(e.message); }
+    setStudyBusy(false);
+  };
+
+  const studyAdvance = async (toState) => {
+    if (studyBusy) return;
+    setStudyBusy(true); setError(null);
+    try {
+      const s = await api('/api/study/session/advance', {
+        method: 'POST', body: JSON.stringify({ to_state: toState }),
+      });
+      setStudySession(s);
+      if (toState === 'post_session') { setCurrent(null); setState(null); }
+    } catch (e) { setError(e.message); }
+    setStudyBusy(false);
+  };
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
 
@@ -1065,6 +1171,109 @@ function App() {
     </div>
   ) : null;
 
+  // ── Study flow (Sloan participants) ──
+  // Full-screen states are intercepted here; tutorial/active fall
+  // through to the regular dialogue view (with the study strip in
+  // its header).
+  if (isParticipant) {
+    const sState = studySession?.state;
+    if (!studySession) {
+      return (
+        <StudyShell fs={fs} title="No active session">
+          <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
+            You don't have an active study session. If you arrived here from a
+            study link, the session may have ended — please contact the
+            researcher who sent you the link.
+          </p>
+        </StudyShell>
+      );
+    }
+    if (sState === 'briefing') {
+      return (
+        <StudyShell fs={fs} title="Welcome to the study">
+          <div style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
+            <p style={{ marginBottom: 12 }}>
+              In this session you will work with an AI to develop a written
+              specification of the key concepts and rules of a research domain.
+              The session has four parts:
+            </p>
+            <ol style={{ paddingLeft: 22, marginBottom: 12 }}>
+              <li style={{ marginBottom: 6 }}><b>Tutorial</b> (~15 minutes) — practice with the interface on a warm-up topic.</li>
+              <li style={{ marginBottom: 6 }}><b>Main task</b> (~60 minutes) — work on the domain you were given.</li>
+              <li style={{ marginBottom: 6 }}><b>Summary</b> — a short review of what you produced.</li>
+              <li style={{ marginBottom: 6 }}><b>Questionnaires</b> (~10–15 minutes) — four short instruments about your experience.</li>
+            </ol>
+            <p style={{ marginBottom: 12 }}>
+              Your work is recorded for research purposes. Your identity is
+              held separately from the research data and is never published.
+              You may stop at any time by closing this window and contacting
+              the researcher.
+            </p>
+          </div>
+          <button onClick={studyBeginTutorial} disabled={studyBusy} style={{
+            width: '100%', padding: '12px 16px', marginTop: 12,
+            background: 'var(--accent)', border: 'none', borderRadius: 6,
+            color: '#111', fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
+            cursor: studyBusy ? 'default' : 'pointer', opacity: studyBusy ? 0.5 : 1,
+          }}>{studyBusy ? '…' : 'BEGIN TUTORIAL'}</button>
+          {error && <StudyError fs={fs} message={error} />}
+        </StudyShell>
+      );
+    }
+    if (sState === 'post_session') {
+      return (
+        <StudyShell fs={fs} title="Main task complete">
+          <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8, marginBottom: 12 }}>
+            Thank you — the main task is finished and your work has been saved.
+            The last step is a short set of questionnaires about your
+            experience (about 10–15 minutes).
+          </p>
+          <button onClick={() => studyAdvance('surveyed')} disabled={studyBusy} style={{
+            width: '100%', padding: '12px 16px', marginTop: 12,
+            background: 'var(--accent)', border: 'none', borderRadius: 6,
+            color: '#111', fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
+            cursor: studyBusy ? 'default' : 'pointer', opacity: studyBusy ? 0.5 : 1,
+          }}>{studyBusy ? '…' : 'CONTINUE TO QUESTIONNAIRES'}</button>
+          {error && <StudyError fs={fs} message={error} />}
+        </StudyShell>
+      );
+    }
+    if (sState === 'surveyed') {
+      return (
+        <SurveyRunner
+          fs={fs}
+          sessionId={studySession.id}
+          onDone={() => studyAdvance('complete')}
+        />
+      );
+    }
+    if (sState === 'complete' || sState === 'expired' || sState === 'interrupted') {
+      return (
+        <StudyShell fs={fs} title={sState === 'complete' ? 'All done — thank you!' : 'Session ended'}>
+          <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
+            {sState === 'complete'
+              ? 'Your session is complete and everything has been recorded. You can close this window.'
+              : 'This session has ended. Please contact the researcher if you have questions.'}
+          </p>
+        </StudyShell>
+      );
+    }
+    // tutorial / active fall through to the dialogue view below —
+    // but never to the home screen (participants must not create or
+    // browse arbitrary dialectics). While the working base is still
+    // loading, show a holding screen.
+    if (view !== 'dialogue') {
+      return (
+        <StudyShell fs={fs} title={sState === 'tutorial' ? 'Loading tutorial…' : 'Loading session…'}>
+          <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: fs(12) }}>
+            One moment.
+          </p>
+          {error && <StudyError fs={fs} message={error} />}
+        </StudyShell>
+      );
+    }
+  }
+
   // ── Home ──
   // ── Admin Dashboard ──
   if (view === 'admin') {
@@ -1293,11 +1502,52 @@ function App() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)', cursor: 'pointer' }}
-                onClick={() => { setCurrent(null); setState(null); setView('home'); }}>Elenchus</span>
+          <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)',
+                         cursor: isParticipant ? 'default' : 'pointer' }}
+                onClick={() => {
+                  if (isParticipant) return; // participants stay in the flow
+                  setCurrent(null); setState(null); setView('home');
+                }}>Elenchus</span>
           <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{s.name || current}</span>
+          {isParticipant && studySession?.state === 'tutorial' && (
+            <span style={{
+              fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)',
+              color: 'var(--tension)', border: '1px solid var(--tension-border)',
+              background: 'var(--tension-bg)', borderRadius: 4, padding: '2px 8px',
+            }}>TUTORIAL — PRACTICE TOPIC</span>
+          )}
+          {isParticipant && studySession?.state === 'active' && (
+            <span style={{
+              fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)',
+              color: 'var(--commit)', border: '1px solid var(--commit-border)',
+              background: 'var(--commit-bg)', borderRadius: 4, padding: '2px 8px',
+            }}>MAIN TASK</span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isParticipant && studySession?.state === 'tutorial' && (
+            <button onClick={studyBeginTask} disabled={studyBusy} style={{
+              background: 'var(--accent)', border: 'none', borderRadius: 4,
+              color: '#111', cursor: studyBusy ? 'default' : 'pointer',
+              fontSize: fs(10), padding: '3px 10px', lineHeight: 1.4,
+              letterSpacing: 1, fontFamily: 'var(--mono)', fontWeight: 500,
+              opacity: studyBusy ? 0.5 : 1,
+            }}>START THE MAIN TASK</button>
+          )}
+          {isParticipant && studySession?.state === 'active' && (
+            <button onClick={() => {
+              if (confirm('Finish the session? You will not be able to return to the task.')) {
+                studyAdvance('post_session');
+              }
+            }} disabled={studyBusy} style={{
+              background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
+              color: 'var(--accent)', cursor: studyBusy ? 'default' : 'pointer',
+              fontSize: fs(10), padding: '3px 10px', lineHeight: 1.4,
+              letterSpacing: 1, fontFamily: 'var(--mono)',
+              opacity: studyBusy ? 0.5 : 1,
+            }}>FINISH SESSION</button>
+          )}
+          {!isBaseline && (
           <button
             onClick={() => setLeftVisible(v => !v)}
             title={leftVisible ? 'Hide position pane' : 'Show position pane'}
@@ -1309,6 +1559,8 @@ function App() {
               letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
             }}
           >POSITION C:{s.commitments.length} D:{s.denials.length}</button>
+          )}
+          {!isBaseline && (
           <button
             onClick={() => setRightVisible(v => !v)}
             title={rightVisible ? 'Hide sequents pane' : 'Show sequents pane'}
@@ -1320,6 +1572,8 @@ function App() {
               letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
             }}
           >SEQUENTS T:{openTensionCount} I:{s.implications.length}</button>
+          )}
+          {!isParticipant && (
           <button
             onClick={async () => {
               setPdfLoading(true);
@@ -1354,6 +1608,7 @@ function App() {
               animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
           >PDF</button>
+          )}
           {actor && actor.kind === 'admin' && (
             <button
               onClick={() => { setCurrent(null); setState(null); setView('admin'); }}
@@ -1377,7 +1632,7 @@ function App() {
               )}
             </span>
           )}
-          {actor && (
+          {actor && !isParticipant && (
             <button
               onClick={logout}
               title="Sign out"
@@ -1389,6 +1644,7 @@ function App() {
               }}
             >SIGN OUT</button>
           )}
+          {!isParticipant && (
           <button
             onClick={openSettingsPanel}
             title="Settings"
@@ -1397,6 +1653,7 @@ function App() {
               cursor: 'pointer', fontSize: fs(14), padding: 2, lineHeight: 1,
             }}
           >&#9881;</button>
+          )}
         </div>
       </div>
 
@@ -1971,6 +2228,162 @@ function AdminDashboard({ fs, onBack }) {
           {tab === 'invites' && <AdminInvitesTab fs={fs} />}
           {tab === 'users' && <AdminUsersTab fs={fs} />}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Study flow components (Sloan participants) ──
+
+function StudyShell({ fs, title, children }) {
+  return (
+    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ fontSize: fs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 14 }}>
+            ἜΛΕΓΧΟΣ
+          </div>
+          <h1 style={{ fontSize: fs(24), fontWeight: 300, letterSpacing: -0.5 }}>{title}</h1>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StudyError({ fs, message }) {
+  return (
+    <div style={{ marginTop: 14, padding: 10, borderRadius: 6,
+                  background: '#ef444420', border: '1px solid #ef444440',
+                  color: '#ef4444', fontSize: fs(12), fontFamily: 'var(--sans)' }}>
+      {message}
+    </div>
+  );
+}
+
+function SurveyRunner({ fs, sessionId, onDone }) {
+  // Walks the participant through the four instruments sequentially.
+  // Each instrument is submitted whole; the backend rejects partial
+  // submissions, and the UI disables SUBMIT until every item has a
+  // value.
+  const [instruments, setInstruments] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const [values, setValues] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api('/api/study/instruments');
+        setInstruments(data.instruments);
+      } catch (e) { setError(e.message); }
+    })();
+  }, []);
+
+  if (error && !instruments) {
+    return <StudyShell fs={fs} title="Questionnaires"><StudyError fs={fs} message={error} /></StudyShell>;
+  }
+  if (!instruments) {
+    return <StudyShell fs={fs} title="Questionnaires">
+      <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: fs(12) }}>Loading…</p>
+    </StudyShell>;
+  }
+
+  const inst = instruments[idx];
+  const allAnswered = inst.items.every(item => Number.isInteger(values[item.id]));
+
+  const submit = async () => {
+    if (!allAnswered || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/study/session/${sessionId}/survey`, {
+        method: 'POST',
+        body: JSON.stringify({ instrument: inst.instrument, responses: values }),
+      });
+      if (idx + 1 < instruments.length) {
+        setIdx(idx + 1);
+        setValues({});
+        window.scrollTo(0, 0);
+      } else {
+        onDone();
+      }
+    } catch (e) {
+      setError(typeof e.message === 'string' ? e.message : 'Submission failed — please review your answers.');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: 48 }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6 }}>
+          QUESTIONNAIRE {idx + 1} OF {instruments.length}
+        </div>
+        <h1 style={{ fontSize: fs(22), fontWeight: 300, marginBottom: 6 }}>{inst.title}</h1>
+        <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(12), marginBottom: 24 }}>
+          {inst.description}
+        </p>
+
+        {inst.items.map(item => (
+          <div key={item.id} style={{
+            marginBottom: 18, padding: 14, borderRadius: 6,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontFamily: 'var(--sans)', fontSize: fs(13), marginBottom: 10, lineHeight: 1.5 }}>
+              {item.text}
+            </div>
+            {(item.scale_max - item.scale_min) > 10 ? (
+              // Wide scale (NASA-TLX 0–100): slider + live value.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', width: 70 }}>{inst.scale_labels.min}</span>
+                <input
+                  type="range" min={item.scale_min} max={item.scale_max} step={5}
+                  value={values[item.id] ?? Math.round((item.scale_min + item.scale_max) / 2)}
+                  onChange={e => setValues(v => ({ ...v, [item.id]: parseInt(e.target.value, 10) }))}
+                  onMouseDown={() => setValues(v => (
+                    Number.isInteger(v[item.id]) ? v : { ...v, [item.id]: Math.round((item.scale_min + item.scale_max) / 2) }
+                  ))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', width: 70, textAlign: 'right' }}>{inst.scale_labels.max}</span>
+                <span style={{
+                  fontSize: fs(12), width: 36, textAlign: 'right',
+                  color: Number.isInteger(values[item.id]) ? 'var(--text)' : 'var(--text-muted)',
+                }}>{Number.isInteger(values[item.id]) ? values[item.id] : '—'}</span>
+              </div>
+            ) : (
+              // Likert: one radio-style button per point.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', marginRight: 4 }}>{inst.scale_labels.min}</span>
+                {Array.from({ length: item.scale_max - item.scale_min + 1 }, (_, i) => item.scale_min + i).map(n => (
+                  <button key={n}
+                    onClick={() => setValues(v => ({ ...v, [item.id]: n }))}
+                    style={{
+                      width: 34, height: 34, borderRadius: 17,
+                      border: '1px solid ' + (values[item.id] === n ? 'var(--accent)' : 'var(--border)'),
+                      background: values[item.id] === n ? 'var(--accent)' : 'var(--surface2)',
+                      color: values[item.id] === n ? '#111' : 'var(--text-dim)',
+                      cursor: 'pointer', fontSize: fs(12), fontFamily: 'var(--mono)',
+                    }}>{n}</button>
+                ))}
+                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', marginLeft: 4 }}>{inst.scale_labels.max}</span>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <button onClick={submit} disabled={!allAnswered || busy} style={{
+          width: '100%', padding: '12px 16px', marginTop: 8, marginBottom: 40,
+          background: allAnswered ? 'var(--accent)' : 'var(--surface)',
+          border: 'none', borderRadius: 6, color: '#111',
+          fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
+          cursor: (allAnswered && !busy) ? 'pointer' : 'default',
+          opacity: (allAnswered && !busy) ? 1 : 0.3,
+        }}>
+          {busy ? '…' : (idx + 1 < instruments.length ? 'SUBMIT AND CONTINUE' : 'SUBMIT AND FINISH')}
+        </button>
+        {error && <StudyError fs={fs} message={error} />}
       </div>
     </div>
   );

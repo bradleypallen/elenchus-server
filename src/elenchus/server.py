@@ -207,7 +207,13 @@ def _is_baseline_for_actor_and_base(actor_id: int, base_id: str) -> bool:
         return False
     if session.get("condition") != "baseline":
         return False
-    return session.get("base_id") == base_id
+    # The attached task base — and, by naming convention, the tutorial
+    # practice base — both run in the participant's condition. The
+    # practice base is never attached to the session (only the task
+    # base is, for export/analysis), so it's matched by name.
+    if session.get("base_id") == base_id:
+        return True
+    return base_id == f"practice-{session['id']}"
 
 
 # ── API Models ──
@@ -1323,6 +1329,79 @@ def study_session_advance(
             },
         )
     return updated
+
+
+def _create_study_base(reg, actor_id: int, base_name: str, topic: str) -> str:
+    """Create + register a base for the study flow. Returns the base
+    name. 409s if a base with that name already exists (e.g. a
+    double-clicked button) — the caller treats that as already-done."""
+    con = reg.platform_con()
+    if pdb.find_base(con, base_name) is not None:
+        return base_name  # idempotent — already created by an earlier click
+    path = reg.db_path(base_name, actor_id=actor_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    state = DialecticalState.create(path, topic)
+    reg.put(base_name, state)
+    with reg.platform_lock:
+        pdb.create_base(con, base_id=base_name, name=topic, owner_id=actor_id)
+    return base_name
+
+
+@app.post("/api/study/session/begin-tutorial")
+def study_begin_tutorial(actor: dict = Depends(auth.current_actor)):
+    """Briefing → tutorial. Creates the participant's practice base
+    (`practice-{session_id}`) so the tutorial uses the real interface
+    on a throwaway warm-up topic. The practice base is NOT attached
+    to the session — only the task base is — but the baseline-routing
+    predicate recognizes the naming convention so baseline-condition
+    participants practice in their actual condition."""
+    reg = get_registry()
+    session = pdb.find_live_session_for_actor(reg.platform_con(), actor["id"])
+    if session is None:
+        raise HTTPException(404, "No active study session for this participant")
+    if session["state"] != "briefing":
+        raise HTTPException(
+            400,
+            {
+                "current_state": session["state"],
+                "user_message": "The tutorial can only start from the briefing screen.",
+            },
+        )
+    base_name = _create_study_base(
+        reg, actor["id"], f"practice-{session['id']}", "Practice: kinds of pets"
+    )
+    with reg.platform_lock:
+        updated = pdb.advance_session_state(reg.platform_con(), session["id"], "tutorial")
+    if updated is None:
+        raise HTTPException(409, "Session state changed concurrently — reload and retry")
+    return {**updated, "practice_base_id": base_name}
+
+
+@app.post("/api/study/session/begin-task")
+def study_begin_task(actor: dict = Depends(auth.current_actor)):
+    """Tutorial → active. Creates the task base (`task-{session_id}`),
+    attaches it to the session (this is what the export and the
+    baseline router key on), and advances the state."""
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_live_session_for_actor(con, actor["id"])
+    if session is None:
+        raise HTTPException(404, "No active study session for this participant")
+    if session["state"] != "tutorial":
+        raise HTTPException(
+            400,
+            {
+                "current_state": session["state"],
+                "user_message": "The task can only start from the tutorial screen.",
+            },
+        )
+    base_name = _create_study_base(reg, actor["id"], f"task-{session['id']}", "Study task")
+    with reg.platform_lock:
+        pdb.attach_base_to_session(con, session["id"], base_name)
+        updated = pdb.advance_session_state(con, session["id"], "active")
+    if updated is None:
+        raise HTTPException(409, "Session state changed concurrently — reload and retry")
+    return {**updated, "task_base_id": base_name}
 
 
 def _participant_token_message(existing: dict) -> str:

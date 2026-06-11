@@ -414,3 +414,100 @@ class TestStudySessionRoutes:
         assert r.json()["state"] == "interrupted"
         assert pclient.get("/api/study/session").status_code == 404
         _ = study_flow  # silence unused import in some test runs
+
+
+# ─── Phase D/4: begin-tutorial / begin-task transitions ──────────────
+
+
+class TestBeginTutorial:
+    def test_creates_practice_base_and_advances(self):
+        pclient, body = _issue_and_consume_token()
+        r = pclient.post("/api/study/session/begin-tutorial")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["state"] == "tutorial"
+        assert data["practice_base_id"] == f"practice-{body['session_id']}"
+        # The base is registered and owned by the participant.
+        con = get_registry().platform_con()
+        base = pdb.find_base(con, data["practice_base_id"])
+        assert base is not None
+        assert base["owner_id"] == body["actor_id"]
+        # The practice base is NOT attached to the session.
+        session = pdb.find_study_session(con, body["session_id"])
+        assert session["base_id"] is None
+
+    def test_participant_can_message_practice_base(self):
+        """The practice base is a regular owned base — the message
+        route's authorization accepts it."""
+        pclient, body = _issue_and_consume_token()
+        pclient.post("/api/study/session/begin-tutorial")
+        practice = f"practice-{body['session_id']}"
+        r = pclient.get(f"/api/dialectics/{practice}")
+        assert r.status_code == 200
+        assert r.json()["name"] == "Practice: kinds of pets"
+
+    def test_rejected_outside_briefing(self):
+        pclient, _ = _issue_and_consume_token()
+        pclient.post("/api/study/session/begin-tutorial")
+        # Second call: session is now in tutorial → 400.
+        r = pclient.post("/api/study/session/begin-tutorial")
+        assert r.status_code == 400
+
+    def test_404_without_session(self):
+        con = get_registry().platform_con()
+        uid = pdb.create_actor(
+            con,
+            kind="user",
+            email="plain@example.com",
+            display_name="U",
+            password_hash=auth.hash_password("pw"),
+        )
+        c = TestClient(app)
+        c.cookies.set(auth.SESSION_COOKIE, auth.create_session(uid))
+        r = c.post("/api/study/session/begin-tutorial")
+        assert r.status_code == 404
+
+
+class TestBeginTask:
+    def test_creates_task_base_attaches_and_advances(self):
+        pclient, body = _issue_and_consume_token()
+        pclient.post("/api/study/session/begin-tutorial")
+        r = pclient.post("/api/study/session/begin-task")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["state"] == "active"
+        task_base = f"task-{body['session_id']}"
+        assert data["task_base_id"] == task_base
+        # Task base IS attached to the session (export + routing key).
+        session = pdb.find_study_session(get_registry().platform_con(), body["session_id"])
+        assert session["base_id"] == task_base
+
+    def test_rejected_outside_tutorial(self):
+        pclient, _ = _issue_and_consume_token()
+        # Still in briefing.
+        r = pclient.post("/api/study/session/begin-task")
+        assert r.status_code == 400
+
+
+class TestPracticeBaseBaselineRouting:
+    def test_baseline_participant_practice_base_routes_to_baseline(self):
+        """Baseline-condition participants must practice in their
+        actual condition — the routing predicate recognizes the
+        practice-base naming convention even though only the task
+        base is attached to the session."""
+        from elenchus.server import _is_baseline_for_actor_and_base
+
+        pclient, body = _issue_and_consume_token(condition="baseline")
+        pclient.post("/api/study/session/begin-tutorial")
+        practice = f"practice-{body['session_id']}"
+        assert _is_baseline_for_actor_and_base(body["actor_id"], practice) is True
+        # A random other base still routes to the dialectic.
+        assert _is_baseline_for_actor_and_base(body["actor_id"], "unrelated") is False
+
+    def test_elenchus_participant_practice_base_routes_to_dialectic(self):
+        from elenchus.server import _is_baseline_for_actor_and_base
+
+        pclient, body = _issue_and_consume_token(condition="elenchus")
+        pclient.post("/api/study/session/begin-tutorial")
+        practice = f"practice-{body['session_id']}"
+        assert _is_baseline_for_actor_and_base(body["actor_id"], practice) is False
