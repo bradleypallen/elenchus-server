@@ -5,4 +5,4 @@ dialectics/
 dist/
 *.egg-info/
 .claude/
-demo-videos/
+demo-videos*/
