@@ -2177,6 +2177,354 @@ function AdminUsersTab({ fs }) {
   );
 }
 
+function AdminStudyTab({ fs }) {
+  // Token issuance + cohort overview. Researchers issue one token per
+  // (participant, condition); the same participant gets two tokens for
+  // the within-subjects design.
+  const [tokens, setTokens] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [form, setForm] = useState({ study_id: '', condition: 'elenchus', display_name: '' });
+  const [creating, setCreating] = useState(false);
+  const [lastLink, setLastLink] = useState(null);
+  const [exporting, setExporting] = useState(null);
+  const [exportResult, setExportResult] = useState(null);
+
+  const load = async () => {
+    setLoading(true); setError(null);
+    try {
+      const [t, r] = await Promise.all([
+        api('/api/admin/study/tokens'),
+        api('/api/admin/study/reports'),
+      ]);
+      setTokens(t.tokens || []);
+      setReports(r.reports || []);
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const issue = async () => {
+    if (!form.study_id.trim() || !form.display_name.trim() || creating) return;
+    setCreating(true); setError(null);
+    try {
+      const res = await api('/api/admin/study/tokens', {
+        method: 'POST', body: JSON.stringify(form),
+      });
+      setLastLink({
+        url: `${window.location.origin}/?study=${encodeURIComponent(res.token)}`,
+        condition: res.condition, name: form.display_name,
+      });
+      setForm(f => ({ ...f, display_name: '' }));
+      await load();
+    } catch (e) { setError(e.message); }
+    setCreating(false);
+  };
+
+  const voidToken = async (token) => {
+    if (!confirm('Void this token? The participant will not be able to use the link.')) return;
+    try { await api(`/api/admin/study/tokens/${encodeURIComponent(token)}`, { method: 'DELETE' }); await load(); }
+    catch (e) { setError(e.message); }
+  };
+
+  const genReport = async (sessionId) => {
+    try {
+      await api(`/api/study/session/${sessionId}/generate-report`, { method: 'POST' });
+      await load();
+    } catch (e) { setError(typeof e.message === 'string' ? e.message : 'Report generation failed'); }
+  };
+
+  const runExport = async (studyId) => {
+    setExporting(studyId); setError(null); setExportResult(null);
+    try {
+      const res = await api(`/api/admin/study/${encodeURIComponent(studyId)}/export`, { method: 'POST' });
+      setExportResult(res);
+    } catch (e) { setError(e.message); }
+    setExporting(null);
+  };
+
+  // sessions don't have their own list endpoint; derive the studies in play.
+  const studies = [...new Set(tokens.map(t => t.study_id))].sort();
+  const reportBySession = {};
+  reports.forEach(r => { reportBySession[r.session_id] = r; });
+
+  const stColor = (status) => ({
+    scheduled: 'var(--tension)', active: 'var(--commit)',
+    complete: 'var(--text-muted)', voided: 'var(--deny)', expired: 'var(--deny)',
+  }[status] || 'var(--text-dim)');
+
+  return (
+    <div>
+      {/* Issue form */}
+      <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
+                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
+          ISSUE PARTICIPANT TOKEN
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <input value={form.study_id} onChange={e => setForm(f => ({ ...f, study_id: e.target.value }))}
+            placeholder="study id (e.g. PILOT)" style={{
+              flex: '1 1 140px', padding: '8px 10px', background: 'var(--surface2)',
+              border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)',
+              fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' }} />
+          <select value={form.condition} onChange={e => setForm(f => ({ ...f, condition: e.target.value }))}
+            style={{ padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
+              borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)' }}>
+            <option value="elenchus">elenchus</option>
+            <option value="baseline">baseline</option>
+          </select>
+          <input value={form.display_name} onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
+            placeholder="participant label (e.g. P-001)" style={{
+              flex: '1 1 160px', padding: '8px 10px', background: 'var(--surface2)',
+              border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)',
+              fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' }} />
+          <button onClick={issue} disabled={creating} style={{
+            padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4,
+            color: '#111', fontSize: fs(11), letterSpacing: 1, fontWeight: 500,
+            cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.5 : 1 }}>
+            {creating ? '…' : 'ISSUE'}</button>
+        </div>
+        {lastLink && (
+          <div style={{ marginTop: 8, padding: 10, borderRadius: 4, background: 'var(--surface2)',
+                        border: '1px dashed var(--commit-border)', fontSize: fs(11),
+                        fontFamily: 'var(--mono)', color: 'var(--text-dim)', wordBreak: 'break-all' }}>
+            <div style={{ color: 'var(--commit)', fontSize: fs(10), letterSpacing: 1, marginBottom: 4 }}>
+              ISSUED ({lastLink.condition}) — send this link to {lastLink.name}:
+            </div>
+            <div>{lastLink.url}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Export + tokens */}
+      {studies.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+            STUDIES
+          </div>
+          {studies.map(sid => (
+            <div key={sid} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: fs(12) }}>{sid}</span>
+              <span style={{ fontSize: fs(10), color: 'var(--text-muted)' }}>
+                {tokens.filter(t => t.study_id === sid).length} tokens
+              </span>
+              <button onClick={() => runExport(sid)} disabled={exporting === sid} style={{
+                background: 'none', border: '1px solid var(--border)', borderRadius: 3,
+                color: 'var(--text-dim)', cursor: 'pointer', fontSize: fs(10),
+                padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1,
+                opacity: exporting === sid ? 0.5 : 1 }}>
+                {exporting === sid ? 'EXPORTING…' : 'EXPORT'}</button>
+            </div>
+          ))}
+          {exportResult && (
+            <div style={{ marginTop: 6, padding: 8, borderRadius: 4, background: 'var(--surface2)',
+                          fontSize: fs(10), fontFamily: 'var(--mono)', color: 'var(--text-dim)', wordBreak: 'break-all' }}>
+              archive: {exportResult.archive}<br/>
+              {exportResult.sessions_exported.length} sessions, {exportResult.sessions_failed.length} failed
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        TOKENS ({tokens.length})
+      </div>
+      {loading ? <div style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>…</div>
+       : tokens.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>No tokens issued yet.</div>
+       : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+          <thead>
+            <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>study</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>condition</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>status</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>session</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}>report</th>
+              <th style={{ padding: '6px 8px', fontWeight: 400 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map(t => {
+              const rep = t.session_id ? reportBySession[t.session_id] : null;
+              return (
+                <tr key={t.token} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{t.study_id}</td>
+                  <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{t.condition}</td>
+                  <td style={{ padding: '8px', color: stColor(t.status), fontFamily: 'var(--sans)' }}>{t.status}</td>
+                  <td style={{ padding: '8px', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>
+                    {t.session_id || '—'}</td>
+                  <td style={{ padding: '8px' }}>
+                    {rep ? <span style={{ color: 'var(--commit)' }}>✓</span>
+                     : t.session_id ? (
+                        <button onClick={() => genReport(t.session_id)} style={{
+                          background: 'none', border: '1px solid var(--border)', borderRadius: 3,
+                          color: 'var(--accent)', cursor: 'pointer', fontSize: fs(10),
+                          padding: '2px 6px', fontFamily: 'var(--mono)', letterSpacing: 1 }}>GEN</button>
+                       ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                    {t.status === 'scheduled' && (
+                      <button onClick={() => voidToken(t.token)} style={{
+                        background: 'none', border: '1px solid var(--border)', borderRadius: 3,
+                        color: 'var(--deny)', cursor: 'pointer', fontSize: fs(10),
+                        padding: '2px 6px', fontFamily: 'var(--mono)', letterSpacing: 1 }}>VOID</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {error && <div style={{ marginTop: 14, padding: 10, borderRadius: 6, background: '#ef444420',
+                              border: '1px solid #ef444440', color: '#ef4444', fontSize: fs(11),
+                              fontFamily: 'var(--sans)' }}>{error}</div>}
+    </div>
+  );
+}
+
+function AdminJudgingTab({ fs }) {
+  // Assemble judge packages from generated reports, assign to judges.
+  const [reports, setReports] = useState([]);
+  const [packages, setPackages] = useState([]);
+  const [judges, setJudges] = useState([]);
+  const [error, setError] = useState(null);
+  const [pkgForm, setPkgForm] = useState({ study_id: '', report_id_elenchus: '', report_id_baseline: '' });
+  const [assignForm, setAssignForm] = useState({ package_id: '', judge_actor_id: '' });
+
+  const load = async () => {
+    setError(null);
+    try {
+      const [r, p, u] = await Promise.all([
+        api('/api/admin/study/reports'),
+        api('/api/admin/study/judge-packages'),
+        api('/api/admin/users'),
+      ]);
+      setReports(r.reports || []);
+      setPackages(p.packages || []);
+      setJudges((u.users || []).filter(x => x.kind === 'judge'));
+    } catch (e) { setError(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const elenchusReports = reports.filter(r => r.condition === 'elenchus');
+  const baselineReports = reports.filter(r => r.condition === 'baseline');
+
+  const createPackage = async () => {
+    if (!pkgForm.study_id.trim() || !pkgForm.report_id_elenchus || !pkgForm.report_id_baseline) return;
+    try {
+      await api('/api/admin/study/judge-packages', {
+        method: 'POST', body: JSON.stringify({
+          study_id: pkgForm.study_id,
+          report_id_elenchus: parseInt(pkgForm.report_id_elenchus, 10),
+          report_id_baseline: parseInt(pkgForm.report_id_baseline, 10),
+        }),
+      });
+      await load();
+    } catch (e) { setError(e.message); }
+  };
+
+  const assign = async () => {
+    if (!assignForm.package_id || !assignForm.judge_actor_id) return;
+    try {
+      await api('/api/admin/study/judge-assignments', {
+        method: 'POST', body: JSON.stringify({
+          package_id: parseInt(assignForm.package_id, 10),
+          judge_actor_id: parseInt(assignForm.judge_actor_id, 10),
+        }),
+      });
+      await load();
+    } catch (e) { setError(e.message); }
+  };
+
+  const sel = (val, set, opts, placeholder) => (
+    <select value={val} onChange={e => set(e.target.value)} style={{
+      padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
+      borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)' }}>
+      <option value="">{placeholder}</option>
+      {opts}
+    </select>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
+                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
+          ASSEMBLE PACKAGE (slots randomized — judge sees neutral A / B)
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input value={pkgForm.study_id} onChange={e => setPkgForm(f => ({ ...f, study_id: e.target.value }))}
+            placeholder="study id" style={{ flex: '1 1 120px', padding: '8px 10px', background: 'var(--surface2)',
+              border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: fs(12),
+              fontFamily: 'var(--sans)', outline: 'none' }} />
+          {sel(pkgForm.report_id_elenchus, v => setPkgForm(f => ({ ...f, report_id_elenchus: v })),
+            elenchusReports.map(r => <option key={r.id} value={r.id}>#{r.id} · session {r.session_id}</option>),
+            'elenchus report')}
+          {sel(pkgForm.report_id_baseline, v => setPkgForm(f => ({ ...f, report_id_baseline: v })),
+            baselineReports.map(r => <option key={r.id} value={r.id}>#{r.id} · session {r.session_id}</option>),
+            'baseline report')}
+          <button onClick={createPackage} style={{ padding: '8px 16px', background: 'var(--accent)',
+            border: 'none', borderRadius: 4, color: '#111', fontSize: fs(11), letterSpacing: 1,
+            fontWeight: 500, cursor: 'pointer' }}>CREATE</button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
+                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
+          ASSIGN PACKAGE TO JUDGE
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {sel(assignForm.package_id, v => setAssignForm(f => ({ ...f, package_id: v })),
+            packages.map(p => <option key={p.id} value={p.id}>#{p.id} · {p.study_id}</option>), 'package')}
+          {sel(assignForm.judge_actor_id, v => setAssignForm(f => ({ ...f, judge_actor_id: v })),
+            judges.map(j => <option key={j.id} value={j.id}>{j.display_name} ({j.email})</option>), 'judge')}
+          <button onClick={assign} style={{ padding: '8px 16px', background: 'var(--accent)',
+            border: 'none', borderRadius: 4, color: '#111', fontSize: fs(11), letterSpacing: 1,
+            fontWeight: 500, cursor: 'pointer' }}>ASSIGN</button>
+        </div>
+        {judges.length === 0 && (
+          <div style={{ marginTop: 8, fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+            No judge actors yet — invite one from the Invites tab with role "judge".
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        PACKAGES ({packages.length})
+      </div>
+      {packages.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>No packages yet.</div>
+       : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+          <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>id</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>study</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>slot A</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}>slot B</th>
+          </tr></thead>
+          <tbody>
+            {packages.map(p => (
+              <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px', fontFamily: 'var(--mono)' }}>#{p.id}</td>
+                <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{p.study_id}</td>
+                <td style={{ padding: '8px', fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+                  #{p.slot_a_report_id} <span style={{ color: 'var(--text-muted)' }}>({p.slot_a_condition})</span></td>
+                <td style={{ padding: '8px', fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+                  #{p.slot_b_report_id} <span style={{ color: 'var(--text-muted)' }}>({p.slot_b_condition})</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {error && <div style={{ marginTop: 14, padding: 10, borderRadius: 6, background: '#ef444420',
+                              border: '1px solid #ef444440', color: '#ef4444', fontSize: fs(11),
+                              fontFamily: 'var(--sans)' }}>{error}</div>}
+    </div>
+  );
+}
+
 function AdminDashboard({ fs, onBack }) {
   const [tab, setTab] = useState('invites');
   return (
@@ -2210,6 +2558,8 @@ function AdminDashboard({ fs, onBack }) {
         {[
           { id: 'invites', label: 'Invites' },
           { id: 'users', label: 'Users' },
+          { id: 'study', label: 'Study' },
+          { id: 'judging', label: 'Judging' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
@@ -2227,6 +2577,8 @@ function AdminDashboard({ fs, onBack }) {
         <div style={{ maxWidth: 880, margin: '0 auto' }}>
           {tab === 'invites' && <AdminInvitesTab fs={fs} />}
           {tab === 'users' && <AdminUsersTab fs={fs} />}
+          {tab === 'study' && <AdminStudyTab fs={fs} />}
+          {tab === 'judging' && <AdminJudgingTab fs={fs} />}
         </div>
       </div>
     </div>

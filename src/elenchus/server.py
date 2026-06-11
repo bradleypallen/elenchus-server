@@ -745,6 +745,9 @@ def consume_participant_token(token: str, response: Response):
             condition=consumed["condition"],
             initial_state="briefing",
         )
+        # Link the token row back to its session so the researcher
+        # dashboard can join tokens → sessions → reports.
+        pdb.set_token_session(reg.platform_con(), token, session_id)
 
     # Issue a session cookie for the participant actor. Same shape
     # as the regular login flow.

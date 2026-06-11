@@ -357,6 +357,20 @@ class TestTokenConsumptionOpensBriefingSession:
         assert s["condition"] == "baseline"
         assert s["study_token"] is not None
 
+    def test_token_row_links_back_to_session(self):
+        """The token's session_id column is set on consumption so the
+        researcher dashboard can join tokens → sessions → reports
+        without a separate session-list endpoint."""
+        _, body = _issue_and_consume_token()
+        con = get_registry().platform_con()
+        token_row = pdb.find_participant_token(con, body.get("study_token") or "")
+        # study_token isn't in the consume response; find it via the
+        # session instead.
+        session = pdb.find_study_session(con, body["session_id"])
+        linked = pdb.find_participant_token(con, session["study_token"])
+        assert linked["session_id"] == body["session_id"]
+        _ = token_row  # the by-token lookup above is a no-op guard
+
 
 # ─── HTTP routes: GET + advance ──────────────────────────────────────
 

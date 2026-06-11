@@ -1108,6 +1108,17 @@ def consume_participant_token(con, token: str) -> dict | None:
     return find_participant_token(con, token)
 
 
+def set_token_session(con, token: str, session_id: int) -> None:
+    """Link a consumed token to the session it opened. Called right
+    after `create_study_session` so the researcher dashboard can join
+    tokens → sessions → reports without a separate session-list
+    endpoint."""
+    con.execute(
+        "UPDATE participant_session_tokens SET session_id = ? WHERE token = ?",
+        [session_id, token],
+    )
+
+
 def void_participant_token(con, token: str) -> bool:
     """Mark a still-`scheduled` token as `voided`. Idempotent on
     already-voided / used tokens (returns False)."""
