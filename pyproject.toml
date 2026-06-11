@@ -41,13 +41,17 @@ dev = [
     "ruff==0.15.15",
     "pytest>=8.0.0",
 ]
-# Browser-driven UI end-to-end tests (tests/e2e/). Heavy and off by
-# default — they launch a real server and a headless chromium. Install
-# with `pip install -e ".[e2e]"` then `python -m playwright install
-# chromium`, and run with `RUN_UI_E2E=1 pytest tests/e2e/`.
+# Browser-driven UI end-to-end tests (tests/e2e/) and the per-persona
+# demo recorder (scripts/record_demo.py). Heavy and off by default —
+# they launch a real server and a headless chromium. Install with
+# `pip install -e ".[e2e]"` then `python -m playwright install
+# chromium`. Tests: `RUN_UI_E2E=1 pytest tests/e2e/`. Demo videos:
+# `python scripts/record_demo.py` (imageio-ffmpeg bundles the ffmpeg
+# used to transcode Playwright's WebM capture to MP4 — no system install).
 e2e = [
     "playwright>=1.40",
     "requests>=2.28",
+    "imageio-ffmpeg>=0.4",
 ]
 
 [project.scripts]

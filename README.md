@@ -212,6 +212,16 @@ elenchus sim --driver llm          # real LLM personas (needs an API key)
 > machinery is robust; whether the two conditions produce
 > different-quality outputs is what the human pilot measures.
 
+```bash
+# Per-persona MP4 walkthroughs — watch the system being used through
+# the real UI, one video per perspective (participant in each
+# condition, judge, researcher). Drives the served frontend in a
+# headless browser; needs the [e2e] extra + a one-time chromium install.
+pip install -e ".[e2e]" && python -m playwright install chromium
+python scripts/record_demo.py --out demo-videos            # scripted (free)
+python scripts/record_demo.py --driver llm                 # real dialogue
+```
+
 DuckDB is a single-writer-per-file store, so the production server
 runs as **one process**; horizontal scaling means migrating the
 platform DB to Postgres (the `db/registry.py` boundary is shaped to
