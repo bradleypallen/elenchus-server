@@ -92,9 +92,10 @@ elenchus-cli --db my_inquiry.duckdb
 
 ### API
 
-All `/api/dialectics/*` and `/api/admin/*` routes require an
-authenticated session. The flow is: POST to `/api/auth/login` to get
-a session cookie, then send subsequent requests with that cookie.
+All `/api/sessions/*` and `/api/admin/*` routes require an authenticated
+session. The flow is: POST to `/api/auth/login` to get a session cookie,
+then send subsequent requests with that cookie. A dialectic is addressed
+by the numeric `session_id` returned on create.
 
 ```bash
 # 1. Log in (saves the cookie to ./cookies.txt).
@@ -102,32 +103,36 @@ curl -c cookies.txt -X POST http://localhost:8741/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "..."}'
 
-# 2. Create a dialectic.
-curl -b cookies.txt -X POST http://localhost:8741/api/dialectics \
+# 2. Create a dialectic — the response includes "session_id" (e.g. 1).
+curl -b cookies.txt -X POST http://localhost:8741/api/sessions \
   -H "Content-Type: application/json" \
   -d '{"name": "prov-o", "topic": "PROV-O Starting Point Terms"}'
 
 # 3. Send a message.
-curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/message \
+curl -b cookies.txt -X POST http://localhost:8741/api/sessions/1/message \
   -H "Content-Type: application/json" \
   -d '{"message": "Entity is a thing with fixed aspects."}'
 
 # 4. Get state.
-curl -b cookies.txt http://localhost:8741/api/dialectics/prov-o
+curl -b cookies.txt http://localhost:8741/api/sessions/1
 
 # 5. Accept a tension.
-curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/tensions/1 \
+curl -b cookies.txt -X POST http://localhost:8741/api/sessions/1/tensions/1 \
   -H "Content-Type: application/json" \
   -d '{"action": "accept"}'
 
 # 6. Check derivability.
-curl -b cookies.txt -X POST http://localhost:8741/api/dialectics/prov-o/derive \
+curl -b cookies.txt -X POST http://localhost:8741/api/sessions/1/derive \
   -H "Content-Type: application/json" \
   -d '{"gamma": ["entity_fixed_aspects"], "delta": ["individuation"]}'
 
-# 7. List your dialectics (admins see every base in the platform).
-curl -b cookies.txt http://localhost:8741/api/dialectics
+# 7. List your sessions (admins see every base in the platform).
+curl -b cookies.txt http://localhost:8741/api/sessions
 ```
+
+> The legacy name-keyed routes (`/api/dialectics/{name}/...`) are
+> retained as a compatibility alias — the study-participant flow still
+> uses them — but new clients should use `/api/sessions/{id}`.
 
 Admin-only routes: `/api/admin/invites`, `/api/admin/users`,
 `/api/admin/users/{id}/{deactivate,reactivate}`, `/api/admin/backup`,

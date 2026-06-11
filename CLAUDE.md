@@ -97,7 +97,7 @@ src/elenchus/
 
 5. **auth.py / invites.py / email_service.py** — Phase A platform layer. bcrypt password hashing, session tokens (`secrets.token_urlsafe`), magic-link login, invite issuance/consumption. `current_actor` and `require_admin` FastAPI dependencies gate every protected route. `EmailService` has Console (logs) and SMTP backends.
 
-6. **server.py** — FastAPI app. Routes under `/api/auth`, `/api/admin`, `/api/dialectics`. Every `/api/dialectics/{name}/*` resolves through `_authorize_and_get_state(name, actor)`, which returns 404 (not 403) for non-owners to avoid leaking that a name exists.
+6. **server.py** — FastAPI app. Routes under `/api/auth`, `/api/admin`, `/api/sessions` (primary, session-keyed) and `/api/dialectics` (retained name-keyed alias for the study-participant flow + back-compat). Each `/api/sessions/{id}/*` route resolves `session_id → base` via `_resolve_session_base(id, actor)` and delegates to the name-keyed handler; both return 404 (not 403) for non-owners to avoid leaking that a name/session exists. See `docs/session-api-migration.md`.
 
 7. **audit.py / backup.py / legacy.py** — Operational tooling. `backup.py` uses DuckDB `EXPORT DATABASE` under the platform lock and per-base MVCC. `audit.py` reports drift between platform DB, the filesystem, and per-base actor refs. `legacy.py` powers `elenchus migrate-legacy`.
 

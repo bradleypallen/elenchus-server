@@ -603,6 +603,11 @@ function App() {
   const [view, setView] = useState('home'); // home | positum | dialogue
   const [dialectics, setDialectics] = useState([]);
   const [current, setCurrent] = useState(() => localStorage.getItem('elenchus-current') || null);
+  // Session-keyed API: when set, dialectic verbs address /api/sessions/{id}.
+  // Left null for the constrained study-participant flow (which opens
+  // practice-/task- bases by name) and on localStorage restore, both of
+  // which fall back to the retained /api/dialectics/{name} alias below.
+  const [currentSessionId, setCurrentSessionId] = useState(null);
   const [state, setState] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -713,7 +718,7 @@ function App() {
     const saved = localStorage.getItem('elenchus-current');
     if (saved) openDialectic(saved).catch(() => {
       localStorage.removeItem('elenchus-current');
-      setCurrent(null); setState(null); setView('home'); setError(null);
+      setCurrent(null); setCurrentSessionId(null); setState(null); setView('home'); setError(null);
     });
   }, []);
 
@@ -766,15 +771,22 @@ function App() {
         method: 'POST', body: JSON.stringify({ to_state: toState }),
       });
       setStudySession(s);
-      if (toState === 'post_session') { setCurrent(null); setState(null); }
+      if (toState === 'post_session') { setCurrent(null); setCurrentSessionId(null); setState(null); }
     } catch (e) { setError(e.message); }
     setStudyBusy(false);
   };
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
 
+  // Build a dialectic-verb URL. Session-keyed when we hold a session id
+  // (normal flow), else name-keyed via the retained alias (participant
+  // flow + localStorage restore).
+  const dxPath = (suffix = '') => currentSessionId != null
+    ? `/api/sessions/${currentSessionId}${suffix}`
+    : `/api/dialectics/${encodeURIComponent(current)}${suffix}`;
+
   const loadDialectics = async () => {
-    try { setDialectics(await api('/api/dialectics')); }
+    try { setDialectics(await api('/api/sessions')); }
     catch (e) { /* server may not be running yet */ }
   };
 
@@ -835,10 +847,11 @@ function App() {
     const name = newName.trim();
     if (!name) return;
     try {
-      const res = await api('/api/dialectics', {
+      const res = await api('/api/sessions', {
         method: 'POST', body: JSON.stringify({ name, topic: name })
       });
       setCurrent(name);
+      setCurrentSessionId(res.session_id ?? null);
       setState(res.state);
       setMessages([]);
       setView('positum');
@@ -847,10 +860,16 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
-  const openDialectic = async (name) => {
+  // `sessionId` is supplied from the home list (session-keyed); the
+  // study-participant flow and localStorage restore call without it, so
+  // those resolve through the /api/dialectics/{name} alias.
+  const openDialectic = async (name, sessionId = null) => {
     try {
-      const s = await api(`/api/dialectics/${name}`);
+      const s = sessionId != null
+        ? await api(`/api/sessions/${sessionId}`)
+        : await api(`/api/dialectics/${encodeURIComponent(name)}`);
       setCurrent(name);
+      setCurrentSessionId(sessionId);
       setState(s);
       // Restore conversation history from DB. Assistant messages are
       // stored as the raw LLM payload; extractResponseText pulls out
@@ -869,11 +888,13 @@ function App() {
     } catch (e) { setError(e.message); }
   };
 
-  const deleteDialectic = async (name) => {
+  const deleteDialectic = async (name, sessionId = null) => {
     try {
-      await api(`/api/dialectics/${name}`, { method: 'DELETE' });
+      await api(sessionId != null
+        ? `/api/sessions/${sessionId}`
+        : `/api/dialectics/${encodeURIComponent(name)}`, { method: 'DELETE' });
       loadDialectics();
-      if (current === name) { setCurrent(null); setState(null); setView('home'); }
+      if (current === name) { setCurrent(null); setCurrentSessionId(null); setState(null); setView('home'); }
     } catch (e) { setError(e.message); }
   };
 
@@ -884,7 +905,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api(`/api/dialectics/${current}/message`, {
+      const res = await api(dxPath('/message'), {
         method: 'POST', body: JSON.stringify({ message: msg })
       });
       setState(res.state);
@@ -912,7 +933,7 @@ function App() {
   const acceptTension = async (t) => {
     if (loading) return;
     try {
-      const res = await api(`/api/dialectics/${current}/tensions/${t.id}`, {
+      const res = await api(dxPath(`/tensions/${t.id}`), {
         method: 'POST', body: JSON.stringify({ action: 'accept' })
       });
       setState(res.state);
@@ -922,7 +943,7 @@ function App() {
       setLoading(true);
       setError(null);
       try {
-        const oppRes = await api(`/api/dialectics/${current}/message`, {
+        const oppRes = await api(dxPath('/message'), {
           method: 'POST', body: JSON.stringify({ message: followUp, context: { action: 'accept', tension_id: t.id, gamma: t.gamma, delta: t.delta } })
         });
         setState(oppRes.state);
@@ -943,7 +964,7 @@ function App() {
   const contestTension = async (t) => {
     if (loading) return;
     try {
-      const res = await api(`/api/dialectics/${current}/tensions/${t.id}`, {
+      const res = await api(dxPath(`/tensions/${t.id}`), {
         method: 'POST', body: JSON.stringify({ action: 'contest' })
       });
       setState(res.state);
@@ -953,7 +974,7 @@ function App() {
       setLoading(true);
       setError(null);
       try {
-        const oppRes = await api(`/api/dialectics/${current}/message`, {
+        const oppRes = await api(dxPath('/message'), {
           method: 'POST', body: JSON.stringify({ message: followUp, context: { action: 'contest', tension_id: t.id, gamma: t.gamma, delta: t.delta } })
         });
         setState(oppRes.state);
@@ -974,7 +995,7 @@ function App() {
   const retractProp = async (prop) => {
     if (loading) return;
     try {
-      const res = await api(`/api/dialectics/${current}/retract`, {
+      const res = await api(dxPath('/retract'), {
         method: 'POST', body: JSON.stringify({ proposition: prop })
       });
       setState(res.state);
@@ -984,7 +1005,7 @@ function App() {
       setLoading(true);
       setError(null);
       try {
-        const oppRes = await api(`/api/dialectics/${current}/message`, {
+        const oppRes = await api(dxPath('/message'), {
           method: 'POST', body: JSON.stringify({ message: followUp })
         });
         setState(oppRes.state);
@@ -1410,14 +1431,14 @@ function App() {
                   padding: '10px 14px', marginBottom: 4, borderRadius: 6,
                   background: 'var(--surface)', border: '1px solid var(--border)',
                   cursor: 'pointer',
-                }} onClick={() => openDialectic(d.name)}>
+                }} onClick={() => openDialectic(d.name, d.session_id)}>
                   <div>
                     <div style={{ fontSize: fs(13), fontFamily: 'var(--sans)', marginBottom: 2 }}>{d.topic}</div>
                     <div style={{ fontSize: fs(10), color: 'var(--text-muted)' }}>
                       C:{d.commitments} · D:{d.denials} · T:{d.tensions} · I:{d.implications}
                     </div>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); deleteDialectic(d.name); }}
+                  <button onClick={e => { e.stopPropagation(); deleteDialectic(d.name, d.session_id); }}
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)',
                              cursor: 'pointer', fontSize: fs(11), padding: '4px 8px' }}>×</button>
                 </div>
@@ -1516,7 +1537,7 @@ function App() {
                          cursor: isParticipant ? 'default' : 'pointer' }}
                 onClick={() => {
                   if (isParticipant) return; // participants stay in the flow
-                  setCurrent(null); setState(null); setView('home');
+                  setCurrent(null); setCurrentSessionId(null); setState(null); setView('home');
                 }}>Elenchus</span>
           <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{s.name || current}</span>
           {isParticipant && studySession?.state === 'tutorial' && (
@@ -1588,7 +1609,7 @@ function App() {
             onClick={async () => {
               setPdfLoading(true);
               try {
-                const res = await fetch(`${API}/api/dialectics/${encodeURIComponent(current)}/report.pdf`);
+                const res = await fetch(`${API}${dxPath('/report.pdf')}`);
                 if (!res.ok) {
                   const err = await res.json().catch(() => ({ detail: res.statusText }));
                   throw new Error(err.detail || res.statusText);
@@ -1621,7 +1642,7 @@ function App() {
           )}
           {actor && actor.kind === 'admin' && (
             <button
-              onClick={() => { setCurrent(null); setState(null); setView('admin'); }}
+              onClick={() => { setCurrent(null); setCurrentSessionId(null); setState(null); setView('admin'); }}
               title="Admin dashboard"
               style={{
                 background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
