@@ -120,6 +120,24 @@ def _authorize_and_get_state(name: str, actor: dict) -> DialecticalState:
     return _get_state(name)
 
 
+def _resolve_session_base(session_id: int, actor: dict) -> str:
+    """Resolve a session id to the base name it addresses, for the
+    session-keyed API. Returns the base name (the internal storage key).
+
+    Missing sessions and sessions owned by another actor BOTH return 404
+    — the same name-existence leak-prevention posture as base access.
+    Admins bypass ownership. Sessions without a bound base (e.g. a study
+    session still in briefing) are treated as not-found for this API,
+    which only addresses working dialectic sessions.
+    """
+    sess = pdb.find_session(get_registry().platform_con(), session_id)
+    if sess is None or sess.get("base_id") is None:
+        raise HTTPException(404, f"Session {session_id} not found")
+    if sess["actor_id"] != actor["id"] and actor.get("kind") != "admin":
+        raise HTTPException(404, f"Session {session_id} not found")
+    return sess["base_id"]
+
+
 # ── LLM failure → HTTP response mapping ──────────────────────────────
 #
 # When an LLM call fails after retries, the Opponent raises LLMCallError
@@ -1492,7 +1510,12 @@ def create_dialectic(req: CreateRequest, actor: dict = Depends(auth.current_acto
             name=topic,
             owner_id=actor["id"],
         )
-    return {"name": name, "state": state.to_dict()}
+        # Open a working session over the new base so the session-keyed
+        # API (`/api/sessions/{id}/...`) can address it. The base name
+        # stays the internal/storage key; the session id is the public
+        # handle.
+        session_id = pdb.create_session(reg.platform_con(), actor_id=actor["id"], base_id=name)
+    return {"name": name, "session_id": session_id, "state": state.to_dict()}
 
 
 @app.get("/api/dialectics")
@@ -1726,6 +1749,124 @@ def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
     if file_existed:
         return {"deleted": name}
     raise HTTPException(404, f"Dialectic '{name}' not found")
+
+
+# ── Session-keyed API (primary) ──────────────────────────────────────
+#
+# These are the going-forward routes: a dialectic is addressed by a
+# numeric session id rather than its human-readable name. Each route is
+# a thin adapter — it resolves `session_id → base name` (with the same
+# ownership/404 check) and delegates to the existing name-keyed handler,
+# so there is exactly one copy of the message/tension/derive/etc. logic.
+# The `/api/dialectics/{name}/...` routes are retained as a compatibility
+# alias (the constrained study-participant flow and existing clients
+# still use them). See docs/session-api-migration.md.
+
+
+@app.post("/api/sessions")
+def create_session_route(req: CreateRequest, actor: dict = Depends(auth.current_actor)):
+    """Create a dialectic and open a session over it. Returns the same
+    body as `POST /api/dialectics`, including `session_id`."""
+    return create_dialectic(req, actor)
+
+
+@app.get("/api/sessions")
+def list_sessions_route(actor: dict = Depends(auth.current_actor)):
+    """List the current actor's sessions (admins: every base), each with
+    its base name + position counts. Bases that predate session-keying
+    get a session opened lazily here, so existing dialectics surface with
+    a stable id."""
+    reg = get_registry()
+    con = reg.platform_con()
+    if actor.get("kind") == "admin":
+        bases = [r["id"] for r in pdb.list_bases(con)]
+    else:
+        bases = [r["id"] for r in pdb.list_bases_for_actor(con, actor["id"])]
+
+    existing = {
+        s["base_id"]: s["id"]
+        for s in pdb.list_sessions_for_actor(con, actor["id"], status=None)
+        if s.get("base_id")
+    }
+    result = []
+    for base_id in bases:
+        sid = existing.get(base_id)
+        if sid is None:
+            with reg.platform_lock:
+                sid = pdb.create_session(con, actor_id=actor["id"], base_id=base_id)
+            existing[base_id] = sid
+        try:
+            d = _get_state(base_id).to_dict()
+            counts = {
+                "topic": d["name"],
+                "commitments": len(d["commitments"]),
+                "denials": len(d["denials"]),
+                "tensions": len(d["tensions"]),
+                "implications": len(d["implications"]),
+            }
+        except Exception:
+            logger.debug("Failed to open dialectic '%s' for session list", base_id)
+            counts = {
+                "topic": base_id,
+                "commitments": 0,
+                "denials": 0,
+                "tensions": 0,
+                "implications": 0,
+            }
+        result.append({"session_id": sid, "name": base_id, **counts})
+    return result
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    return get_dialectic(_resolve_session_base(session_id, actor), actor)
+
+
+@app.post("/api/sessions/{session_id}/message")
+async def session_message_route(
+    session_id: int, req: MessageRequest, actor: dict = Depends(auth.current_actor)
+):
+    return await send_message(_resolve_session_base(session_id, actor), req, actor)
+
+
+@app.post("/api/sessions/{session_id}/tensions/{tid}")
+def session_tension_route(
+    session_id: int, tid: int, req: TensionAction, actor: dict = Depends(auth.current_actor)
+):
+    return resolve_tension(_resolve_session_base(session_id, actor), tid, req, actor)
+
+
+@app.post("/api/sessions/{session_id}/retract")
+def session_retract_route(
+    session_id: int, req: RetractRequest, actor: dict = Depends(auth.current_actor)
+):
+    return retract(_resolve_session_base(session_id, actor), req, actor)
+
+
+@app.post("/api/sessions/{session_id}/derive")
+def session_derive_route(
+    session_id: int, req: DeriveRequest, actor: dict = Depends(auth.current_actor)
+):
+    return derive(_resolve_session_base(session_id, actor), req, actor)
+
+
+@app.get("/api/sessions/{session_id}/report")
+def session_report_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    return report(_resolve_session_base(session_id, actor), actor)
+
+
+@app.get("/api/sessions/{session_id}/report.pdf")
+def session_report_pdf_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    return download_report_pdf(_resolve_session_base(session_id, actor), actor)
+
+
+@app.delete("/api/sessions/{session_id}")
+def session_delete_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    base = _resolve_session_base(session_id, actor)
+    reg = get_registry()
+    with reg.platform_lock:
+        pdb.close_session(reg.platform_con(), session_id)
+    return delete_dialectic(base, actor)
 
 
 # ── Health check ──
