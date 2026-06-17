@@ -5,6 +5,12 @@ production — the configuration the Sloan study pilot runs on. It
 assumes a single small Linux VM (2 vCPU / 4 GB RAM is ample for ≤24
 participants) with a public hostname and TLS.
 
+> For a **managed cloud deployment** (AWS or Google Cloud) that wraps
+> this on-instance core in managed TLS, backups, secrets, monitoring,
+> and IaC — see [`cloud-deployment.md`](cloud-deployment.md). It reuses
+> the systemd unit, `backup.py`, `/healthz`, and the pre-pilot checklist
+> below.
+
 > **DuckDB is single-writer-per-file.** Elenchus runs as **one**
 > server process. Do not run multiple workers (`uvicorn --workers N`)
 > or multiple containers against the same data directory — they will
