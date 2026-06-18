@@ -261,16 +261,34 @@ def run_access_probes(harness) -> None:
     )
     stoken = (body or {}).get("token")
     if stoken:
+        # First click consumes the token and opens a live (briefing) session.
         fresh("p-probe").probe(
             "POST", f"/api/study/{stoken}", action="study_token_consume", expect=200
         )
+        # The link doubles as a resume link: a fresh client re-clicking it
+        # while the session is live re-issues a cookie (200), not 410 —
+        # that's how a participant gets back in from a new device.
         fresh("p-probe2").probe(
             "POST",
             f"/api/study/{stoken}",
-            action="study_token_reuse",
-            expect=410,
-            note="single-use → 410 Gone",
+            action="study_token_resume",
+            expect=200,
+            note="live session → resume",
         )
+        # But once the session is terminal, the link is dead (410). Drive
+        # the probe's session to a terminal state, then confirm.
+        srow = con.execute(
+            "SELECT session_id FROM participant_session_tokens WHERE token = ?", [stoken]
+        ).fetchone()
+        if srow and srow[0] is not None:
+            con.execute("UPDATE sessions SET state = 'complete' WHERE id = ?", [srow[0]])
+            fresh("p-probe3").probe(
+                "POST",
+                f"/api/study/{stoken}",
+                action="study_token_reuse",
+                expect=410,
+                note="terminal session → 410 Gone",
+            )
 
     # ── I. Judge blinding + cross-judge isolation ──
     try:

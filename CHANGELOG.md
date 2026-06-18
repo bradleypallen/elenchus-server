@@ -20,6 +20,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `release.yml` GitHub Actions workflow: tag push (`v*.*.*`) builds,
   `twine check`s, publishes to PyPI via OIDC trusted publishing, and
   creates a GitHub Release with the artifacts.
+- Participant **resume link**. The study token link now doubles as a
+  resume link: re-clicking it while the participant's session is still
+  live (non-terminal) re-issues a session cookie and routes them back to
+  their current step — so a participant can pause and resume from another
+  device or after losing their cookie, which the passwordless model
+  otherwise made impossible. `POST /api/study/{token}` returns the live
+  session with `resumed: true` instead of `410`; it still returns `410`
+  once the session is terminal, or the token is voided/expired/out-of-window.
 - Admin-managed, persisted LLM settings. An admin can set the model, API
   endpoint (base URL), protocol, and API key from the gear-icon Settings
   modal (`PUT /api/settings`), and they survive restarts: non-secret

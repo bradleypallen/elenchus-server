@@ -141,7 +141,8 @@ class TestAccessProbes:
             "cross_tenant_write",
             "revoked_token_reuse",  # logged-out token is dead
             "signup_reuse_token",  # invites are single-use
-            "study_token_reuse",  # participant links are single-use (410)
+            "study_token_resume",  # live session resumes from a new device (200)
+            "study_token_reuse",  # link is dead once the session is terminal (410)
             "blinding_no_leak",  # judge view hides condition
             "judge_view_foreign",  # a judge can't open another's assignment
         ):

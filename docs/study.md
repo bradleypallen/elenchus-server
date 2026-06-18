@@ -37,9 +37,9 @@ exported dataset.
 
 ## 1. Issue participant tokens
 
-A participant logs in with a **single-use, passwordless token** — the
-token *is* the credential. Issue one per participant from the dashboard
-(**ADMIN → Study**) or the API:
+A participant logs in with a **passwordless token** — the token *is* the
+credential. Issue one per participant from the dashboard (**ADMIN →
+Study**) or the API:
 
 ```bash
 curl -sf -b cookies.txt -X POST \
@@ -52,9 +52,17 @@ curl -sf -b cookies.txt -X POST \
 
 This creates a passwordless `participant` actor bound to the study and
 condition, and returns a token. Send the participant their link
-(`/api/study/<token>`). Outside the optional scheduling window, or on a
-second use, the link returns **410 Gone**. Void a still-scheduled token
-with `DELETE /api/admin/study/tokens/{token}`.
+(`/api/study/<token>`).
+
+The link also **doubles as a resume link**: the first click consumes it
+and starts the session; clicking it again *while the session is still
+live* re-issues a cookie and drops the participant back at their current
+step — so they can pause and **resume from another device or after losing
+their cookie** (the passwordless model has no other re-entry path). The
+link only returns **410 Gone** once the session is terminal
+(complete/expired/interrupted), the token is voided, or it's outside the
+scheduling window. Void a still-scheduled token with
+`DELETE /api/admin/study/tokens/{token}`.
 
 For a within-subjects design, issue each participant one token per
 condition.

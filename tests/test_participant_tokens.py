@@ -420,19 +420,46 @@ class TestPublicConsumption:
         assert me["kind"] == "participant"
         assert me["id"] == data["actor_id"]
 
-    def test_consumption_is_idempotent_410(self):
+    def test_second_use_resumes_live_session(self):
+        """The link doubles as a resume link: a fresh client (new device /
+        lost cookie) re-clicking the token while the session is live gets a
+        working cookie back and is routed to the same live session — not a
+        410, and not a new session."""
         token = self._issue()
         c1 = TestClient(app)
         r1 = c1.post(f"/api/study/{token}")
         assert r1.status_code == 200
+        assert r1.json().get("resumed") is not True  # first use is a consume
 
-        # Second client tries the same token.
         c2 = TestClient(app)
         r2 = c2.post(f"/api/study/{token}")
-        assert r2.status_code == 410
-        detail = r2.json()["detail"]
+        assert r2.status_code == 200, r2.text
+        data = r2.json()
+        assert data["resumed"] is True
+        assert data["session_id"] == r1.json()["session_id"]  # same session
+        assert data["actor_id"] == r1.json()["actor_id"]
+        assert data["state"] == "briefing"
+        # The resumed client holds a working participant cookie.
+        assert auth.SESSION_COOKIE in c2.cookies
+        me = c2.get("/api/auth/me").json()
+        assert me["kind"] == "participant" and me["id"] == data["actor_id"]
+
+    def test_resume_blocked_after_session_terminal(self):
+        """Once the session reaches a terminal state, the link stops
+        resuming and returns 410 — the participant is done."""
+        token = self._issue()
+        c1 = TestClient(app)
+        sid = c1.post(f"/api/study/{token}").json()["session_id"]
+        # Simulate completion (bypass the state machine for the fixture).
+        reg = get_registry()
+        with reg.platform_lock:
+            reg.platform_con().execute(
+                "UPDATE sessions SET state = 'complete' WHERE id = ?", [sid]
+            )
+        r = TestClient(app).post(f"/api/study/{token}")
+        assert r.status_code == 410
+        detail = r.json()["detail"]
         assert detail["status"] == "active"
-        assert "already" in detail["user_message"].lower()
 
     def test_unknown_token_404(self):
         r = TestClient(app).post("/api/study/totally-not-a-real-token")

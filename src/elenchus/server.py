@@ -801,15 +801,19 @@ def consume_participant_token(token: str, response: Response):
     this trades the token for a session cookie tied to the underlying
     participant actor.
 
-    Single-use: the SQL `UPDATE ... WHERE status='scheduled'` makes
-    repeat-clicks idempotent (the second request gets 410 Gone).
-    Outside the scheduled window: 410 with the same body shape so
-    the frontend renders one message.
+    First click consumes the token (`scheduled` → `active`) and opens a
+    `sessions` row in the `briefing` state — the participant's lifecycle
+    anchor. The `GET /api/study/session` route reads from it, `advance`
+    writes to it.
 
-    Token consumption also opens a `sessions` row in the `briefing`
-    state — that's the participant's lifecycle anchor. The
-    `GET /api/study/session` route reads from it, the `advance`
-    route writes to it.
+    The same link doubles as a **resume link**: clicking it again while
+    the participant still has a live (non-terminal) session re-issues a
+    session cookie and routes them back to their current state — that's
+    how they get back in from a new device or after losing the cookie,
+    since the passwordless model has no other re-entry path. Only a
+    terminal session (complete/expired/interrupted), a voided/expired
+    token, or being outside the scheduled window returns 410 Gone (with a
+    structured body so the frontend renders one message).
     """
     reg = get_registry()
     with reg.platform_lock:
@@ -818,8 +822,40 @@ def consume_participant_token(token: str, response: Response):
         existing = pdb.find_participant_token(reg.platform_con(), token)
         if existing is None:
             raise HTTPException(404, "Token not found")
-        # Token exists but isn't consumable — used, voided, expired,
-        # or outside its scheduled window. Surface a structured detail.
+        # ── Resume ──────────────────────────────────────────────────
+        # A token that's already been consumed (`active`) whose
+        # participant still has a live (non-terminal) session is a
+        # *resume*, not an error: the same link doubles as a resume link.
+        # This is how a participant gets back in from a new device, or
+        # after losing the cookie — the passwordless model has no other
+        # re-entry path. Re-issue a session cookie and route them back to
+        # their current state without creating a new session. (Voided /
+        # expired tokens, and consumed tokens whose session has reached a
+        # terminal state, fall through to 410.)
+        if existing["status"] == "active":
+            live = pdb.find_live_session_for_actor(reg.platform_con(), existing["actor_id"])
+            if live is not None:
+                session_token = auth.create_session(existing["actor_id"])
+                _set_session_cookie(response, session_token)
+                logger.info(
+                    "Participant token resumed: study=%s condition=%s actor=%d session_id=%d state=%s",
+                    existing["study_id"],
+                    existing["condition"],
+                    existing["actor_id"],
+                    live["id"],
+                    live["state"],
+                )
+                return {
+                    "study_id": existing["study_id"],
+                    "condition": existing["condition"],
+                    "actor_id": existing["actor_id"],
+                    "session_id": live["id"],
+                    "state": live["state"],
+                    "resumed": True,
+                }
+        # Token exists but isn't resumable — used up (session terminal),
+        # voided, expired, or outside its scheduled window. Structured
+        # detail so the frontend renders one message.
         raise HTTPException(
             status_code=410,
             detail={
