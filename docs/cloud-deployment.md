@@ -109,6 +109,34 @@ Building blocks (provider-neutral):
   archive and out of any deposit-eligible bucket** (the app already
   writes it separately).
 
+## DNS & domain
+
+The study domain is **`elenchus.chat`**, registered via **Route 53**.
+Registrar/DNS are decoupled from compute — owning the domain on Route 53
+does **not** commit the app to AWS hosting; a Route 53 record can point
+at a VM on any substrate (including SURF).
+
+- **Hosted zone:** `elenchus.chat` in Route 53 (created with the
+  registration); manage all records there.
+- **Hostname:** decide apex (`elenchus.chat`) vs subdomain
+  (`app.`/`study.elenchus.chat`). A static-IP VM takes an A record at the
+  apex; if fronted by an ALB, use a Route 53 **alias** at the apex (apex
+  can't be a CNAME).
+- **TLS by substrate:**
+  - *AWS + ALB:* ACM cert, DNS-validated automatically via the Route 53
+    zone, auto-renewed — no manual cert ops.
+  - *SURF / any plain VM:* `certbot` with the **`dns-route53`** plugin —
+    Let's Encrypt DNS-01 against the Route 53 zone (an IAM principal
+    scoped to that zone), unattended issue + renew, supports apex +
+    wildcard. Hands-off certs off-AWS using the zone you already own.
+- **Email sender ≠ web domain:** send participant mail from the UvA
+  `@uva.nl` SMTP relay (deliverability/trust) even though links point to
+  `elenchus.chat`; frame it in the invite so the mismatch doesn't read as
+  phishing.
+- **Registration hygiene:** auto-renew ON (a lapse takes the site down),
+  transfer-lock, and track which AWS account owns it (continuity; the DPO
+  will care if that account also hosts).
+
 ## Ops machinery ("managing such a deployment")
 
 - **IaC — Terraform** (one config, modules: `network`, `compute+volume`,
@@ -277,6 +305,34 @@ attaches to only one VM (which *helps* enforce single-writer), but the
 detach/reattach on replacement is fiddly — prefer a single instance with
 auto-restart + live migration. No native transactional email is the only
 real gap; the institutional SMTP relay closes it.
+
+## Proof-of-concept first; launch gated on DPO sign-off
+
+Plan of record: stand up a **synthetic-data-only PoC on AWS** to get the
+mechanics right, and **do not launch with participants** until the SURF
+discussion with the faculty data steward / privacy officer (FG-DPO) is
+settled. The domain is already on Route 53, so AWS is the fast path to a
+working PoC.
+
+- **GDPR scope.** A synthetic-only PoC processes **no personal data** —
+  drive it with `elenchus sim`, `scripts/run_dialectic.py`, and seeded
+  demo accounts, never real participants — so standing it up needs no DPO
+  gate. The data-steward / DPO gate applies to the **production launch
+  with real participants**, wherever that lands (likely SURF).
+- **What transfers.** The **portable core** carries to any substrate:
+  provision a VM, attach + mount an encrypted data volume, run the one
+  process under systemd, TLS, DNS, the two-layer backup + a restore
+  drill, `/healthz` monitoring, deploy/restart, teardown. The
+  **AWS-managed periphery** (ALB/ACM, Secrets Manager, DLM, SSM,
+  CloudWatch) does *not* transfer 1:1 — SURF uses the on-VM equivalents
+  in `OPERATIONS.md`.
+- **Maximise transfer.** Since production is likely SURF (on-VM
+  Nginx+certbot), the highest-value PoC exercises the **substrate-portable
+  path**: single EC2 + Nginx + `certbot dns-route53` + `EXPORT`→S3 +
+  `/healthz`. Add the ALB+ACM+Secrets-Manager managed variant only to
+  evaluate the AWS-native option on its merits.
+- **Cheap + disposable.** Everything in Terraform, `terraform destroy`-
+  able; tear it down between sessions.
 
 ## Implementation roadmap
 
