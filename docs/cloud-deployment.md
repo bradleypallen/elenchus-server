@@ -4,7 +4,8 @@ This plans a managed cloud deployment of an Elenchus server for the Sloan
 pilot, on the **DuckDB / single-instance** approach (decision: stay on
 DuckDB for the pilot; migrate to Postgres only when a concrete scale/HA
 trigger fires — see "Scaling trigger"). It is **cloud-agnostic first**,
-then mapped to **AWS** and **Google Cloud**.
+then mapped to **SURF** (the national research-IT route, and the likely
+first choice for a UvA pilot), **AWS**, and **Google Cloud**.
 
 It *extends* [`OPERATIONS.md`](OPERATIONS.md) — the systemd unit, Nginx
 config, `scripts/backup.py`, `/healthz`, and the pre-pilot checklist
@@ -172,6 +173,56 @@ fixed line item; the Nginx+certbot budget path removes it.
 
 ---
 
+## Hosting at UvA (SURF) — the likely first choice
+
+For a University of Amsterdam pilot, the national research-IT route is
+usually preferable to a personal hyperscaler account: NL/EU-resident,
+pre-vetted for sensitive research data, institutional login, and
+*subsidised* for Dutch researchers (a compute allocation, not a
+credit-card bill) — which makes the DPO/IRB conversation far easier.
+Lead with this; fall back to AWS/GCP only if SURF lacks something
+specific.
+
+**SURF** (the Dutch national education/research ICT cooperative; UvA is a
+member) gives you VMs you fully control, so the single-instance design
+above applies almost unchanged — SURF is just the substrate. You trade
+the hyperscalers' *managed* TLS/secrets/monitoring for the on-VM
+equivalents `OPERATIONS.md` already documents, and gain residency,
+compliance, institutional login, and (likely) no direct bill.
+
+| Block | SURF / UvA option |
+|-------|-------------------|
+| VM | **SURF Research Cloud** workspace (a VM; IaaS, choose OS+software; built for sensitive data) — or **SURF HPC Cloud** (self-managed, straightforwardly persistent) |
+| Data volume | workspace/VM block storage; **Research Drive** for adjacent research data |
+| TLS / DNS | **ICTS** for the `*.uva.nl` subdomain + records; terminate TLS on the VM (Nginx + cert) — no managed-LB-with-auto-cert like the hyperscalers, so the `OPERATIONS.md` Nginx+certbot path is the natural fit |
+| Backups | volume snapshots (per SURF) + the app `EXPORT DATABASE` archives → Research Drive / object storage; **run the restore drill** |
+| Secrets | no hyperscaler-style secrets manager — root-owned `0640` env file on the VM (per `OPERATIONS.md`) or a self-hosted store |
+| Email | UvA institutional **SMTP relay** (recommended regardless) |
+| Logs/metrics | on-VM (journald + log rotation) + SURF monitoring where available; a simple external `/healthz` uptime check |
+| Identity/access | institutional login (**SURFconext**); SSH per SURF's access model |
+| Region | NL / EU by default |
+
+**Authoritative gate.** *Where participant data may be hosted* is decided
+by your faculty **data steward**, **RDM Support** (`rdm-support@uva.nl`),
+and the **privacy officer (FG/DPO)** — not by technical fit. Engage them
+first; they also set the DMP/DPIA requirements. Request the SURF
+allocation via your institution's access route / SURF **Cloud Research
+Consultancy**, and the `uva.nl` subdomain via **ICTS**.
+
+**Two things to confirm explicitly:**
+
+- **Persistence.** SURF Research Cloud workspaces carry a budget/"wallet"
+  and can be oriented to interactive / time-bounded use — confirm you can
+  run a **24/7, long-lived** workspace for the pilot's duration, or use
+  **HPC Cloud** (persistent by default). The single-writer constraint
+  holds either way.
+- **LLM egress (a separate DPO item, independent of where the server
+  sits).** Dialogue turns go to Anthropic's US API. In this study that
+  content is *domain reasoning*; participant PII (identities/emails)
+  stays in the platform DB and is not sent to the model — but the DPO
+  must still bless the cross-border data flow and the processing terms.
+  Often the longer pole than hosting.
+
 ## AWS mapping
 
 | Block | AWS service | Notes |
@@ -253,7 +304,9 @@ real gap; the institutional SMTP relay closes it.
 
 ## Open decisions
 
-- Provider (institutional DPA/billing/credits is the real decider).
+- Provider: **SURF first** for a UvA pilot (residency + subsidy + DPO-
+  friendliness); AWS/GCP only as a fallback. The data steward / DPO and
+  any existing institutional agreement are the real deciders.
 - Region: in-NL (GCP europe-west4) vs Frankfurt (AWS eu-central-1).
 - TLS: managed LB+cert (hands-off, ~LB cost) vs Nginx+certbot (cheaper,
   manual renew).
