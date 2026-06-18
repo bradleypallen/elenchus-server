@@ -334,10 +334,17 @@ working PoC.
 - **Cheap + disposable.** Everything in Terraform, `terraform destroy`-
   able; tear it down between sessions.
 
-A runnable Terraform scaffold for this exact path lives in
+**Simplest PoC (recommended start):** [`deploy/manual-poc.md`](../deploy/manual-poc.md)
+— one box, by hand (Lightsail/EC2 + `pip install` + Nginx + `certbot
+--nginx`), ~30 min, no Terraform, no IAM/SSM/S3/alarms. Proves
+HTTPS-on-a-real-domain and the on-box steps transfer directly to a SURF
+VM. For a synthetic, throwaway, pre-SURF PoC this is all you need.
+
+A fuller, reproducible Terraform scaffold lives in
 [`deploy/aws-poc/`](../deploy/aws-poc/) (single EC2 + encrypted EBS +
-Nginx + `certbot dns-route53` + Route 53 + `EXPORT`→S3 + SSM access +
-auto-recovery, secrets read from SSM at boot). See its README to run it.
+`certbot dns-route53` + `EXPORT`→S3 + SSM + auto-recovery) — reach for it
+*later*, when the substrate is settled and you want repeatable infra, not
+for the first "does it work" PoC.
 
 ## Implementation roadmap
 
