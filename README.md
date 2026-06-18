@@ -184,7 +184,13 @@ for how to add a new migration.
 
 Full deployment guide — systemd unit, Nginx + TLS, backup cron, log
 rotation, and a pre-pilot checklist — is in
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md). Quick reference:
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md). See also the task-oriented
+guides on the [documentation site](https://bradleypallen.github.io/elenchus-server/):
+[Administration](docs/administration.md) (roles, dashboard, invites,
+users, cost, audit, backups, alerting), [Running a Study](docs/study.md)
+(conditions, participant flow, questionnaires, blinded judging, export),
+and [Deployment](docs/deployment.md) (local / production VM / cloud).
+Quick reference:
 
 ```bash
 # Liveness + readiness probe (unauthenticated; for uptime monitors).

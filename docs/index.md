@@ -18,6 +18,9 @@ Then open `http://localhost:8741` in your browser.
 
 - [Motivation and Approach](motivation.md) — philosophical foundations, inferentialism, and how Elenchus differs from other approaches
 - [User Guide](guide.md) — installation, concepts, web interface, CLI, configuration, and a worked example
+- [Administration](administration.md) — roles, the admin dashboard, invites and accounts, users, cost/usage, audit, backups, and alerting
+- [Running a Study](study.md) — the Sloan study harness: conditions, participant flow, questionnaires, reports, blinded judging, and data export
+- [Deployment](deployment.md) — running the server locally, on a production VM, or in the cloud (with the [Operations Runbook](OPERATIONS.md) and [Cloud Deployment plan](cloud-deployment.md))
 - [Architecture](architecture.md) — internal design, module descriptions, DuckDB schema, and API protocol
 
 ## Links

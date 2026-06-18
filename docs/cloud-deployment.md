@@ -334,14 +334,14 @@ working PoC.
 - **Cheap + disposable.** Everything in Terraform, `terraform destroy`-
   able; tear it down between sessions.
 
-**Simplest PoC (recommended start):** [`deploy/manual-poc.md`](../deploy/manual-poc.md)
+**Simplest PoC (recommended start):** [`deploy/manual-poc.md`](https://github.com/bradleypallen/elenchus-server/blob/main/deploy/manual-poc.md)
 — one box, by hand (Lightsail/EC2 + `pip install` + Nginx + `certbot
 --nginx`), ~30 min, no Terraform, no IAM/SSM/S3/alarms. Proves
 HTTPS-on-a-real-domain and the on-box steps transfer directly to a SURF
 VM. For a synthetic, throwaway, pre-SURF PoC this is all you need.
 
 A fuller, reproducible Terraform scaffold lives in
-[`deploy/aws-poc/`](../deploy/aws-poc/) (single EC2 + encrypted EBS +
+[`deploy/aws-poc/`](https://github.com/bradleypallen/elenchus-server/tree/main/deploy/aws-poc) (single EC2 + encrypted EBS +
 `certbot dns-route53` + `EXPORT`→S3 + SSM + auto-recovery) — reach for it
 *later*, when the substrate is settled and you want repeatable infra, not
 for the first "does it work" PoC.

@@ -19,7 +19,17 @@ nav:
   - Home: index.md
   - Motivation: motivation.md
   - User Guide: guide.md
+  - Administration: administration.md
+  - Running a Study: study.md
+  - Deployment:
+      - Overview: deployment.md
+      - Operations Runbook: OPERATIONS.md
+      - Cloud Deployment: cloud-deployment.md
   - Architecture: architecture.md
+  - Reference:
+      - ARDS Study (example design): ards-study-design.md
+      - EEQ Review Packet: eeq-review.md
+      - Session API Migration: session-api-migration.md
 
 markdown_extensions:
   - tables

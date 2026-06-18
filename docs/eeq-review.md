@@ -17,7 +17,7 @@ flags are to make the PI's review fast and to catch the obvious issues
 a non-specialist can see. The decision column is yours.
 
 > **Operational note.** The items live in
-> [`src/elenchus/questionnaires.py`](../src/elenchus/questionnaires.py)
+> [`src/elenchus/questionnaires.py`](https://github.com/bradleypallen/elenchus-server/blob/main/src/elenchus/questionnaires.py)
 > under `INSTRUMENTS["eeq"]`, scored 1–7 (Strongly disagree → Strongly
 > agree). **Any change to item text or scale must bump
 > `INSTRUMENT_VERSION`** (currently `"1"`) — it is stamped onto every
