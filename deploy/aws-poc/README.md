@@ -30,8 +30,11 @@ the box via `certbot dns-route53` using the instance role. Admin shell is
   create VPC/EC2/IAM/S3/Route 53/SSM resources.
 - `elenchus.chat` registered in Route 53 **in this account** (the config
   looks the hosted zone up by name).
-- The `elenchus` package installable via `pip` (PyPI), or override
-  `elenchus_package` with a VCS/URL spec.
+- Network egress to GitHub from the instance. `elenchus_package` defaults
+  to a `git+https://…@main` spec because **PyPI's `elenchus` is stale
+  (0.1.1, pre multi-user platform)** — installing the plain `elenchus`
+  wheel gives a server with no auth/admin. Once 0.2.0+ ships to PyPI you
+  can override `elenchus_package` back to a pinned PyPI version.
 
 ## Use
 
