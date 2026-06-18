@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and edit. Do NOT put secrets here — the API key
+# and admin password go in SSM (see README), never in tfvars / state.
+
+region         = "eu-central-1"      # keep in the EU
+root_zone_name = "elenchus.chat"     # your registered Route 53 zone
+hostname       = "poc.elenchus.chat" # a subdomain, not the apex
+le_email       = "b.p.allen@uva.nl"  # Let's Encrypt expiry notices
+instance_type  = "t3.small"
+data_volume_gb = 20
+model          = "claude-sonnet-4-6" # cheaper model is fine for synthetic runs
+
+# Optional: lock down to your own IP(s) for a private PoC.
+# allowed_cidrs = ["203.0.113.4/32"]
+
+# Optional: set to receive a /healthz uptime alarm by email (confirm the
+# SNS subscription email after apply).
+# alert_email = "b.p.allen@uva.nl"

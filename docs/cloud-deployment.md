@@ -334,6 +334,11 @@ working PoC.
 - **Cheap + disposable.** Everything in Terraform, `terraform destroy`-
   able; tear it down between sessions.
 
+A runnable Terraform scaffold for this exact path lives in
+[`deploy/aws-poc/`](../deploy/aws-poc/) (single EC2 + encrypted EBS +
+Nginx + `certbot dns-route53` + Route 53 + `EXPORT`→S3 + SSM access +
+auto-recovery, secrets read from SSM at boot). See its README to run it.
+
 ## Implementation roadmap
 
 - **P0 — decisions:** provider (per institutional DPA/billing/credits),
