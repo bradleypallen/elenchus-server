@@ -158,13 +158,16 @@ Click the **PDF** button (top bar) to generate and download a report of the curr
 
 ### Settings
 
-Click the **gear icon** to open the settings modal:
+**Admins** see a **gear icon** that opens the LLM settings modal:
 
 - **Model** — the LLM model to use (e.g., `claude-opus-4-6`, `claude-sonnet-4-6`)
-- **API Key** — your LLM API key (never displayed after entry)
-- **Base URL** — for OpenAI-compatible providers (e.g., `https://openrouter.ai/api/v1`)
+- **API Key** — the LLM API key (never displayed after entry)
+- **Base URL** — the API endpoint, for OpenAI-compatible providers (e.g., `https://openrouter.ai/api/v1`)
 
-Model and base URL are saved in your browser and re-applied on future visits.
+These are server-wide settings, so the modal is admin-only. They persist
+server-side and survive restarts; the API key is stored encrypted at rest
+(set `ELENCHUS_SECRET_KEY` so it can be — see [Administration](administration.md#runtime-llm-settings)).
+Display preferences below are per-browser and available to everyone.
 
 ### Display Preferences
 

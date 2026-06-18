@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import audit as audit_mod
-from . import auth, invites
+from . import auth, invites, secretbox
 from . import backup as backup_mod
 from . import integrity as integrity_mod
 from .db import get_registry, init_registry
@@ -54,6 +54,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # exist before any request hits an auth check.
     version = get_registry().migrate_platform()
     logger.info("Platform DB at schema version %d", version)
+    # Apply any admin-persisted LLM settings (model / endpoint / key),
+    # overriding the env-derived config the opponent booted with.
+    _apply_persisted_llm_settings()
     yield
     # Shutdown: close all open DuckDB connections to release locks and
     # flush WAL files. close_all is idempotent.
@@ -77,6 +80,79 @@ opponent = Opponent(
     protocol=os.environ.get("ELENCHUS_PROTOCOL"),
     enable_phase_b=_env_phase_b_enabled(),
 )
+
+
+# ── Runtime LLM settings persistence ──
+#
+# Admins set the model / API endpoint / API key at runtime via the admin
+# Settings modal (PUT /api/settings). Non-secret values live in plaintext
+# in `platform_settings`; the API key is stored Fernet-encrypted (see
+# secretbox) so it never lands in the DB file or backups in the clear.
+# At startup we load and apply any persisted values; precedence is
+# persisted > environment.
+
+_S_MODEL = "llm_model"
+_S_BASE_URL = "llm_base_url"
+_S_PROTOCOL = "llm_protocol"
+_S_API_KEY_ENC = "llm_api_key_enc"
+
+
+def _persist_llm_settings(
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    protocol: str | None = None,
+    api_key: str | None = None,
+) -> bool:
+    """Persist non-secret LLM settings (plaintext) and the API key
+    (encrypted). Returns whether the API key was persisted — False when a
+    key was supplied but no master key (ELENCHUS_SECRET_KEY) is configured,
+    in which case the key is live-only and won't survive a restart."""
+    reg = get_registry()
+    con = reg.platform_con()
+    key_persisted = False
+    with reg.platform_lock:
+        if model:
+            pdb.set_setting(con, _S_MODEL, model)
+        if base_url is not None:  # "" explicitly clears back to the default endpoint
+            pdb.set_setting(con, _S_BASE_URL, base_url)
+        if protocol:
+            pdb.set_setting(con, _S_PROTOCOL, protocol)
+        if api_key:
+            if secretbox.is_available():
+                pdb.set_setting(con, _S_API_KEY_ENC, secretbox.encrypt(api_key))
+                key_persisted = True
+            else:
+                logger.warning(
+                    "API key set at runtime but NOT persisted: ELENCHUS_SECRET_KEY "
+                    "is unset, so it cannot be stored encrypted and will be lost on restart."
+                )
+    return key_persisted
+
+
+def _apply_persisted_llm_settings() -> None:
+    """Load persisted LLM settings and reconfigure the opponent. Called at
+    startup after platform migrations. Persisted values override the
+    environment-derived configuration the opponent booted with."""
+    con = get_registry().platform_con()
+    model = pdb.get_setting(con, _S_MODEL)
+    base_url = pdb.get_setting(con, _S_BASE_URL)
+    protocol = pdb.get_setting(con, _S_PROTOCOL)
+    enc = pdb.get_setting(con, _S_API_KEY_ENC)
+    api_key = secretbox.decrypt(enc) if enc else None
+    if enc and api_key is None:
+        logger.warning(
+            "A persisted API key exists but could not be decrypted "
+            "(ELENCHUS_SECRET_KEY is unset or has changed); leaving it unset."
+        )
+    if any(v is not None for v in (model, base_url, protocol, api_key)):
+        opponent.reconfigure(model=model, api_key=api_key, base_url=base_url, protocol=protocol)
+        logger.info(
+            "Applied persisted LLM settings: model=%s, base_url=%s, api_key=%s",
+            model,
+            base_url or "(default)",
+            "set" if api_key else "unchanged",
+        )
 
 
 def _get_state(name: str) -> DialecticalState:
@@ -1444,33 +1520,54 @@ def _participant_token_message(existing: dict) -> str:
 # ─── Existing routes follow ──────────────────────────────────────────
 
 
-@app.get("/api/settings")
-def get_settings():
-    """Return current LLM settings (never exposes the API key value)."""
+def _settings_payload() -> dict:
+    """Current LLM settings for the admin UI. Never includes the key value;
+    `has_api_key` reports whether one is configured, `key_persisted` whether
+    it survives a restart, and `persistence_available` whether a master key
+    is set so the key *can* be persisted."""
+    con = get_registry().platform_con()
     return {
         "model": opponent.model,
         "base_url": opponent.base_url or "",
         "protocol": opponent.protocol,
         "has_api_key": opponent._has_api_key,
+        "key_persisted": pdb.get_setting(con, _S_API_KEY_ENC) is not None,
+        "persistence_available": secretbox.is_available(),
     }
 
 
+@app.get("/api/settings")
+def get_settings(actor: dict = Depends(auth.require_admin)):
+    """Return current LLM settings (admin only; never exposes the key)."""
+    return _settings_payload()
+
+
 @app.put("/api/settings")
-def update_settings(req: SettingsUpdate):
-    """Update LLM settings at runtime."""
+def update_settings(req: SettingsUpdate, actor: dict = Depends(auth.require_admin)):
+    """Update LLM settings at runtime (admin only). Reconfigures the live
+    opponent and persists the change: non-secret values in plaintext, the
+    API key Fernet-encrypted (when a master key is configured)."""
     opponent.reconfigure(
         model=req.model,
         api_key=req.api_key,
         base_url=req.base_url,
         protocol=req.protocol,
     )
+    key_persisted = _persist_llm_settings(
+        model=req.model,
+        base_url=req.base_url,
+        protocol=req.protocol,
+        api_key=req.api_key,
+    )
     logger.info(
-        "Settings updated via API: model=%s, base_url=%s, api_key_provided=%s",
+        "Settings updated by admin id=%s: model=%s, base_url=%s, api_key_provided=%s, key_persisted=%s",
+        actor["id"],
         req.model,
         req.base_url,
         bool(req.api_key),
+        key_persisted,
     )
-    return get_settings()
+    return _settings_payload()
 
 
 @app.post("/api/dialectics")

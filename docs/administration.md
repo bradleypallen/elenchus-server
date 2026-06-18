@@ -141,11 +141,31 @@ dispatched to alert channels. The **console** channel is always on; set
 
 ## Runtime LLM settings
 
-Model, API key, base URL, and protocol can be changed at runtime via the
-**gear icon → Settings** modal or `PUT /api/settings`, without a restart.
-Non-secret settings (model, base URL) persist in the browser and re-sync
-on restart. For the canonical, restart-safe configuration, set the
-environment variables in [Deployment](deployment.md) instead.
+Model, API key, API endpoint (base URL), and protocol are set at runtime by
+an admin via the **gear icon → Settings** modal (or `PUT /api/settings`,
+admin-gated), without a restart. This is the intended way to provide the
+key on a fresh server: log in as the bootstrap admin, open Settings, and
+paste it.
+
+Settings **persist server-side** in `platform_settings`: model, endpoint,
+and protocol in plaintext; the API key **encrypted at rest** (Fernet) using
+the `ELENCHUS_SECRET_KEY` master key. On restart the server loads and
+applies them (persisted values override the environment). So set
+`ELENCHUS_SECRET_KEY` once at deploy ([Deployment](deployment.md)) and the
+UI-set key survives restarts — the plaintext key never touches the DB file
+or backups, only its ciphertext does.
+
+If `ELENCHUS_SECRET_KEY` is unset, a key entered in the modal is applied to
+the running process but **not** persisted (the modal warns you, and
+`GET /api/settings` reports `persistence_available: false`). `GET` never
+returns the key value — only whether one is set and persisted. Setting
+`ELENCHUS_API_KEY` in the environment remains a valid alternative; a
+persisted key takes precedence over it at boot.
+
+> Security boundary: the master key lives in the env file on the same host,
+> so this is encryption *at rest* (protects DB files and backups), not
+> protection against full host compromise. A cloud KMS/HSM holding the
+> master key is the production upgrade.
 
 ## Health
 

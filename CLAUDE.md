@@ -54,6 +54,10 @@ pytest -v
 - `SESSION_COOKIE_SECURE` — set to `true` behind HTTPS in production
 - `BCRYPT_ROUNDS` — bcrypt cost factor (default 12; tests use 4 for speed)
 - `ELENCHUS_ADMIN_PASSWORD` — non-interactive password for `admin create`
+- `ELENCHUS_SECRET_KEY` — master key (any long random string) used to
+  encrypt the admin-set LLM API key at rest in `platform_settings` (see
+  `secretbox.py`). Unset = the UI-set key is held in memory only and lost
+  on restart; non-secret settings (model/endpoint) persist either way.
 - `ELENCHUS_ENABLE_PHASE_B` — opt in to the theory-articulation speech acts
   (`ASSERT_IMPLICATION` / `INTRODUCE_BEARER` / `RETRACT_IMPLICATION`).
   **Off by default** so the live message route matches the Sloan proposal's
@@ -147,7 +151,7 @@ Cross-DB integrity (per-base `contributor_id` / `actor_id` referencing `platform
 
 ## Settings
 
-LLM settings (model, API key, base URL) can be configured at runtime via `PUT /api/settings` or the settings modal in the UI. Non-secret settings (model, base_url) are persisted in localStorage and re-synced on server restart.
+LLM settings (model, API key, base URL/endpoint, protocol) are configured at runtime by an **admin** via the gear-icon settings modal or `PUT /api/settings` (both gated by `require_admin`). They are **persisted server-side** in `platform_settings`: model/base_url/protocol in plaintext, the API key Fernet-encrypted via `secretbox.py` using the `ELENCHUS_SECRET_KEY` master key. At startup (`_apply_persisted_llm_settings` in the lifespan handler) persisted values are loaded and override the env-derived config (precedence: persisted > env). If `ELENCHUS_SECRET_KEY` is unset, a UI-set key is applied live but not persisted (lost on restart); `GET /api/settings` reports `persistence_available` / `key_persisted` and never returns the key value.
 
 ## Adding a Migration
 

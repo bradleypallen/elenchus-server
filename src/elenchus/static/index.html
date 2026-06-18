@@ -713,7 +713,7 @@ function App() {
       return;
     }
     loadDialectics();
-    loadSettings();
+    if (actor.kind === 'admin') loadSettings();
     // Restore last-open dialectic on refresh
     const saved = localStorage.getItem('elenchus-current');
     if (saved) openDialectic(saved).catch(() => {
@@ -791,29 +791,14 @@ function App() {
   };
 
   const loadSettings = async () => {
+    // Admin-only: GET /api/settings is gated. Settings now persist
+    // server-side (model/endpoint plaintext, key encrypted), so there is
+    // no localStorage re-sync to do — just fetch and populate the form.
     try {
       const s = await api('/api/settings');
       setSettings(s);
       setSettingsForm({ api_key: '', base_url: s.base_url || '', model: s.model || '' });
-
-      // Re-send locally saved model/base_url if server lost them (restart)
-      try {
-        const saved = JSON.parse(localStorage.getItem('elenchus-llm') || '{}');
-        const needsSync = (saved.model && saved.model !== s.model)
-                       || (saved.base_url && saved.base_url !== s.base_url);
-        if (needsSync) {
-          const body = {};
-          if (saved.model) body.model = saved.model;
-          if (saved.base_url) body.base_url = saved.base_url;
-          const updated = await api('/api/settings', {
-            method: 'PUT', body: JSON.stringify(body)
-          });
-          setSettings(updated);
-          setSettingsForm(f => ({ ...f, base_url: updated.base_url || '', model: updated.model || '' }));
-          console.log('[elenchus] Restored LLM settings from localStorage:', JSON.stringify(body));
-        }
-      } catch (e2) { /* localStorage read failed, no big deal */ }
-    } catch (e) { /* server may not be running yet */ }
+    } catch (e) { /* not an admin, or server not ready — leave defaults */ }
   };
 
   const openSettingsPanel = () => {
@@ -832,12 +817,8 @@ function App() {
         method: 'PUT', body: JSON.stringify(body)
       });
       setSettings(s);
-      // Persist non-secret settings to localStorage for server restart recovery
-      const llmLocal = {};
-      if (s.model) llmLocal.model = s.model;
-      if (s.base_url) llmLocal.base_url = s.base_url;
-      localStorage.setItem('elenchus-llm', JSON.stringify(llmLocal));
-      console.log('[elenchus] LLM settings saved to localStorage:', JSON.stringify(llmLocal));
+      // Settings persist server-side now (key encrypted at rest); nothing
+      // to stash in localStorage.
       setShowSettings(false);
     } catch (e) { setError(e.message); }
     setSettingsSaving(false);
@@ -1067,11 +1048,19 @@ function App() {
           onChange={e => setSettingsForm(f => ({ ...f, api_key: e.target.value }))}
           placeholder={settings.has_api_key ? '••••••••  (leave blank to keep current)' : 'sk-ant-...'}
           style={{
-            width: '100%', padding: '10px 12px', marginBottom: 14,
+            width: '100%', padding: '10px 12px', marginBottom: 6,
             background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
             color: 'var(--text)', fontSize: fs(12), outline: 'none',
           }}
         />
+        <div style={{
+          fontSize: fs(9), lineHeight: 1.5, marginBottom: 14,
+          color: settings.persistence_available ? 'var(--text-dim)' : 'var(--deny)',
+        }}>
+          {settings.persistence_available
+            ? 'Stored encrypted at rest — survives restarts.'
+            : 'In-memory only — set ELENCHUS_SECRET_KEY on the server to persist the key across restarts.'}
+        </div>
 
         <label style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
           API BASE URL

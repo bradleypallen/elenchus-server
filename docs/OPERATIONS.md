@@ -53,6 +53,11 @@ PORT=8741
 ELENCHUS_MODEL=claude-opus-4-6
 SESSION_COOKIE_SECURE=true           # required behind HTTPS
 BCRYPT_ROUNDS=12                     # production default; never lower
+# Master key for encrypting the admin-set LLM API key at rest. Set once
+# (e.g. `openssl rand -base64 36`); lets an admin set/rotate the key from
+# the UI and have it survive restarts. Keep it stable — changing it makes
+# the stored key undecryptable.
+ELENCHUS_SECRET_KEY=...
 
 # ── Sloan study: leave Phase B OFF ──
 # (omit ELENCHUS_ENABLE_PHASE_B entirely — default is off)

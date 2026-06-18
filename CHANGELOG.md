@@ -20,6 +20,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `release.yml` GitHub Actions workflow: tag push (`v*.*.*`) builds,
   `twine check`s, publishes to PyPI via OIDC trusted publishing, and
   creates a GitHub Release with the artifacts.
+- Admin-managed, persisted LLM settings. An admin can set the model, API
+  endpoint (base URL), protocol, and API key from the gear-icon Settings
+  modal (`PUT /api/settings`), and they survive restarts: non-secret
+  values are stored in `platform_settings`, the API key **encrypted at
+  rest** (Fernet) via a new `secretbox` module keyed by
+  `ELENCHUS_SECRET_KEY`. Persisted values override the environment at
+  boot. New dependency: `cryptography`.
+
+### Security
+
+- `GET`/`PUT /api/settings` are now gated by `require_admin` (previously
+  unauthenticated — any caller could change the model/key/endpoint). The
+  endpoint never returns the key value; the modal is admin-only in the UI.
 
 ## [0.2.0] — Multi-user platform, operational tooling, and the study harness
 

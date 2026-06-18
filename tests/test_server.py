@@ -423,19 +423,14 @@ class TestMessageEndpoint:
 
 
 class TestSettingsEndpoints:
-    def test_get_settings(self):
-        r = client.get("/api/settings")
-        assert r.status_code == 200
-        data = r.json()
-        assert "model" in data
-        assert "protocol" in data
-        assert "has_api_key" in data
+    # The autouse fixture logs in as a regular (non-admin) user, so these
+    # confirm /api/settings is now admin-gated. The admin happy path,
+    # persistence, and encryption live in tests/test_settings.py.
+    def test_get_settings_requires_admin(self):
+        assert client.get("/api/settings").status_code == 403
 
-    @patch("elenchus.server.opponent.reconfigure")
-    def test_update_settings(self, mock_reconfig):
-        r = client.put("/api/settings", json={"model": "gpt-4o"})
-        assert r.status_code == 200
-        mock_reconfig.assert_called_once()
+    def test_update_settings_requires_admin(self):
+        assert client.put("/api/settings", json={"model": "gpt-4o"}).status_code == 403
 
 
 # ── Report ──

@@ -47,6 +47,9 @@ ELENCHUS_MODEL=claude-sonnet-4-6
 PORT=8741
 SESSION_COOKIE_SECURE=true
 BCRYPT_ROUNDS=12
+# Master key so an admin can set/rotate the LLM API key from the UI and
+# have it persist (encrypted) across restarts. Generate once:
+ELENCHUS_SECRET_KEY=$(openssl rand -base64 36)
 ENV
 sudo sed -i "s|sk-ant-REPLACE_ME|<your real key>|" /etc/elenchus/elenchus.env
 sudo chgrp elenchus /etc/elenchus/elenchus.env && sudo chmod 640 /etc/elenchus/elenchus.env
