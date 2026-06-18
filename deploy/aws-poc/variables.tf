@@ -58,7 +58,7 @@ variable "ssm_prefix" {
 }
 
 variable "elenchus_package" {
-  description = "What the instance pip-installs. Defaults to current source from git because PyPI's `elenchus` is stale (0.1.1, pre multi-user platform). Switch to a plain `elenchus`/pinned version once 0.2.0+ is published to PyPI."
+  description = "What the instance pip-installs. >=0.2.0 is the multi-user platform; override with a pinned version or a git/URL spec for a specific build."
   type        = string
-  default     = "elenchus @ git+https://github.com/bradleypallen/elenchus-server.git@main"
+  default     = "elenchus>=0.2.0"
 }

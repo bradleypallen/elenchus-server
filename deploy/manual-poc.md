@@ -35,11 +35,7 @@ sudo apt-get install -y python3-venv nginx certbot python3-certbot-nginx
 # dedicated user + venv (matches OPERATIONS.md; transfers to SURF)
 sudo useradd --system --create-home --home /opt/elenchus --shell /usr/sbin/nologin elenchus
 sudo -u elenchus python3 -m venv /opt/elenchus/venv
-sudo -u elenchus /opt/elenchus/venv/bin/pip install --upgrade pip
-# NB: PyPI's `elenchus` is stale (0.1.1, pre multi-user platform), so install
-# current source from git. Switch to `pip install elenchus` once 0.2.0+ ships.
-sudo -u elenchus /opt/elenchus/venv/bin/pip install \
-  "elenchus @ git+https://github.com/bradleypallen/elenchus-server.git@main"
+sudo -u elenchus /opt/elenchus/venv/bin/pip install --upgrade pip "elenchus>=0.2.0"
 sudo mkdir -p /var/lib/elenchus && sudo chown elenchus:elenchus /var/lib/elenchus
 
 # env file (root-owned, group-readable; not world-readable)
