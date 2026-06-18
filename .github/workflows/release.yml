@@ -1,0 +1,72 @@
+name: Release
+
+# Tag a release to ship it:
+#   1. bump `version` in pyproject.toml, update CHANGELOG.md, commit
+#   2. git tag vX.Y.Z && git push origin vX.Y.Z
+# This workflow then builds, publishes to PyPI (OIDC trusted publishing —
+# no token stored), and creates the GitHub Release with the artifacts.
+#
+# One-time setup on PyPI (https://pypi.org/manage/project/elenchus/settings/publishing/):
+#   add a Trusted Publisher → GitHub →
+#     owner: bradleypallen, repo: elenchus-server,
+#     workflow: release.yml, environment: pypi
+# (Alternatively, drop the OIDC `environment`/`id-token` bits and pass
+#  `password: ${{ secrets.PYPI_API_TOKEN }}` to the publish step.)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify the tag matches the package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          echo "tag=$TAG  pyproject=$PKG"
+          test "$TAG" = "$PKG" || { echo "::error::tag v$TAG does not match pyproject version $PKG"; exit 1; }
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # OIDC trusted publishing; no API token needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true # re-running a published version is a no-op, not an error
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Elenchus $GITHUB_REF_NAME"

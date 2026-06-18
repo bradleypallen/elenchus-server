@@ -5,96 +5,125 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
+### Documentation
 
-- **Phase B speech acts are now firewalled from the live message route
-  by default**. The Sloan proposal's Elenchus condition assumes a
-  speech-act vocabulary of exactly `{COMMIT, DENY, ACCEPT_TENSION,
-  CONTEST_TENSION, RETRACT, REFINE}` plus opponent-side tension
-  proposals. The Phase B additions (`ASSERT_IMPLICATION` /
-  `INTRODUCE_BEARER` / `RETRACT_IMPLICATION`) would corrupt the
-  within-subjects comparison between AI-as-collaborator and AI-as-tool
-  by letting collaborator-condition participants articulate theory
-  directly. Opting in requires `ELENCHUS_ENABLE_PHASE_B=1`; the
-  underlying `DialecticalState` methods remain reachable for admin
-  tooling, batch imports, and tests.
-- The system prompt sent to the LLM in the default deployment no longer
-  mentions the Phase B speech acts (`SLOAN_SYSTEM_PROMPT`). The Phase B
-  prompt (`PHASE_B_SYSTEM_PROMPT`) is only used when the flag is on.
-- 10 new tests in `tests/test_phase_b_protocol.py` enforce the
-  firewall: default-off, dropped-when-disabled, prompt-content checks.
-
-## [0.2.0] — Phase A: Multi-User Platform Foundation
-
-The single-user install becomes a multi-user platform with
-authentication, invite-only signup, per-actor data scoping, an admin
-dashboard, and operational tooling for backup and audit. Backwards-
-compatible upgrade path via `elenchus migrate-legacy`.
+- New task-oriented guides on the docs site: **Administration** (roles,
+  the four-tab admin dashboard, invites/accounts, users, cost/usage,
+  audit, backups, alerting), **Running a Study** (conditions, participant
+  flow, questionnaires, structured reports, blinded judging, export), and
+  **Deployment** (local / production VM / cloud). MkDocs nav restructured;
+  previously orphaned ops/study docs surfaced.
+- Deploy docs and the AWS PoC scaffold install `elenchus>=0.2.0` from PyPI.
 
 ### Added
+
+- `release.yml` GitHub Actions workflow: tag push (`v*.*.*`) builds,
+  `twine check`s, publishes to PyPI via OIDC trusted publishing, and
+  creates a GitHub Release with the artifacts.
+
+## [0.2.0] — Multi-user platform, operational tooling, and the study harness
+
+The single-user install becomes a multi-user **platform** with
+authentication, invite-only signup, and per-actor data scoping; gains the
+**operational tooling** to run it in production (cost tracking, alerting,
+integrity/audit, backups, health); and ships the complete **Sloan study
+harness** (participant flow, two conditions, questionnaires, structured
+reports, blinded judging, pseudonymized export). Backwards-compatible
+upgrade path via `elenchus migrate-legacy`. 122 → **734 tests**.
+
+> The Sloan study's Elenchus condition uses the speech-act vocabulary
+> `{COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION, RETRACT, REFINE}` only.
+> The Phase B theory-articulation acts (`ASSERT_IMPLICATION`,
+> `INTRODUCE_BEARER`, `RETRACT_IMPLICATION`) are **firewalled off by
+> default** and require `ELENCHUS_ENABLE_PHASE_B=1` to enable.
+
+### Platform & auth
 
 - **Auth**: bcrypt password hashing, HTTP-only SameSite=Lax session
   cookies (30-day TTL), magic-link login, `/api/auth/{login,logout,
   signup,change-password,magic-link,magic/{token},me}` routes.
-- **Platform DB**: `platform.duckdb` carrying `actors`,
-  `auth_sessions`, `magic_links`, `invites`, `bases`, `sessions`,
-  `platform_settings`. Held open by `DBRegistry` for the server's
-  lifetime.
+- **Platform DB**: `platform.duckdb` carrying `actors`, `auth_sessions`,
+  `magic_links`, `invites`, `bases`, `sessions`, `platform_settings`,
+  held open by `DBRegistry` for the server's lifetime.
 - **Invite-only signup**: admins issue invites with role + optional
-  recipient email, signup consumes the token and creates the actor
-  in one atomic step. Magic-link tokens are single-use, atomically
-  consumed in SQL.
-- **Per-actor data scoping**: dialectic files now live at
-  `bases/{actor_id}/{name}.duckdb`. Non-owners get 404 (not 403) on
+  recipient email; signup consumes the token and creates the actor in one
+  atomic step. Magic-link tokens are single-use, atomically consumed.
+- **Per-actor data scoping**: dialectic files live at
+  `bases/{actor_id}/{name}.duckdb`; non-owners get 404 (not 403) on
   cross-actor URL manipulation.
-- **Admin dashboard**: in-browser two-tab view for issuing/revoking
-  invites and listing users; `<AuthGate>` shell with Login / Signup /
-  MagicLink forms swaps in on 401.
-- **Migrations**: numbered SQL migrations under
-  `src/elenchus/migrations/{platform,base}/` with a forward-only
-  runner. v2 base migration adds `contributor_id`, `paraphrases`,
-  `references` (atoms), `provenance`, `status` (assessments),
-  `actor_id`, `case_id` (positions), `case_id` (tensions),
-  `session_id` / `case_id` / `actor_id` (conversation), plus a new
-  `cases` table. Future-proofs the schema for multi-respondent
-  features without a refactor.
-- **Backup**: `POST /api/admin/backup` runs DuckDB `EXPORT DATABASE`
-  on the platform DB and every registered base into a timestamped
-  tar.gz; `scripts/backup.py` is the cron-side entry point. Retention
-  prunes archives down to N newest (default 14).
-- **Audit**: `elenchus audit` and `GET /api/admin/audit` report drift
-  between `platform.bases` and the filesystem and surface per-base
-  contributor/actor refs that point at non-existent actors.
-- **Actor lifecycle**: `PUT /api/admin/users/{id}/{deactivate,
-  reactivate}`. Deactivation revokes outstanding session cookies in
-  the same transaction. Guards: cannot deactivate yourself; cannot
-  deactivate the last active admin.
-- **CLI**: `elenchus admin create` (bootstrap),
-  `elenchus migrate-legacy` (single-user → multi-user file move),
-  `elenchus audit` (drift report).
-- **Documentation**: README sections for multi-user setup and
-  operations; CLAUDE.md updated for the new module layout;
-  `migrations/README.md` covers the runner contract and gotchas.
+- **Admin dashboard**: a four-tab in-browser view (Invites, Users, Study,
+  Judging); `<AuthGate>` shell swaps in Login / Signup / MagicLink on 401.
+- **Actor lifecycle**: `PUT /api/admin/users/{id}/{deactivate,reactivate}`
+  (revokes sessions in the same transaction; cannot deactivate yourself or
+  the last active admin).
+- **Migrations**: numbered, forward-only SQL migrations under
+  `src/elenchus/migrations/{platform,base}/` with a runner; the base v2
+  migration future-proofs the schema (contributor/actor/case scoping,
+  provenance, a `cases` table) for multi-respondent features.
+- **Session-keyed API**: `/api/sessions/{id}/*` as the primary surface,
+  with `/api/dialectics/{name}` retained as a thin alias.
+
+### Operations (Phase C)
+
+- **Cost tracking**: every LLM call recorded (model, tokens, latency,
+  status, cost); `GET /api/admin/usage` rollup; per-model rates in
+  `pricing.py`, overridable via `ELENCHUS_PRICING_JSON`.
+- **Alerting**: console + optional email channels with severity filtering
+  and dedup (`ALERT_EMAIL_TO`, `ALERT_EMAIL_MIN_SEVERITY`,
+  `ALERT_DEDUP_MINUTES`).
+- **Integrity & audit**: `GET /api/admin/integrity[/{base_id}]` and
+  `elenchus audit` / `GET /api/admin/audit` report per-base content and
+  platform↔filesystem drift.
+- **Backup**: `POST /api/admin/backup` (`EXPORT DATABASE`, MVCC-safe,
+  timestamped tar.gz, retention) + `scripts/backup.py` cron entry point.
+- **Health**: unauthenticated `GET /healthz` surfacing `llm_configured`
+  and `phase_b_enabled` for uptime monitors.
+- **Resilient LLM client**: error classification + retry, with graceful
+  failure surfaced in the UI.
+
+### Study harness (Phase D)
+
+- **Participant tokens**: single-use, passwordless study links
+  (`POST /api/admin/study/tokens` → `POST /api/study/{token}`), scoped to
+  a study + condition with an optional scheduling window.
+- **Session state machine**: briefing → tutorial → active → post_session
+  → surveyed → complete (with expired/interrupted), routed server-side so
+  the flow is safe on a shared machine.
+- **Two conditions**: `elenchus` (Socratic opponent with tensions/speech
+  acts) vs `baseline` (plain assistant chat), enforced at message time.
+- **Questionnaires**: NASA-TLX, SUS, TIAS, and the custom EEQ, strictly
+  validated and version-stamped (`INSTRUMENT_VERSION`).
+- **Structured reports**: a condition-agnostic LLM report per session
+  (Domain / Atomic statements / Implications / Notes).
+- **Blinded judging**: matched report pairs in randomized A/B slots,
+  multi-judge assignment, five rating dimensions plus a condition-guess
+  blinding check.
+- **Per-study export**: analysis-ready pseudonymized archive with the
+  identity (pseudonym) map written **separately**, never inside it.
+- **Simulation harness**: `elenchus sim` drives the full study flow
+  (scripted or LLM personas) including the access/auth probes.
 
 ### Changed
 
 - All `/api/dialectics/*` routes now require authentication.
-- The `list_dialectics` admin path queries `platform.bases` (canonical)
-  with a flat-layout glob fallback for unmigrated legacy files.
-- Positional `INSERT INTO {atoms,positions,tensions} VALUES (...)`
-  statements switched to column-explicit form so future schema
-  additions don't break them.
-- FastAPI lifespan startup runs platform migrations before the first
-  request is accepted; the LLM message route is `async def` and uses
-  `AsyncAnthropic` / `AsyncOpenAI` with a per-base `asyncio.Lock`
-  serializing the apply phase.
+- The LLM message route is `async def` (AsyncAnthropic / AsyncOpenAI) with
+  a per-base `asyncio.Lock` serializing the apply phase; platform
+  migrations run at FastAPI lifespan startup.
+- The default `SLOAN_SYSTEM_PROMPT` omits the Phase B acts; the Phase B
+  prompt is used only when `ELENCHUS_ENABLE_PHASE_B` is set.
+
+### Fixed
+
+- Wheel build: removed a redundant `force-include` that double-added
+  `migrations/` files and aborted every hatchling wheel build — the
+  reason PyPI had been stranded at 0.1.1.
 
 ### Tests
 
-- 122 → 324 tests. New suites cover auth, invites, platform DB,
-  authorization (cross-actor isolation), per-base schema extensions,
-  legacy migration, backup + retention, audit, and
-  deactivation/reactivation.
+- 122 → **734** passing. New suites cover auth, invites, platform DB,
+  cross-actor authorization, per-base schema, legacy migration, backup +
+  retention, audit, deactivation, the Phase B firewall, cost / alerting,
+  the study state machine, questionnaires, judging, and export.
 
 ## [0.1.1]
 

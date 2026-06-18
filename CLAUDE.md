@@ -105,7 +105,7 @@ src/elenchus/
 
 9. **pdf_report.py** — Generates PDF reports of dialectics using fpdf2. Includes summary, bilateral position, tensions/implications, material base report, and conversation transcript. Converts Markdown formatting to HTML for rendering via `_md_to_html()`.
 
-**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a two-tab dashboard (Invites + Users). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
+**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a four-tab dashboard (Invites + Users + Study + Judging; the Study and Judging tabs drive the researcher-gated study routes). There is no Settings tab — runtime LLM settings live in the gear-icon modal (`PUT /api/settings`). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
 
 **cli.py** — Standalone CLI REPL. Bypasses the platform layer entirely: same `Opponent` + `DialecticalState` stack, no auth, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
 
