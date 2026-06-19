@@ -97,7 +97,7 @@ class TestIssueInvite:
         to, subject, body = captured_email.sent[0]
         assert to == "newuser@example.com"
         assert "Elenchus" in subject
-        assert "https://example.com/signup?token=" in body
+        assert "https://example.com/?token=" in body
 
     def test_no_email_when_intended_blank(self, fresh_registry, admin, captured_email):
         invites.issue_invite(role="user", issued_by=admin)
@@ -288,7 +288,7 @@ class TestEmailService:
         _to, subject, body = captured_email.sent[0]
         assert "researcher" in body
         assert "abc123" in body
-        assert "https://example.com/signup?token=abc123" in body
+        assert "https://example.com/?token=abc123" in body
         assert "Elenchus" in subject
 
     def test_magic_link_template(self, captured_email):

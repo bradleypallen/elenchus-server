@@ -121,7 +121,9 @@ def send_invite_email(token: str, recipient: str, role: str, base_url: str = "")
     """Send an invite email. `base_url` should be the deployment's
     public URL (e.g. `https://elenchus.example.com`); the recipient
     follows the link to complete signup."""
-    link = f"{base_url.rstrip('/')}/signup?token={token}" if base_url else f"/signup?token={token}"
+    # The app is a single-page app served at "/"; it reads ?token= and shows
+    # the signup form. (There is no separate /signup route.)
+    link = f"{base_url.rstrip('/')}/?token={token}" if base_url else f"/?token={token}"
     body = (
         f"You have been invited to Elenchus as a {role}.\n\n"
         f"Click here to create your account:\n  {link}\n\n"
