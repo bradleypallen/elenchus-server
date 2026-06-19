@@ -36,6 +36,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ELENCHUS_SECRET_KEY`. Persisted values override the environment at
   boot. New dependency: `cryptography`.
 
+### Changed
+
+- Clearer auth screens. Each (sign-in / set-up-account / magic-link) now
+  shows a heading saying which it is; arriving via an invite link hides
+  the raw token field and frames it as "set up your account" (pick a
+  display name + password). The admin Invites tab spells out what the
+  recipient does and that they sign in afterwards with email + password.
+
 ### Security
 
 - `GET`/`PUT /api/settings` are now gated by `require_admin` (previously

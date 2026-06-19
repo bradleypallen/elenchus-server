@@ -269,7 +269,7 @@ const AuthContext = React.createContext(null);
 // outer chrome (centered card with the ELENCHUS wordmark on top) so
 // the user never feels like they've left the app.
 
-function AuthShell({ children, footer, error }) {
+function AuthShell({ children, footer, error, title }) {
   return (
     <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 420, width: '100%', padding: 48 }}>
@@ -278,6 +278,12 @@ function AuthShell({ children, footer, error }) {
             ἜΛΕΓΧΟΣ
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: -0.5 }}>Elenchus</h1>
+          {title && (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 10,
+                          fontFamily: 'var(--sans)' }}>
+              {title}
+            </div>
+          )}
         </div>
         {children}
         {error && (
@@ -340,6 +346,7 @@ function Login({ onAuthed, onSwitchSignup, onSwitchMagic }) {
   return (
     <AuthShell
       error={error}
+      title="Sign in to your account"
       footer={
         <>
           <button style={authLinkStyle} onClick={onSwitchMagic}>email me a login link</button>
@@ -388,9 +395,11 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
     setBusy(false);
   };
 
+  const invited = !!initialToken;
   return (
     <AuthShell
       error={error}
+      title={invited ? 'Set up your account' : 'Sign up with an invite'}
       footer={
         <>
           have an account?{' '}
@@ -398,14 +407,23 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
         </>
       }
     >
-      <input
-        value={token} onChange={e => setToken(e.target.value)}
-        placeholder="invite token" style={authInputStyle}
-        readOnly={!!initialToken}
-      />
+      {invited ? (
+        // Arrived via an invite link: the token is already in hand, so
+        // don't make the user look at it — just have them set up the account.
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14,
+                      textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
+          You've been invited. Choose a display name and a password to finish
+          setting up your account.
+        </div>
+      ) : (
+        <input
+          value={token} onChange={e => setToken(e.target.value)}
+          placeholder="invite token" style={authInputStyle}
+        />
+      )}
       <input
         value={displayName} onChange={e => setDisplayName(e.target.value)}
-        placeholder="display name" autoFocus={!!initialToken} style={authInputStyle}
+        placeholder="display name" autoFocus={invited} style={authInputStyle}
       />
       <input
         type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -441,6 +459,7 @@ function MagicLink({ onSwitchLogin }) {
   return (
     <AuthShell
       error={error}
+      title="Email me a login link"
       footer={
         <button style={authLinkStyle} onClick={onSwitchLogin}>back to sign in</button>
       }
@@ -2066,6 +2085,10 @@ function AdminInvitesTab({ fs }) {
               ISSUED — share this link with {lastIssued.intended_email || 'recipient'}:
             </div>
             <div>{inviteUrl(lastIssued.token)}</div>
+            <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', marginTop: 6 }}>
+              They open it, pick a display name and password, and they're in.
+              Afterwards they sign in with their email + that password.
+            </div>
           </div>
         )}
       </div>
