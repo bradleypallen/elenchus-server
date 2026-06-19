@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-19
+
+Copyright holder reassigned to the **University of Amsterdam** (author
+unchanged). Adds admin-managed persisted LLM settings and a full password-
+reset flow; fixes the JSON-into-transcript and broken-invite-link bugs.
+
 ### Documentation
 
 - New task-oriented guides on the docs site: **Administration** (roles,
@@ -48,6 +54,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Copyright holder reassigned to the University of Amsterdam** (LICENSE);
+  the docs-site footer and a new README License section state it too.
+  Bradley P. Allen remains the author (`pyproject` `authors`).
 - Clearer auth screens. Each (sign-in / set-up-account / magic-link) now
   shows a heading saying which it is; arriving via an invite link hides
   the raw token field and frames it as "set up your account" (pick a
@@ -70,6 +79,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `response` prose — not the raw JSON — so reloads, the PDF, and summaries
   read cleanly without re-parsing; and the frontend salvages the
   `response` field from any envelope already stored.
+- Emailed invite link now targets the SPA root (`/?token=`) instead of a
+  non-existent `/signup` route, so the link in the invitation resolves.
 
 ## [0.2.0] — Multi-user platform, operational tooling, and the study harness
 
