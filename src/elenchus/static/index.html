@@ -2158,19 +2158,47 @@ function AdminInvitesTab({ fs }) {
 }
 
 function AdminUsersTab({ fs }) {
+  const { actor } = React.useContext(AuthContext) || {};
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api('/api/admin/users');
-        setUsers(data.users || []);
-      } catch (e) { setError(e.message); }
-      setLoading(false);
-    })();
-  }, []);
+  const load = async () => {
+    try {
+      const data = await api('/api/admin/users');
+      setUsers(data.users || []);
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // Deactivate = soft delete: login refused + sessions revoked, data kept.
+  // Reversible via reactivate. The backend also blocks deactivating
+  // yourself or the last active admin; we surface its error if so.
+  const setActive = async (u, makeActive) => {
+    if (!makeActive && !confirm(
+      `Deactivate ${u.display_name || u.email || 'this user'}? They won't be able to `
+      + `log in and their sessions end now. Their dialectics are kept; you can reactivate later.`
+    )) return;
+    setBusyId(u.id); setError(null);
+    try {
+      await api(`/api/admin/users/${u.id}/${makeActive ? 'reactivate' : 'deactivate'}`,
+                { method: 'PUT' });
+      await load();
+    } catch (e) { setError(e.message); }
+    setBusyId(null);
+  };
+
+  const actionBtn = (label, color, onClick, disabled) => (
+    <button onClick={onClick} disabled={disabled} style={{
+      background: 'none', border: `1px solid ${color}`, color,
+      borderRadius: 4, padding: '3px 10px', fontSize: fs(10),
+      fontFamily: 'var(--sans)', letterSpacing: 0.5,
+      cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+    }}>{label}</button>
+  );
 
   if (loading) return <div style={{ color: 'var(--text-muted)', fontSize: fs(11) }}>…</div>;
 
@@ -2186,10 +2214,14 @@ function AdminUsersTab({ fs }) {
             <th style={{ padding: '6px 8px', fontWeight: 400 }}>display name</th>
             <th style={{ padding: '6px 8px', fontWeight: 400 }}>email</th>
             <th style={{ padding: '6px 8px', fontWeight: 400 }}>status</th>
+            <th style={{ padding: '6px 8px', fontWeight: 400 }}></th>
           </tr>
         </thead>
         <tbody>
-          {users.map(u => (
+          {users.map(u => {
+            const isSelf = actor && actor.id === u.id;
+            const deactivated = !!u.deactivated_at;
+            return (
             <tr key={u.id} style={{ borderTop: '1px solid var(--border)' }}>
               <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>
                 {u.kind}
@@ -2202,11 +2234,19 @@ function AdminUsersTab({ fs }) {
                 {u.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}
               </td>
               <td style={{ padding: '8px', fontFamily: 'var(--sans)',
-                           color: u.deactivated_at ? 'var(--deny)' : 'var(--commit)' }}>
-                {u.deactivated_at ? 'deactivated' : 'active'}
+                           color: deactivated ? 'var(--deny)' : 'var(--commit)' }}>
+                {deactivated ? 'deactivated' : 'active'}
+              </td>
+              <td style={{ padding: '8px', textAlign: 'right' }}>
+                {isSelf
+                  ? <span style={{ color: 'var(--text-muted)', fontSize: fs(10), fontFamily: 'var(--sans)' }}>you</span>
+                  : deactivated
+                    ? actionBtn('reactivate', 'var(--commit)', () => setActive(u, true), busyId === u.id)
+                    : actionBtn('deactivate', 'var(--deny)', () => setActive(u, false), busyId === u.id)}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       {error && (
