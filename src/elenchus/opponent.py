@@ -838,9 +838,16 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         con = state.base.con
         con.execute("BEGIN")
         try:
-            state.add_conversation("user", user_message)
-            state.add_conversation("assistant", raw_text)
             parsed = self._parse_response(raw_text)
+            state.add_conversation("user", user_message)
+            # Store the natural-language `response`, not the raw JSON
+            # envelope — so the transcript, reload, PDF, and summary all
+            # read clean prose without re-parsing (and a parse glitch can't
+            # dump JSON into the dialogue). `_apply` still works from the
+            # parsed payload. Fall back to raw_text only if there's no
+            # usable response string.
+            assistant_text = parsed.get("response") or raw_text
+            state.add_conversation("assistant", assistant_text)
             self._apply(parsed, state)
             con.execute("COMMIT")
         except Exception:

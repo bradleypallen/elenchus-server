@@ -54,9 +54,13 @@ def parse_llm_response(text: str) -> dict | None:
             clean = clean[:-3]
         clean = clean.strip()
 
-    # Strategy 1: direct parse.
+    # Strategy 1: direct parse. strict=False allows literal control
+    # characters (raw newlines/tabs) inside strings — models routinely emit
+    # real line breaks in a multi-paragraph "response" instead of "\n",
+    # which strict JSON rejects and which was the main cause of raw JSON
+    # leaking into the transcript.
     try:
-        return json.loads(clean)
+        return json.loads(clean, strict=False)
     except json.JSONDecodeError:
         pass
 
@@ -88,7 +92,7 @@ def parse_llm_response(text: str) -> dict | None:
             if depth == 0:
                 candidate = clean[start : i + 1]
                 try:
-                    parsed = json.loads(candidate)
+                    parsed = json.loads(candidate, strict=False)
                     preamble = clean[:start].strip()
                     logger.warning(
                         "Recovered JSON from mixed-content response "

@@ -253,7 +253,37 @@ function extractResponseText(content) {
       }
     }
   }
+
+  // Strategy 3: tolerant salvage. JSON.parse rejects literal newlines in
+  // strings, which the LLM emits in multi-paragraph responses — and such
+  // turns may already be stored from before the server stored clean prose.
+  // Read the "response" string value by hand, honoring escapes.
+  const salvaged = salvageResponseField(clean);
+  if (salvaged) return salvaged;
+
   return content;
+}
+
+// Pull the "response" string value out of a JSON-ish blob even when
+// JSON.parse fails (e.g. unescaped newlines inside the string).
+function salvageResponseField(s) {
+  const m = s.match(/"response"\s*:\s*"/);
+  if (!m) return null;
+  let out = '', escape = false;
+  for (let i = m.index + m[0].length; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) {
+      out += ch === 'n' ? '\n' : ch === 't' ? '\t' : ch === 'r' ? '' : ch;
+      escape = false;
+    } else if (ch === '\\') {
+      escape = true;
+    } else if (ch === '"') {
+      break; // end of the response value
+    } else {
+      out += ch;
+    }
+  }
+  return out.trim() ? out : null;
 }
 
 // ── Auth context ──

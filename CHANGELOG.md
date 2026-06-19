@@ -60,6 +60,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unauthenticated — any caller could change the model/key/endpoint). The
   endpoint never returns the key value; the modal is admin-only in the UI.
 
+### Fixed
+
+- Raw JSON no longer leaks into the dialogue. The opponent's response
+  parser now uses `json.loads(strict=False)`, tolerating the literal
+  newlines models emit inside a multi-paragraph `response` (strict JSON
+  rejected them, dumping the whole `{speech_acts, new_tensions, response}`
+  envelope into the transcript). The server now also stores the clean
+  `response` prose — not the raw JSON — so reloads, the PDF, and summaries
+  read cleanly without re-parsing; and the frontend salvages the
+  `response` field from any envelope already stored.
+
 ## [0.2.0] — Multi-user platform, operational tooling, and the study harness
 
 The single-user install becomes a multi-user **platform** with

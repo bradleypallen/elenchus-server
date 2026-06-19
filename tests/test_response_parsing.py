@@ -49,6 +49,21 @@ class TestParseLlmResponse:
         assert parse_llm_response("") is None
         assert parse_llm_response("   \n  ") is None
 
+    def test_literal_newlines_in_strings(self):
+        # Models emit real line breaks in multi-paragraph responses; strict
+        # JSON rejects them. We tolerate them (strict=False) so the prose
+        # parses instead of the whole envelope leaking into the transcript.
+        text = '{"speech_acts": [], "new_tensions": [], "response": "Para one.\n\nPara two."}'
+        parsed = parse_llm_response(text)
+        assert parsed is not None
+        assert parsed["response"] == "Para one.\n\nPara two."
+
+    def test_literal_newlines_with_preamble(self):
+        text = 'Here you go:\n{"response": "Line A.\nLine B.", "speech_acts": []}'
+        parsed = parse_llm_response(text)
+        assert parsed is not None
+        assert parsed["response"] == "Line A.\nLine B."
+
 
 class TestExtractResponseText:
     def test_returns_response_field(self):
