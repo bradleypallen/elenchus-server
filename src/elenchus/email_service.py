@@ -142,6 +142,26 @@ def send_magic_link_email(token: str, recipient: str, base_url: str = "") -> Non
     get_email_service().send(recipient, "Your Elenchus login link", body)
 
 
+def send_password_reset_email(token: str, recipient: str, base_url: str = "") -> None:
+    """Send a password-reset email with a one-time link."""
+    link = f"{base_url.rstrip('/')}/?reset={token}" if base_url else f"/?reset={token}"
+    body = (
+        "We received a request to reset your Elenchus password.\n\n"
+        "Click here to choose a new password:\n"
+        f"  {link}\n\n"
+        "This link can be used once and expires soon.\n"
+        "If you didn't request this, ignore this email — your password "
+        "won't change.\n"
+    )
+    get_email_service().send(recipient, "Reset your Elenchus password", body)
+
+
+def active_backend() -> str:
+    """Name of the configured email backend ('console' or 'smtp'). Lets the
+    admin UI tell whether a reset link was actually emailed or just logged."""
+    return os.environ.get("EMAIL_BACKEND", "console").lower()
+
+
 def send_password_changed_notification(recipient: str) -> None:
     """Notify an actor that their password has changed."""
     body = (

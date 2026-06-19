@@ -367,6 +367,19 @@ class MagicLinkRequest(BaseModel):
     email: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
+
 class InviteCreateRequest(BaseModel):
     role: str
     intended_email: str | None = None
@@ -504,7 +517,80 @@ def me(actor: dict = Depends(auth.current_actor)):
         "kind": actor["kind"],
         "email": actor["email"],
         "display_name": actor["display_name"],
+        "must_change_password": bool(actor.get("must_change_password")),
     }
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(req: ForgotPasswordRequest, request: Request):
+    """Self-service reset request. Always returns 200 with the same body
+    (no email enumeration). If the email belongs to an active,
+    password-holding account and isn't rate-limited, issue a reset token
+    and email the link (console backend just logs it). Does NOT revoke any
+    sessions — otherwise anyone could log a user out by typing their email."""
+    from . import email_service
+
+    con = get_registry().platform_con()
+    actor = pdb.find_actor_by_email(con, req.email) if req.email else None
+    if (
+        actor
+        and actor.get("deactivated_at") is None
+        and actor.get("password_hash")
+        and not auth.reset_rate_limited(actor["id"])
+    ):
+        ip = request.client.host if request.client else None
+        token = auth.issue_password_reset(actor["id"], request_ip=ip)
+        base_url = str(request.base_url).rstrip("/")
+        try:
+            email_service.send_password_reset_email(token, actor["email"], base_url)
+        except Exception:
+            logger.exception("Failed to send password-reset email")
+    return {"status": "ok"}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(req: ResetPasswordRequest):
+    """Consume a reset token and set a new password. Revokes all of the
+    actor's sessions (no session issued here — they sign in fresh)."""
+    complaint = auth.password_complaint(req.new_password)
+    if complaint:
+        raise HTTPException(400, complaint)
+    actor = auth.consume_password_reset(req.token, req.new_password)
+    if actor is None:
+        raise HTTPException(400, "This reset link is invalid or has expired.")
+    if actor.get("email"):
+        from . import email_service
+
+        try:
+            email_service.send_password_changed_notification(actor["email"])
+        except Exception:
+            logger.exception("Failed to send password-changed notification")
+    return {"status": "ok"}
+
+
+@app.post("/api/auth/set-password")
+def set_password(
+    req: SetPasswordRequest, response: Response, actor: dict = Depends(auth.current_actor)
+):
+    """Set a new password during a forced change (must_change_password).
+    Only valid when the flag is set — normal changes use change-password
+    with the old password. Re-issues the current session afterward."""
+    if not actor.get("must_change_password"):
+        raise HTTPException(403, "No password change is required for this account.")
+    complaint = auth.password_complaint(req.new_password)
+    if complaint:
+        raise HTTPException(400, complaint)
+    auth.force_set_password(actor["id"], req.new_password)
+    token = auth.create_session(actor["id"])
+    _set_session_cookie(response, token)
+    if actor.get("email"):
+        from . import email_service
+
+        try:
+            email_service.send_password_changed_notification(actor["email"])
+        except Exception:
+            logger.exception("Failed to send password-changed notification")
+    return {"status": "ok"}
 
 
 # ─── Admin: invites ───────────────────────────────────────────────────
@@ -660,10 +746,15 @@ def admin_deactivate_user(user_id: int, actor: dict = Depends(auth.require_admin
 
 
 @app.put("/api/admin/users/{user_id}/reactivate")
-def admin_reactivate_user(user_id: int, actor: dict = Depends(auth.require_admin)):
-    """Undo a deactivation. The actor can log in again with their
-    existing credentials; previously-revoked session cookies are NOT
-    restored (they have to log in fresh)."""
+def admin_reactivate_user(
+    user_id: int,
+    require_password_change: bool = False,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Undo a deactivation. The actor can log in again; previously-revoked
+    session cookies are NOT restored (they log in fresh). With
+    `require_password_change=true`, they're forced to set a new password at
+    that next login (use this when the deactivation was security-related)."""
     reg = get_registry()
     con = reg.platform_con()
     target = pdb.find_actor_by_id(con, user_id)
@@ -673,8 +764,56 @@ def admin_reactivate_user(user_id: int, actor: dict = Depends(auth.require_admin
         return {"status": "already_active", "id": user_id}
     with reg.platform_lock:
         pdb.reactivate_actor(con, user_id)
-    logger.info("Actor #%d reactivated by admin #%d", user_id, actor["id"])
-    return {"status": "reactivated", "id": user_id}
+        if require_password_change:
+            pdb.set_must_change_password(con, user_id, True)
+    logger.info(
+        "Actor #%d reactivated by admin #%d (require_password_change=%s)",
+        user_id,
+        actor["id"],
+        require_password_change,
+    )
+    return {
+        "status": "reactivated",
+        "id": user_id,
+        "require_password_change": require_password_change,
+    }
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+def admin_reset_password(
+    user_id: int, request: Request, actor: dict = Depends(auth.require_admin)
+):
+    """Admin-initiated password reset. Issues a 24h one-time reset link,
+    force-logs-out the user immediately (revokes their sessions), emails the
+    link if SMTP is configured, and ALWAYS returns the shareable link so it
+    works without email."""
+    from . import email_service
+
+    reg = get_registry()
+    con = reg.platform_con()
+    target = pdb.find_actor_by_id(con, user_id)
+    if target is None:
+        raise HTTPException(404, f"Actor #{user_id} not found")
+    if not target.get("email"):
+        raise HTTPException(400, "This account has no email to send a reset link to.")
+    token = auth.issue_password_reset(user_id, ttl=auth.ADMIN_RESET_TTL, created_by=actor["id"])
+    with reg.platform_lock:
+        pdb.revoke_actor_sessions(con, user_id)  # admin reset = force logout now
+    base_url = str(request.base_url).rstrip("/")
+    emailed = email_service.active_backend() == "smtp"
+    try:
+        email_service.send_password_reset_email(token, target["email"], base_url)
+    except Exception:
+        logger.exception("Failed to send admin password-reset email")
+        emailed = False
+    logger.info("Admin #%d issued a password reset for actor #%d", actor["id"], user_id)
+    return {
+        "status": "reset_issued",
+        "id": user_id,
+        "reset_url": f"{base_url}/?reset={token}",
+        "emailed": emailed,
+        "email": target["email"],
+    }
 
 
 @app.get("/api/admin/users")

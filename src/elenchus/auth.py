@@ -14,10 +14,11 @@ should not call `db.platform` directly for auth purposes.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from fastapi import HTTPException, Request
@@ -183,6 +184,97 @@ def consume_magic_link(token: str) -> str | None:
     reg = get_registry()
     with reg.platform_lock:
         return pdb.consume_magic_link(reg.platform_con(), token)
+
+
+# ─── Password resets ──────────────────────────────────────────────────
+
+PASSWORD_RESET_TTL = timedelta(minutes=60)  # self-service "forgot password"
+ADMIN_RESET_TTL = timedelta(hours=24)  # admin-issued reset link
+MIN_PASSWORD_LENGTH = 10
+
+
+def _hash_token(token: str) -> str:
+    """SHA-256 of a reset token. Only the hash is stored; the raw token
+    lives solely in the link, so a DB/backup leak yields no usable links."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def password_complaint(password: str) -> str | None:
+    """Return a human-readable reason a password is unacceptable, or None.
+    Enforced on the set-new-password paths."""
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    return None
+
+
+def issue_password_reset(
+    actor_id: int,
+    *,
+    ttl: timedelta = PASSWORD_RESET_TTL,
+    created_by: int | None = None,
+    request_ip: str | None = None,
+) -> str:
+    """Create a single-use reset token for `actor_id`, store its hash, and
+    return the RAW token (embed it in a `/?reset=<token>` link). Issuing a
+    new token invalidates the actor's previous outstanding ones."""
+    reg = get_registry()
+    token = generate_token()
+    with reg.platform_lock:
+        pdb.create_password_reset(
+            reg.platform_con(),
+            token_hash=_hash_token(token),
+            actor_id=actor_id,
+            ttl=ttl,
+            created_by=created_by,
+            request_ip=request_ip,
+        )
+    return token
+
+
+RESET_RATE_LIMIT = 5  # max reset issuances per actor per window
+RESET_RATE_WINDOW = timedelta(minutes=15)
+
+
+def recent_reset_count(actor_id: int, window: timedelta) -> int:
+    """How many resets were issued for this actor within `window` (rate limit)."""
+    con = get_registry().platform_con()
+    return pdb.count_recent_password_resets(con, actor_id, datetime.now(UTC) - window)
+
+
+def reset_rate_limited(actor_id: int) -> bool:
+    """True if this actor has hit the reset-request rate limit."""
+    return recent_reset_count(actor_id, RESET_RATE_WINDOW) >= RESET_RATE_LIMIT
+
+
+def consume_password_reset(token: str, new_password: str) -> dict | None:
+    """Consume a reset token and set the new password. On success, revokes
+    ALL of the actor's sessions and clears any must-change flag, then
+    returns the actor dict. Returns None if the token is invalid / expired /
+    already used."""
+    if not token:
+        return None
+    reg = get_registry()
+    con = reg.platform_con()
+    with reg.platform_lock:
+        actor_id = pdb.consume_password_reset(con, _hash_token(token))
+        if actor_id is None:
+            return None
+        pdb.update_actor_password(con, actor_id, hash_password(new_password))
+        pdb.set_must_change_password(con, actor_id, False)
+        pdb.revoke_actor_sessions(con, actor_id)
+    return pdb.find_actor_by_id(con, actor_id)
+
+
+def force_set_password(actor_id: int, new_password: str) -> None:
+    """Set a new password during a forced change (must_change flow). Clears
+    the flag and revokes all of the actor's sessions; the caller re-issues
+    one to keep the current device logged in."""
+    reg = get_registry()
+    con = reg.platform_con()
+    with reg.platform_lock:
+        pdb.update_actor_password(con, actor_id, hash_password(new_password))
+        pdb.set_must_change_password(con, actor_id, False)
+        pdb.revoke_actor_sessions(con, actor_id)
 
 
 # ─── FastAPI dependencies ─────────────────────────────────────────────

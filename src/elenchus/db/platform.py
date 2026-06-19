@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def find_actor_by_id(con, actor_id: int) -> dict | None:
     row = con.execute(
         "SELECT id, kind, email, display_name, password_hash, "
-        "credentials, created_at, deactivated_at "
+        "credentials, created_at, deactivated_at, must_change_password "
         "FROM actors WHERE id = ?",
         [actor_id],
     ).fetchone()
@@ -37,7 +37,7 @@ def find_actor_by_id(con, actor_id: int) -> dict | None:
 def find_actor_by_email(con, email: str) -> dict | None:
     row = con.execute(
         "SELECT id, kind, email, display_name, password_hash, "
-        "credentials, created_at, deactivated_at "
+        "credentials, created_at, deactivated_at, must_change_password "
         "FROM actors WHERE email = ?",
         [email],
     ).fetchone()
@@ -139,6 +139,7 @@ def _row_to_actor(row) -> dict | None:
         "credentials": credentials,
         "created_at": row[6],
         "deactivated_at": row[7],
+        "must_change_password": bool(row[8]) if len(row) > 8 else False,
     }
 
 
@@ -167,7 +168,7 @@ def resolve_auth_token(con, token: str) -> dict | None:
     expired / revoked / deactivated."""
     row = con.execute(
         "SELECT a.id, a.kind, a.email, a.display_name, a.password_hash, "
-        "a.credentials, a.created_at, a.deactivated_at "
+        "a.credentials, a.created_at, a.deactivated_at, a.must_change_password "
         "FROM auth_sessions s "
         "JOIN actors a ON a.id = s.actor_id "
         "WHERE s.token = ? "
@@ -228,6 +229,68 @@ def consume_magic_link(con, token: str) -> str | None:
         [token],
     )
     return row[0]
+
+
+# ─── Password resets ──────────────────────────────────────────────────
+
+
+def set_must_change_password(con, actor_id: int, value: bool) -> None:
+    con.execute(
+        "UPDATE actors SET must_change_password = ? WHERE id = ?",
+        [value, actor_id],
+    )
+
+
+def create_password_reset(
+    con,
+    *,
+    token_hash: str,
+    actor_id: int,
+    ttl: timedelta,
+    created_by: int | None = None,
+    request_ip: str | None = None,
+) -> datetime:
+    """Store a (hashed) reset token. First invalidates the actor's other
+    outstanding reset tokens, so only the newest link is ever live."""
+    con.execute(
+        "UPDATE password_resets SET used_at = CURRENT_TIMESTAMP "
+        "WHERE actor_id = ? AND used_at IS NULL",
+        [actor_id],
+    )
+    expires_at = datetime.now(UTC) + ttl
+    con.execute(
+        "INSERT INTO password_resets "
+        "(token_hash, actor_id, created_at, expires_at, created_by, request_ip) "
+        "VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?)",
+        [token_hash, actor_id, expires_at, created_by, request_ip],
+    )
+    return expires_at
+
+
+def consume_password_reset(con, token_hash: str) -> int | None:
+    """Atomically consume a reset token by its hash. Returns the actor_id
+    if valid (unused, unexpired), else None."""
+    row = con.execute(
+        "SELECT actor_id FROM password_resets "
+        "WHERE token_hash = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
+        [token_hash],
+    ).fetchone()
+    if row is None:
+        return None
+    con.execute(
+        "UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE token_hash = ?",
+        [token_hash],
+    )
+    return row[0]
+
+
+def count_recent_password_resets(con, actor_id: int, since: datetime) -> int:
+    """Reset tokens created for this actor since `since` — for rate limiting."""
+    row = con.execute(
+        "SELECT COUNT(*) FROM password_resets WHERE actor_id = ? AND created_at > ?",
+        [actor_id, since],
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 # ─── Invites ──────────────────────────────────────────────────────────

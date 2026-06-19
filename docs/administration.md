@@ -84,14 +84,44 @@ via `POST /api/auth/magic-link`.
 
 ## Managing users
 
-User deactivation is a **soft delete** (`actors.deactivated_at`): the
-account can no longer log in and its sessions stop working immediately,
-but its past contributions stay attributed. The server refuses to
-deactivate your own account or the last active admin.
+The **Users** tab lists every actor with a per-row action.
+
+**Deactivate / reactivate.** Deactivation is a **soft delete**
+(`actors.deactivated_at`): the account can no longer log in and its
+sessions stop working immediately, but its past contributions stay
+attributed. The server refuses to deactivate your own account or the last
+active admin. Reactivate restores access (it does **not** restore old
+session cookies — they log in fresh); the **"+ new password"** variant
+also forces them to set a new password at that next login (use it when the
+deactivation was security-related). There is no hard delete.
 
 - `PUT /api/admin/users/{id}/deactivate`
-- `PUT /api/admin/users/{id}/reactivate` (does **not** restore old
-  session cookies)
+- `PUT /api/admin/users/{id}/reactivate[?require_password_change=true]`
+
+## Passwords & resets
+
+Passwords are bcrypt-hashed; new passwords (set via reset or a forced
+change) must be **≥10 characters**.
+
+- **Admin reset** — the Users tab **"reset password"** button (or
+  `POST /api/admin/users/{id}/reset-password`) logs the user out
+  immediately and produces a **one-time link** (valid 24 h) that lets them
+  choose a new password. The link is **emailed** when SMTP is configured,
+  and **always returned in the UI** so you can share it directly when it
+  isn't. Reset tokens are stored only as SHA-256 **hashes**, so a leaked DB
+  or backup exposes no usable links.
+- **Self-service** — the login screen's **"Forgot password?"** sends a
+  reset link (60-minute TTL). The request is rate-limited and always
+  responds the same way whether or not the email is registered (no
+  account enumeration). This path only delivers once SMTP is configured.
+- **Forced change** — `actors.must_change_password` makes a user set a new
+  password on their next login before they can do anything else. It's set
+  by "reactivate + new password" above; a successful change (or any reset)
+  revokes the actor's other sessions.
+
+> Self-service "Forgot password?" needs a working mail transport
+> ([Deployment](deployment.md) → SMTP); admin resets work without one via
+> the returned link.
 
 ## Cost and usage
 

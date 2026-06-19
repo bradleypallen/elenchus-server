@@ -17,6 +17,16 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Password reset** (admin- and user-initiated), built to standard
+  best practice. Self-service "Forgot password?" sends a one-time link
+  (60-min TTL, rate-limited, no account enumeration); admin "Reset
+  password" logs the user out and returns/emails a 24-h link. Reset
+  tokens are stored only as SHA-256 hashes; completing a reset revokes all
+  of the actor's sessions. New `must_change_password` flag forces a new
+  password at next login, surfaced as "Reactivate + require new password"
+  in the Users tab. Migration `0008_password_resets`. New password minimum
+  of 10 chars on the reset/set paths. (Self-service delivery needs SMTP;
+  admin resets work without it via the returned link.)
 - `release.yml` GitHub Actions workflow: tag push (`v*.*.*`) builds,
   `twine check`s, publishes to PyPI via OIDC trusted publishing, and
   creates a GitHub Release with the artifacts.
