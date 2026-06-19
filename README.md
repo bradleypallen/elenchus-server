@@ -3,7 +3,7 @@
 [![CI](https://github.com/bradleypallen/elenchus-server/actions/workflows/ci.yml/badge.svg)](https://github.com/bradleypallen/elenchus-server/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/elenchus)](https://pypi.org/project/elenchus/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/bradleypallen/elenchus-server/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-user%20guide-blue)](https://bradleypallen.github.io/elenchus-server/guide/)
 
 A standalone system for dialectical knowledge base construction, implementing the Elenchus protocol (Allen 2026) with a DuckDB material base backend.
@@ -177,19 +177,19 @@ The data directory (`$ELENCHUS_DATA`, default `./dialectics/`) holds:
 
 Schema versions live in each file's `meta.schema_version`. The
 migration runner brings every file forward at open time; see
-[`src/elenchus/migrations/README.md`](src/elenchus/migrations/README.md)
+[`src/elenchus/migrations/README.md`](https://github.com/bradleypallen/elenchus-server/blob/main/src/elenchus/migrations/README.md)
 for how to add a new migration.
 
 ## Operations
 
 Full deployment guide — systemd unit, Nginx + TLS, backup cron, log
 rotation, and a pre-pilot checklist — is in
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md). See also the task-oriented
+[`docs/OPERATIONS.md`](https://github.com/bradleypallen/elenchus-server/blob/main/docs/OPERATIONS.md). See also the task-oriented
 guides on the [documentation site](https://bradleypallen.github.io/elenchus-server/):
-[Administration](docs/administration.md) (roles, dashboard, invites,
-users, cost, audit, backups, alerting), [Running a Study](docs/study.md)
+[Administration](https://github.com/bradleypallen/elenchus-server/blob/main/docs/administration.md) (roles, dashboard, invites,
+users, cost, audit, backups, alerting), [Running a Study](https://github.com/bradleypallen/elenchus-server/blob/main/docs/study.md)
 (conditions, participant flow, questionnaires, blinded judging, export),
-and [Deployment](docs/deployment.md) (local / production VM / cloud).
+and [Deployment](https://github.com/bradleypallen/elenchus-server/blob/main/docs/deployment.md) (local / production VM / cloud).
 Quick reference:
 
 ```bash
@@ -248,7 +248,7 @@ DuckDB is a single-writer-per-file store, so the production server
 runs as **one process**; horizontal scaling means migrating the
 platform DB to Postgres (the `db/registry.py` boundary is shaped to
 absorb that swap without touching route handlers). See
-[`design-notes/architecture-vision.md`](design-notes/architecture-vision.md)
+[`design-notes/architecture-vision.md`](https://github.com/bradleypallen/elenchus-server/blob/main/design-notes/architecture-vision.md)
 for the larger framing.
 
 ## Configuration
@@ -286,4 +286,4 @@ Any OpenAI-compatible endpoint works the same way (Together, Groq, etc.).
 
 ## License
 
-[MIT](LICENSE) — Copyright © 2026 University of Amsterdam. Author: Bradley P. Allen.
+[MIT](https://github.com/bradleypallen/elenchus-server/blob/main/LICENSE) — Copyright © 2026 University of Amsterdam. Author: Bradley P. Allen.

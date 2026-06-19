@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-06-19
+
+### Fixed
+
+- README links are now absolute (GitHub URLs) so they resolve on the PyPI
+  project page and the docs site, not only on GitHub. In particular the
+  MIT license badge no longer 404s on PyPI.
+
 ## [0.3.0] — 2026-06-19
 
 Copyright holder reassigned to the **University of Amsterdam** (author
