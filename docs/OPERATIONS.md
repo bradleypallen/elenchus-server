@@ -81,6 +81,27 @@ ELENCHUS_BACKUP_PASSWORD=...
 ELENCHUS_URL=http://localhost:8741
 ```
 
+### Email via Amazon SES (the AWS path)
+
+`EMAIL_BACKEND=smtp` works with any relay; on AWS, SES is the natural one.
+Setup (region must match `SMTP_HOST`):
+
+1. **Verify the sending domain.** `aws sesv2 create-email-identity
+   --email-identity <domain>` (Easy DKIM), then add the three returned
+   `<token>._domainkey.<domain> CNAME <token>.dkim.amazonses.com` records
+   (plus a `_dmarc` TXT) to DNS. SES flips to verified within minutes.
+2. **Create SMTP credentials** in the SES console (*SMTP settings → Create
+   SMTP credentials*). This makes an IAM user behind the scenes and shows
+   the SMTP username/password **once** — put them in `SMTP_USER` /
+   `SMTP_PASSWORD`.
+3. **Env:** `SMTP_HOST=email-smtp.<region>.amazonaws.com`, `SMTP_PORT=587`,
+   `SMTP_USE_TLS=true`, `SMTP_FROM=no-reply@<domain>` (any address at the
+   verified domain).
+4. **Sandbox:** new SES accounts can only send to *verified* recipient
+   addresses and are capped (~200/day). Verify your test recipients, or
+   request production access (console, ~24 h) before emailing real
+   participants.
+
 ## 3. Bootstrap the first admin
 
 One-time, before first launch:
