@@ -283,3 +283,7 @@ elenchus
 ```
 
 Any OpenAI-compatible endpoint works the same way (Together, Groq, etc.).
+
+## License
+
+[MIT](LICENSE) — Copyright © 2026 University of Amsterdam. Author: Bradley P. Allen.

@@ -2,6 +2,7 @@ site_name: Elenchus
 site_url: https://bradleypallen.github.io/elenchus-server/
 repo_url: https://github.com/bradleypallen/elenchus-server
 repo_name: bradleypallen/elenchus-server
+copyright: Copyright &copy; 2026 University of Amsterdam
 
 theme:
   name: material
