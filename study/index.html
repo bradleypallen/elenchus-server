@@ -1,0 +1,1359 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/study/">
+      
+      
+        <link rel="prev" href="../administration/">
+      
+      
+        <link rel="next" href="../deployment/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Running a Study - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#running-a-study" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Running a Study
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../administration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-design-in-one-paragraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The design in one paragraph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-issue-participant-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Issue participant tokens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-participant-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The participant flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-questionnaires" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Questionnaires
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-structured-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Structured reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-blinded-judging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Blinded judging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-export-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Export the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-study-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-study checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-study-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A worked study design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#study-api-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Study API reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ards-study-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARDS Study (example design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eeq-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-api-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session API Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-design-in-one-paragraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The design in one paragraph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-issue-participant-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Issue participant tokens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-participant-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The participant flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-questionnaires" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Questionnaires
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-structured-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Structured reports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-blinded-judging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Blinded judging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-export-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Export the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-study-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-study checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-worked-study-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A worked study design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#study-api-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Study API reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="running-a-study">Running a Study</h1>
+<p>Elenchus ships a complete harness for the Sloan-funded human-subjects
+study: issuing participant sessions, running them through a controlled
+flow under one of two conditions, collecting questionnaires, generating
+post-session reports, having blinded judges rate them, and exporting an
+analysis-ready, pseudonymized dataset.</p>
+<p>This guide is for the <strong>researcher</strong> running a study. It assumes the
+server is already deployed (<a href="../deployment/">Deployment</a>) and an admin has
+given you a <code>researcher</code> account (<a href="../administration/">Administration</a>).</p>
+<blockquote>
+<p><strong>Ethics first.</strong> A live study with real participants processes personal
+data — it must clear your institution's DPO / ethics review before
+launch. For mechanics and dress rehearsals, drive the harness with
+synthetic data only (<code>elenchus sim</code>). See the
+<a href="#pre-study-checklist">pre-study checklist</a>.</p>
+</blockquote>
+<h2 id="the-design-in-one-paragraph">The design in one paragraph</h2>
+<p>Each participant is assigned to one <strong>condition</strong> and builds a knowledge
+representation of a domain. In the <strong><code>elenchus</code></strong> condition the LLM is a
+Socratic <em>opponent</em>: it tracks a bilateral position, proposes tensions,
+and applies speech acts. In the <strong><code>baseline</code></strong> condition the LLM is an
+ordinary <em>assistant</em> in free-form chat — no tensions, no formal state.
+After the task, each participant fills four questionnaires. A
+condition-agnostic structured report is generated from each session;
+blinded judges rate matched <code>elenchus</code>/<code>baseline</code> report pairs without
+knowing which is which. All measures are computed post-hoc from the same
+exported dataset.</p>
+<blockquote>
+<p><strong>Phase B stays off.</strong> The study runs with the
+<code>{COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION, RETRACT, REFINE}</code>
+vocabulary only. Leave <code>ELENCHUS_ENABLE_PHASE_B</code> unset (the default) so
+the theory-articulation acts never appear. <code>/healthz</code> reports
+<code>phase_b_enabled:false</code> — alert on it.</p>
+</blockquote>
+<h2 id="1-issue-participant-tokens">1. Issue participant tokens</h2>
+<p>A participant logs in with a <strong>passwordless token</strong> — the token <em>is</em> the
+credential. Issue one per participant from the dashboard (<strong>ADMIN →
+Study</strong>) or the API:</p>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-sf<span class="w"> </span>-b<span class="w"> </span>cookies.txt<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>https://elenchus.example.edu/api/admin/study/tokens<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;study_id&quot;:&quot;PILOT&quot;,&quot;condition&quot;:&quot;elenchus&quot;,&quot;display_name&quot;:&quot;P01&quot;,</span>
+<span class="s1">       &quot;scheduled_start&quot;:&quot;2026-07-01T09:00:00Z&quot;,</span>
+<span class="s1">       &quot;scheduled_end&quot;:&quot;2026-07-01T17:00:00Z&quot;}&#39;</span>
+</code></pre></div>
+
+<p>This creates a passwordless <code>participant</code> actor bound to the study and
+condition, and returns a token. Send the participant their link
+(<code>/api/study/&lt;token&gt;</code>).</p>
+<p>The link also <strong>doubles as a resume link</strong>: the first click consumes it
+and starts the session; clicking it again <em>while the session is still
+live</em> re-issues a cookie and drops the participant back at their current
+step — so they can pause and <strong>resume from another device or after losing
+their cookie</strong> (the passwordless model has no other re-entry path). The
+link only returns <strong>410 Gone</strong> once the session is terminal
+(complete/expired/interrupted), the token is voided, or it's outside the
+scheduling window. Void a still-scheduled token with
+<code>DELETE /api/admin/study/tokens/{token}</code>.</p>
+<p>For a within-subjects design, issue each participant one token per
+condition.</p>
+<h2 id="2-the-participant-flow">2. The participant flow</h2>
+<p>Opening the token link trades it for a session cookie and starts a
+state machine. Participants are routed entirely by <strong>session state</strong> (not
+browser storage), so the flow is safe on a shared machine and they never
+see the home screen or a "create dialectic" control.</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>What the participant sees</th>
+<th>Advances on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>briefing</code></td>
+<td>Consent + study overview</td>
+<td>"Begin tutorial"</td>
+</tr>
+<tr>
+<td><code>tutorial</code></td>
+<td>A throwaway <em>practice</em> base in their real condition's UI</td>
+<td>"Start the real task"</td>
+</tr>
+<tr>
+<td><code>active</code></td>
+<td>The <em>task</em> base — full dialectic (or baseline chat)</td>
+<td>"End session"</td>
+</tr>
+<tr>
+<td><code>post_session</code></td>
+<td>A short summary</td>
+<td>"Continue to questionnaires"</td>
+</tr>
+<tr>
+<td><code>surveyed</code></td>
+<td>The questionnaires, one after another</td>
+<td>final submit</td>
+</tr>
+<tr>
+<td><code>complete</code></td>
+<td>"Thank you"</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>expired</code> / <code>interrupted</code></td>
+<td>"Session ended — contact the researcher"</td>
+<td>terminal</td>
+</tr>
+</tbody>
+</table>
+<p>Each participant works in their assigned condition for both the practice
+and task bases. The condition is fixed at token issuance and enforced
+server-side at message time.</p>
+<h2 id="3-questionnaires">3. Questionnaires</h2>
+<p>After the task, the participant completes four instruments in sequence
+(<code>instrument_version</code> is stamped on every submission so the export
+reproduces exactly what they saw):</p>
+<table>
+<thead>
+<tr>
+<th>Instrument</th>
+<th>What it measures</th>
+<th>Scale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nasa_tlx</code></td>
+<td>Task load (6 dimensions)</td>
+<td>0–100 (steps of 5)</td>
+</tr>
+<tr>
+<td><code>sus</code></td>
+<td>System Usability Scale (10 items)</td>
+<td>1–5</td>
+</tr>
+<tr>
+<td><code>tias</code></td>
+<td>Trust in Automated Systems (12 items)</td>
+<td>1–7</td>
+</tr>
+<tr>
+<td><code>eeq</code></td>
+<td>Epistemic Experience — ownership, articulation, challenge (8 items)</td>
+<td>1–7</td>
+</tr>
+</tbody>
+</table>
+<p>Submissions are validated strictly (every item present, in range, no
+extras) and rejected whole on any error. The EEQ is custom to this study;
+<strong>review and sign off its wording before launch</strong> — see the
+<a href="../eeq-review/">EEQ review packet</a> — and bump <code>INSTRUMENT_VERSION</code> on any
+reword.</p>
+<h2 id="4-structured-reports">4. Structured reports</h2>
+<p>For each completed session, generate a structured report (<code>POST
+/api/study/session/{id}/generate-report</code>). The LLM distills the session
+into a uniform format — <strong>Domain, Atomic statements, Implications, Notes</strong>
+— using the <em>same</em> condition-agnostic template for both conditions (only
+the input differs: bilateral position + transcript for <code>elenchus</code>,
+transcript only for <code>baseline</code>). The report is the unit judges rate, so
+its uniform shape is what keeps judging blind.</p>
+<h2 id="5-blinded-judging">5. Blinded judging</h2>
+<ol>
+<li><strong>Package</strong> a matched pair — one <code>elenchus</code> report and one <code>baseline</code>
+   report — with <code>POST /api/admin/study/judge-packages</code>. The two reports
+   are placed in neutral <strong>slot A / slot B</strong>, randomized per package so
+   slot position carries no signal. The real condition→slot mapping is
+   stored for analysis but never shown to judges.</li>
+<li><strong>Assign</strong> the package to one or more judges (<code>POST
+   /api/admin/study/judge-assignments</code>) — assign the same package to
+   several judges for inter-rater reliability.</li>
+<li>A <strong>judge</strong> logs in (email + password) and works their queue (<code>GET
+   /api/judge/queue</code>). Each assignment shows the two reports with all
+   condition labels, models, and costs stripped. They rate on five
+   dimensions, 1–7, <strong>per side</strong>:</li>
+</ol>
+<blockquote>
+<p>Completeness · Correctness · Conciseness · Fidelity · Coherence</p>
+</blockquote>
+<p>plus a justification per side, a pairwise winner (A / B / tie), and —
+   to validate the blind — a condition guess per side with a confidence
+   rating. If judges guess at chance, blinding held.</p>
+<h2 id="6-export-the-data">6. Export the data</h2>
+<p>When the study is done, export it (dashboard <strong>Study → Export</strong>, or <code>POST
+/api/admin/study/{study_id}/export</code>). This writes two things:</p>
+<ul>
+<li><strong>The archive</strong> — <code>$ELENCHUS_DATA/exports/study-{id}-{ts}.tar.gz</code>: a
+  per-session tree (lifecycle, dialectic state, transcript, reports,
+  surveys, integrity, and a DuckDB dump) plus pseudonymized judging data.
+  Participants and judges appear only as opaque IDs (<code>P-001</code>, <code>J-001</code>,
+  <code>R-001</code>); <strong>no emails or names</strong>.</li>
+<li><strong>The pseudonym map</strong> — <code>…​.pseudonyms.json</code>, written <em>next to</em> the
+  archive, <strong>never inside it</strong>. It links opaque IDs back to real people.</li>
+</ul>
+<blockquote>
+<p><strong>Keep these apart.</strong> The pseudonym map stays with your
+participant-tracking records and must be <strong>excluded from any public
+deposit</strong> (Zenodo, OSF). The archive alone is safe to share/deposit.</p>
+</blockquote>
+<p>Archives stay on the server; retrieve them out-of-band (<code>scp</code>/<code>sftp</code>).
+Individual session failures are recorded in the manifest, not fatal.</p>
+<h2 id="pre-study-checklist">Pre-study checklist</h2>
+<p>Run before the first real participant (full version in <a href="../OPERATIONS/">Operations
+Runbook §10</a>):</p>
+<ul>
+<li>[ ] <code>elenchus sim</code> (scripted) passes end-to-end through every role,
+      including the access/auth probes (tenant isolation, single-use
+      tokens, judge-view blinding).</li>
+<li>[ ] <code>elenchus sim --driver llm</code> dress rehearsal against the production
+      model: participants/judges complete, cost + p95 latency look sane,
+      judge condition-guess accuracy is near chance.</li>
+<li>[ ] <code>RUN_UI_E2E=1 pytest tests/e2e/</code> passes (real browser: login,
+      invite signup, participant link, blinded judge view).</li>
+<li>[ ] <code>/healthz</code> → <code>llm_configured:true</code>, <code>phase_b_enabled:false</code>.</li>
+<li>[ ] A test token walks <code>briefing → tutorial → active</code> cleanly.</li>
+<li>[ ] Invite + alert emails actually arrive (<code>EMAIL_BACKEND=smtp</code>).</li>
+<li>[ ] Backup cron has produced a readable archive.</li>
+<li>[ ] EEQ wording reviewed and signed off (<a href="../eeq-review/">packet</a>).</li>
+<li>[ ] DPO / ethics approval in hand for a live launch.</li>
+</ul>
+<h2 id="a-worked-study-design">A worked study design</h2>
+<p>For a concrete, end-to-end example of designing a study on top of this
+harness — research question, positum, conditions, measures, and analysis
+— see the (parked) <a href="../ards-study-design/">ARDS dialectical study design</a>.</p>
+<h2 id="study-api-reference">Study API reference</h2>
+<p>Participant- and judge-facing routes (researcher/admin routes are in the
+<a href="../administration/#admin-api-reference">Administration reference</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Method &amp; path</th>
+<th>Role</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /api/study/{token}</code></td>
+<td>public</td>
+<td>Consume a token, open a session</td>
+</tr>
+<tr>
+<td><code>GET /api/study/session</code></td>
+<td>participant</td>
+<td>Current session + state</td>
+</tr>
+<tr>
+<td><code>POST /api/study/session/begin-tutorial</code></td>
+<td>participant</td>
+<td><code>briefing → tutorial</code></td>
+</tr>
+<tr>
+<td><code>POST /api/study/session/begin-task</code></td>
+<td>participant</td>
+<td><code>tutorial → active</code></td>
+</tr>
+<tr>
+<td><code>POST /api/study/session/advance?to_state=</code></td>
+<td>participant</td>
+<td>Advance the state machine</td>
+</tr>
+<tr>
+<td><code>GET /api/study/instruments</code></td>
+<td>participant</td>
+<td>Questionnaire definitions</td>
+</tr>
+<tr>
+<td><code>POST /api/study/session/{id}/survey</code></td>
+<td>participant</td>
+<td>Submit one instrument</td>
+</tr>
+<tr>
+<td><code>POST /api/study/session/{id}/generate-report</code></td>
+<td>participant/researcher</td>
+<td>Generate the structured report</td>
+</tr>
+<tr>
+<td><code>GET /api/judge/queue</code></td>
+<td>judge</td>
+<td>Assigned packages</td>
+</tr>
+<tr>
+<td><code>GET /api/judge/assignments/{id}</code></td>
+<td>judge</td>
+<td>A blinded report pair</td>
+</tr>
+<tr>
+<td><code>POST /api/judge/assignments/{id}/rate</code></td>
+<td>judge</td>
+<td>Submit ratings</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 University of Amsterdam
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

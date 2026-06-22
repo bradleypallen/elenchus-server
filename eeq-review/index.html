@@ -1,0 +1,1209 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/eeq-review/">
+      
+      
+        <link rel="prev" href="../ards-study-design/">
+      
+      
+        <link rel="next" href="../session-api-migration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>EEQ Review Packet - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#eeq-review-packet-for-pi-sign-off" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              EEQ Review Packet
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../administration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ards-study-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARDS Study (example design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#current-items-verbatim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current items (verbatim)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-concerns-read-these-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting concerns (read these first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-item-notes-candidate-rewordings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-item notes &amp; candidate rewordings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-decision-sheet-pi-fills-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested decision sheet (PI fills in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-api-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session API Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#current-items-verbatim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current items (verbatim)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-concerns-read-these-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting concerns (read these first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-item-notes-candidate-rewordings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-item notes &amp; candidate rewordings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-decision-sheet-pi-fills-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested decision sheet (PI fills in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="eeq-review-packet-for-pi-sign-off">EEQ review packet — for PI sign-off</h1>
+<p>The <strong>Epistemic Experience Questionnaire (EEQ)</strong> is the one post-session
+instrument in the study that is <em>custom</em> — the other three (NASA-TLX,
+SUS, TIAS) are validated and used as-is. EEQ is also the instrument
+tied most directly to the hypothesis: it is meant to detect whether the
+<strong>AI-as-collaborator</strong> (Elenchus) condition produces deeper epistemic
+engagement — ownership, articulation, challenge — than the
+<strong>AI-as-tool</strong> (baseline) condition. Because it is custom and
+hypothesis-bearing, it needs the PI's explicit review before any real
+data is collected.</p>
+<p>This document lays out the eight items as currently shipped, the
+construct each appears to target, concerns worth a psychometrician's
+eye, and candidate rewordings. <strong>Nothing here is a prescription</strong> — the
+flags are to make the PI's review fast and to catch the obvious issues
+a non-specialist can see. The decision column is yours.</p>
+<blockquote>
+<p><strong>Operational note.</strong> The items live in
+<a href="https://github.com/bradleypallen/elenchus-server/blob/main/src/elenchus/questionnaires.py"><code>src/elenchus/questionnaires.py</code></a>
+under <code>INSTRUMENTS["eeq"]</code>, scored 1–7 (Strongly disagree → Strongly
+agree). <strong>Any change to item text or scale must bump
+<code>INSTRUMENT_VERSION</code></strong> (currently <code>"1"</code>) — it is stamped onto every
+stored response so cross-cohort data stays interpretable. Edit the
+items, bump the version, and <code>tests/test_questionnaires.py</code> /
+<code>tests/test_migrations.py</code> will lock in the new shape.</p>
+</blockquote>
+<hr />
+<h2 id="current-items-verbatim">Current items (verbatim)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Item</th>
+<th>Apparent construct</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>The ideas in the final output feel like my own.</td>
+<td>Ownership / authorship</td>
+</tr>
+<tr>
+<td>2</td>
+<td>The session helped me make explicit things I knew but had not put into words.</td>
+<td>Articulation (tacit → explicit)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>I was pushed to consider aspects of the domain I would not have considered on my own.</td>
+<td>Challenge / perspective expansion</td>
+</tr>
+<tr>
+<td>4</td>
+<td>I changed my mind about something during the session.</td>
+<td>Belief revision</td>
+</tr>
+<tr>
+<td>5</td>
+<td>I can defend every claim in the final output.</td>
+<td>Justification / defensibility</td>
+</tr>
+<tr>
+<td>6</td>
+<td>The AI's contributions shaped the substance of the output, not just its wording.</td>
+<td>Substantive contribution (collaborator-vs-tool manipulation check)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>The session surfaced inconsistencies in my own thinking.</td>
+<td>Challenge / elenctic function</td>
+</tr>
+<tr>
+<td>8</td>
+<td>I understand my own views on this domain better than I did before the session.</td>
+<td>Self-understanding / clarity</td>
+</tr>
+</tbody>
+</table>
+<p>Declared constructs (from the module docstring): <strong>ownership,
+articulation, challenge</strong>. Item 6 reads more as a manipulation check
+than a construct item; item 4 and item 8 don't map cleanly onto the
+three declared constructs (see per-item notes).</p>
+<hr />
+<h2 id="cross-cutting-concerns-read-these-first">Cross-cutting concerns (read these first)</h2>
+<p>These apply to the instrument as a whole and are the higher-leverage
+decisions:</p>
+<ol>
+<li>
+<p><strong>No reverse-worded items → acquiescence bias.</strong> All eight items are
+   positively keyed (agreement = "more" of the good thing). SUS
+   deliberately alternates polarity and TIAS includes five
+   distrust-worded items precisely to counter agreement bias; EEQ has
+   none. With expert participants who may want to be agreeable, a
+   uniformly positive scale can inflate scores and mask the
+   between-condition difference you're trying to detect. <em>Consider
+   reverse-wording 2–3 items</em> (candidates noted below).</p>
+</li>
+<li>
+<p><strong>Is EEQ a scored scale, a set of subscales, or a checklist?</strong> This
+   should be <strong>pre-registered</strong>, not decided at analysis time. If it's a
+   summed/averaged score, the all-positive structure + single-item
+   constructs undermine internal-consistency reporting (you can't report
+   a meaningful Cronbach's α for a 1-item construct). Three options:</p>
+</li>
+<li><strong>(a) One unidimensional "epistemic engagement" score</strong> — then
+     verify the items hang together (and add items so α is reportable).</li>
+<li><strong>(b) A priori subscales</strong> (ownership / articulation / challenge) —
+     then each needs ≥2–3 items; today ownership and articulation are
+     thin.</li>
+<li>
+<p><strong>(c) A profile of distinct single-item indicators</strong> — defensible,
+     but then don't sum them; analyze item-by-item and correct for
+     multiple comparisons.</p>
+</li>
+<li>
+<p><strong>Manipulation-check vs outcome-measure conflation.</strong> Items 3 and 7
+   ("pushed to consider…", "surfaced inconsistencies…") describe the
+   Elenchus <em>mechanism</em> almost literally. If EEQ is an <strong>outcome</strong>
+   (did the participant engage more deeply?), near-verbatim mechanism
+   items will simply detect "the dialectic happened," confounding
+   mechanism with effect. If it's a <strong>manipulation check</strong>, that's fine
+   — but then label it as such and keep it separate from any engagement
+   outcome score. Decide which role EEQ plays.</p>
+</li>
+<li>
+<p><strong>Condition-neutral wording (blinding within the instrument).</strong> Good
+   news: every item refers to a generic "the session" / "the AI" /
+   "the final output", identical across conditions, so a baseline
+   participant can answer all eight without the wording revealing which
+   arm they were in. Keep this property if you reword.</p>
+</li>
+<li>
+<p><strong>Reference target drift.</strong> Items 1, 5, 6 ask about <em>the final
+   output</em>; items 2, 3, 7, 8 ask about <em>the session/process</em>; item 8
+   also about <em>understanding of the domain</em>. Output-focused and
+   process-focused items may load on different factors — fine if
+   intentional, worth confirming.</p>
+</li>
+</ol>
+<hr />
+<h2 id="per-item-notes-candidate-rewordings">Per-item notes &amp; candidate rewordings</h2>
+<p><strong>1. "The ideas in the final output feel like my own."</strong>
+Construct: ownership. Generally clean and well-targeted. Minor: "feel
+like my own" measures <em>felt</em> ownership (appropriate for a subjective
+scale). Only item carrying ownership — thin if you want an ownership
+subscale. <em>Possible companion (reverse-keyed):</em> "The final output reads
+more like the AI's view than mine."</p>
+<p><strong>2. "The session helped me make explicit things I knew but had not put
+into words."</strong>
+Construct: articulation of tacit knowledge — well-phrased, arguably the
+single best item. Mild compound clause ("knew but had not put into
+words") but reads as one idea. Only articulation item.</p>
+<p><strong>3. "I was pushed to consider aspects of the domain I would not have
+considered on my own."</strong>
+Construct: challenge. Strong item, but see cross-cutting #3 (mechanism
+vs outcome). "Pushed" is slightly loaded — neutral alt: "The session
+led me to consider aspects of the domain I would not have considered on
+my own."</p>
+<p><strong>4. "I changed my mind about something during the session."</strong>
+Construct: belief revision. <strong>Weakest fit.</strong> It measures the
+<em>occurrence</em> of a binary event on an agreement scale, and a participant
+who entered with well-formed, correct views (and didn't change their
+mind) is not thereby less epistemically engaged — so this may be a poor
+indicator of the target construct and could even penalize the better
+participants. "something" is vague. <em>Consider dropping, or reframing
+toward depth:</em> "The session prompted me to reconsider views I came in
+with."</p>
+<p><strong>5. "I can defend every claim in the final output."</strong>
+Construct: justification. <strong>"every" is an absolute</strong> → ceiling/floor
+effects and social-desirability pull (few will admit they <em>can't</em>
+defend a claim). Softening helps variance: "I could justify the claims
+in the final output if asked." Good reverse-key candidate: "There are
+claims in the final output I'm not sure I could defend."</p>
+<p><strong>6. "The AI's contributions shaped the substance of the output, not
+just its wording."</strong>
+Reads as the <strong>collaborator-vs-tool manipulation check</strong> — exactly the
+distinction the study manipulates. Recommend explicitly designating it
+as a manipulation-check item (and expecting it to differ by condition
+by design), rather than folding it into an engagement score.</p>
+<p><strong>7. "The session surfaced inconsistencies in my own thinking."</strong>
+Construct: challenge / elenctic function. Same mechanism-vs-outcome
+caution as #3. Also slightly presupposes inconsistencies <em>existed</em>; a
+participant with internally consistent views answers low for a reason
+unrelated to engagement quality.</p>
+<p><strong>8. "I understand my own views on this domain better than I did before
+the session."</strong>
+Construct: self-understanding. Clean, outcome-oriented, condition-
+neutral — a good item. Doesn't map to the three declared constructs
+(ownership/articulation/challenge); if you keep the subscale framing,
+either add a "clarity/self-understanding" construct or assign it
+deliberately.</p>
+<hr />
+<h2 id="suggested-decision-sheet-pi-fills-in">Suggested decision sheet (PI fills in)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Item (short)</th>
+<th>Flag</th>
+<th>Keep / Reword / Drop</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>ideas feel like my own</td>
+<td>thin construct</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td>made tacit explicit</td>
+<td>—</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td>pushed to consider</td>
+<td>mechanism-y; "pushed" loaded</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4</td>
+<td>changed my mind</td>
+<td>weak construct fit</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>5</td>
+<td>can defend <em>every</em> claim</td>
+<td>absolute; soc. desirability</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6</td>
+<td>shaped substance not wording</td>
+<td>= manipulation check</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7</td>
+<td>surfaced inconsistencies</td>
+<td>mechanism-y; presupposes</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>8</td>
+<td>understand my views better</td>
+<td>—</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Instrument-level decisions to record before launch:</strong>
+- [ ] EEQ's role: unidimensional score / a priori subscales / item profile (cross-cutting #2)
+- [ ] Reverse-word ≥2 items to counter acquiescence? which? (#1)
+- [ ] Designate item 6 (± 3, 7) as manipulation check vs engagement outcome (#3)
+- [ ] If subscales: add items so ownership &amp; articulation have ≥2–3 each
+- [ ] Final wording approved → bump <code>INSTRUMENT_VERSION</code>, update tests
+- [ ] Pre-register the scoring/analysis plan for EEQ specifically</p>
+<hr />
+<p><em>Prepared as an engineering aid to speed PI review — not a psychometric
+authority. Final item wording, scoring, and analysis plan are the PI's
+call. Once approved, the only code step is editing the item list in
+<code>questionnaires.py</code> and bumping <code>INSTRUMENT_VERSION</code>.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 University of Amsterdam
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

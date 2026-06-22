@@ -1,0 +1,1712 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/cloud-deployment/">
+      
+      
+        <link rel="prev" href="../OPERATIONS/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Cloud Deployment - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cloud-deployment-plan-duckdb-pilot-single-instance" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Cloud Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../administration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-one-constraint-that-dictates-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one constraint that dictates everything
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-agnostic-reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud-agnostic reference architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-obvious-decisions-so-nobody-optimizes-it-into-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-obvious decisions (so nobody "optimizes" it into corruption)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns-domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS &amp; domain
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ops-machinery-managing-such-a-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ops machinery ("managing such a deployment")
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-compliance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security &amp; compliance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-rough-monthly-pilot-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost (rough monthly, pilot scale)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hosting-at-uva-surf-the-likely-first-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hosting at UvA (SURF) — the likely first choice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#google-cloud-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Cloud mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proof-of-concept-first-launch-gated-on-dpo-sign-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proof-of-concept first; launch gated on DPO sign-off
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ards-study-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARDS Study (example design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eeq-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-api-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session API Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-one-constraint-that-dictates-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The one constraint that dictates everything
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-agnostic-reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud-agnostic reference architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-obvious-decisions-so-nobody-optimizes-it-into-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-obvious decisions (so nobody "optimizes" it into corruption)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dns-domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS &amp; domain
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ops-machinery-managing-such-a-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ops machinery ("managing such a deployment")
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-compliance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security &amp; compliance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-rough-monthly-pilot-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost (rough monthly, pilot scale)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hosting-at-uva-surf-the-likely-first-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hosting at UvA (SURF) — the likely first choice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#google-cloud-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Cloud mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proof-of-concept-first-launch-gated-on-dpo-sign-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proof-of-concept first; launch gated on DPO sign-off
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cloud-deployment-plan-duckdb-pilot-single-instance">Cloud deployment plan — DuckDB pilot (single-instance)</h1>
+<p>This plans a managed cloud deployment of an Elenchus server for the Sloan
+pilot, on the <strong>DuckDB / single-instance</strong> approach (decision: stay on
+DuckDB for the pilot; migrate to Postgres only when a concrete scale/HA
+trigger fires — see "Scaling trigger"). It is <strong>cloud-agnostic first</strong>,
+then mapped to <strong>SURF</strong> (the national research-IT route, and the likely
+first choice for a UvA pilot), <strong>AWS</strong>, and <strong>Google Cloud</strong>.</p>
+<p>It <em>extends</em> <a href="../OPERATIONS/"><code>OPERATIONS.md</code></a> — the systemd unit, Nginx
+config, <code>scripts/backup.py</code>, <code>/healthz</code>, and the pre-pilot checklist
+there are the on-instance core; this document wraps managed cloud
+services and ops machinery around that core. Don't duplicate them.</p>
+<h2 id="the-one-constraint-that-dictates-everything">The one constraint that dictates everything</h2>
+<p><strong>DuckDB is single-writer-per-file → the app runs as exactly one
+process.</strong> Therefore:</p>
+<ul>
+<li><strong>One VM, one process.</strong> No autoscaling group / managed instance group
+  with size &gt; 1; no container autoscaling; no serverless. (A fixed-size-1
+  group is acceptable <em>only</em> as a self-healing replacer, and only if you
+  guarantee the data volume is attached read-write to one instance at a
+  time — single-instance auto-recovery is simpler and safer.)</li>
+<li><strong>Never put <code>$ELENCHUS_DATA</code> on a network filesystem</strong> (EFS / Filestore
+  / NFS) — DuckDB's file locking is unsafe there. Use block storage.</li>
+<li><strong>Vertical scale only.</strong> Horizontal scale = the Postgres migration,
+  which the <code>db/registry.py</code> boundary is shaped to absorb. Out of scope
+  for the pilot.</li>
+</ul>
+<p>Pilot scale is tiny (≤24 participants); a small VM is ample. The work
+here is durability, security, and hands-off ops — not throughput.</p>
+<h2 id="cloud-agnostic-reference-architecture">Cloud-agnostic reference architecture</h2>
+<div class="codehilite"><pre><span></span><code><span class="w">            </span><span class="n">DNS</span><span class="w"> </span><span class="p">(</span><span class="n">study</span><span class="w"> </span><span class="n">hostname</span><span class="p">)</span>
+<span class="w">                  </span><span class="err">│</span>
+<span class="w">        </span><span class="err">┌─────────▼──────────┐</span><span class="w">     </span><span class="n">managed</span><span class="p">,</span><span class="w"> </span><span class="n">auto</span><span class="o">-</span><span class="n">renewing</span><span class="w"> </span><span class="n">TLS</span><span class="w"> </span><span class="n">cert</span>
+<span class="w">        </span><span class="err">│</span><span class="w">  </span><span class="n">L7</span><span class="w"> </span><span class="n">HTTPS</span><span class="w"> </span><span class="nb">load</span><span class="w">      </span><span class="err">│◀────</span><span class="w"> </span><span class="p">(</span><span class="n">terminates</span><span class="w"> </span><span class="n">TLS</span><span class="p">;</span><span class="w"> </span><span class="o">/</span><span class="n">healthz</span><span class="w"> </span><span class="n">health</span>
+<span class="w">        </span><span class="err">│</span><span class="w">  </span><span class="n">balancer</span><span class="w">           </span><span class="err">│</span><span class="w">      </span><span class="n">check</span><span class="p">;</span><span class="w"> </span><span class="n">access</span><span class="w"> </span><span class="n">logs</span><span class="p">;</span><span class="w"> </span><span class="n">WAF</span><span class="o">-</span><span class="n">ready</span><span class="p">)</span>
+<span class="w">        </span><span class="err">└─────────┬──────────┘</span>
+<span class="w">                  </span><span class="err">│</span><span class="w"> </span><span class="n">HTTP</span><span class="w"> </span><span class="p">:</span><span class="mi">8741</span><span class="w">  </span><span class="p">(</span><span class="n">X</span><span class="o">-</span><span class="n">Forwarded</span><span class="o">-</span><span class="n">Proto</span><span class="p">:</span><span class="w"> </span><span class="n">https</span><span class="p">)</span>
+<span class="w">        </span><span class="err">┌─────────▼──────────────────────────────┐</span>
+<span class="w">        </span><span class="err">│</span><span class="w">  </span><span class="n">ONE</span><span class="w"> </span><span class="n">VM</span><span class="w">  </span><span class="err">──</span><span class="w"> </span><span class="n">systemd</span><span class="w"> </span><span class="err">──</span><span class="w"> </span><span class="n">elenchus</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="n">proc</span><span class="p">)</span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">├</span><span class="w"> </span><span class="n">reads</span><span class="w"> </span><span class="n">secrets</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">boot</span><span class="w"> </span><span class="p">(</span><span class="n">no</span><span class="w"> </span><span class="n">secrets</span><span class="w">   </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="n">on</span><span class="w"> </span><span class="n">disk</span><span class="p">)</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="n">VM</span><span class="w"> </span><span class="n">identity</span><span class="w">            </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">├</span><span class="w"> </span><span class="n">ships</span><span class="w"> </span><span class="n">logs</span><span class="o">+</span><span class="n">metrics</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">monitoring</span><span class="w">     </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">└</span><span class="w"> </span><span class="n">admin</span><span class="w"> </span><span class="n">access</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="n">keyless</span><span class="w"> </span><span class="n">session</span><span class="w">     </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">      </span><span class="n">broker</span><span class="w"> </span><span class="p">(</span><span class="n">no</span><span class="w"> </span><span class="n">open</span><span class="w"> </span><span class="n">SSH</span><span class="p">)</span><span class="w">                </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">            </span><span class="err">│</span><span class="w">                              </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">┌────────▼─────────┐</span><span class="w"> </span><span class="n">persistent</span><span class="w"> </span><span class="n">block</span><span class="w">  </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="o">$</span><span class="n">ELENCHUS_DATA</span><span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="n">volume</span><span class="w"> </span><span class="p">(</span><span class="n">encrypted</span><span class="p">,</span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="n">platform</span><span class="o">.</span><span class="n">duckdb</span><span class="w"> </span><span class="err">│</span><span class="w"> </span><span class="n">separate</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">OS</span><span class="w">  </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="n">bases</span><span class="o">/</span><span class="err">…</span><span class="w">         </span><span class="err">│</span><span class="w"> </span><span class="n">disk</span><span class="p">)</span><span class="w">             </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="n">backups</span><span class="o">/</span><span class="w"> </span><span class="n">exports</span><span class="o">/</span><span class="w">                    </span><span class="err">│</span>
+<span class="w">        </span><span class="err">│</span><span class="w">   </span><span class="err">└────────┬─────────┘</span><span class="w">                    </span><span class="err">│</span>
+<span class="w">        </span><span class="err">└────────────┼──────────────────────────────┘</span>
+<span class="w">       </span><span class="n">scheduled</span><span class="w">     </span><span class="err">│</span><span class="w">              </span><span class="n">app</span><span class="w"> </span><span class="n">EXPORT</span><span class="o">-</span><span class="n">DATABASE</span>
+<span class="w">       </span><span class="n">block</span><span class="w">         </span><span class="err">│</span><span class="w">              </span><span class="n">archives</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">per</span><span class="o">-</span><span class="n">study</span>
+<span class="w">       </span><span class="n">snapshots</span><span class="w"> </span><span class="err">────┘</span><span class="w">              </span><span class="n">exports</span><span class="w"> </span><span class="err">──►</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="n">store</span>
+<span class="w">                                    </span><span class="p">(</span><span class="n">versioned</span><span class="p">;</span><span class="w"> </span><span class="n">exports</span><span class="w"> </span><span class="n">bucket</span>
+<span class="w">                                     </span><span class="n">locked</span><span class="p">;</span><span class="w"> </span><span class="n">pseudonym</span><span class="w"> </span><span class="n">map</span><span class="w"> </span><span class="n">kept</span>
+<span class="w">                                     </span><span class="n">OUT</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">archive</span><span class="p">)</span>
+<span class="w">   </span><span class="n">egress</span><span class="w"> </span><span class="err">──►</span><span class="w"> </span><span class="n">LLM</span><span class="w"> </span><span class="n">API</span><span class="w"> </span><span class="err">·</span><span class="w"> </span><span class="n">SMTP</span><span class="w"> </span><span class="p">(</span><span class="n">institutional</span><span class="w"> </span><span class="n">relay</span><span class="p">)</span><span class="w"> </span><span class="err">·</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="n">store</span>
+</code></pre></div>
+
+<p>Building blocks (provider-neutral):</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Block</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a</td>
+<td>One always-on VM, systemd-managed single process</td>
+<td>the app (single-writer)</td>
+</tr>
+<tr>
+<td>b</td>
+<td>Managed L7 HTTPS LB + managed auto-renew cert</td>
+<td>hands-off TLS, health check, stable hostname</td>
+</tr>
+<tr>
+<td>c</td>
+<td>DNS record → LB</td>
+<td>the study URL</td>
+</tr>
+<tr>
+<td>d</td>
+<td>Separate encrypted block volume for <code>$ELENCHUS_DATA</code></td>
+<td>data survives OS rebuilds</td>
+</tr>
+<tr>
+<td>e</td>
+<td>Scheduled block snapshots (managed lifecycle)</td>
+<td>fast full-volume restore</td>
+</tr>
+<tr>
+<td>f</td>
+<td>App <code>EXPORT DATABASE</code> archives → object store (versioned)</td>
+<td>logical, portable, engine-version-independent backup</td>
+</tr>
+<tr>
+<td>g</td>
+<td>Locked object-store location for per-study exports</td>
+<td>research data; pseudonym map stored separately</td>
+</tr>
+<tr>
+<td>h</td>
+<td>Secrets manager (API key, SMTP, admin/backup creds)</td>
+<td>no secrets on disk; fetched via VM identity</td>
+</tr>
+<tr>
+<td>i</td>
+<td>Email via institutional SMTP relay (preferred) or cloud email</td>
+<td>invites, magic links, alerts</td>
+</tr>
+<tr>
+<td>j</td>
+<td>Central logs + metrics + alarms; uptime check on <code>/healthz</code></td>
+<td>observability + paging</td>
+</tr>
+<tr>
+<td>k</td>
+<td>Keyless, audited shell (no inbound SSH)</td>
+<td>admin access</td>
+</tr>
+<tr>
+<td>l</td>
+<td>Least-privilege VM identity</td>
+<td>read its secrets, write its prefixes, ship telemetry — nothing else</td>
+</tr>
+<tr>
+<td>m</td>
+<td>Terraform + baked image / cloud-init</td>
+<td>reproducible infra + provisioning</td>
+</tr>
+</tbody>
+</table>
+<h2 id="non-obvious-decisions-so-nobody-optimizes-it-into-corruption">Non-obvious decisions (so nobody "optimizes" it into corruption)</h2>
+<ul>
+<li><strong>Single process — enforced, not incidental.</strong> The biggest failure mode
+  is a well-meaning move to "scale it out." Document it at the IaC level
+  (instance count hard-pinned to 1).</li>
+<li><strong>Managed auto-renew certs require a managed LB</strong> — you can't install
+  them on the VM directly. That's why the LB is in the design even for
+  one instance. Budget alternative: VM-terminated TLS with Let's Encrypt
+  (<code>OPERATIONS.md</code> Nginx+certbot path), trading the LB cost for manual
+  cert ops.</li>
+<li><strong>LB timeout ≥ 120 s.</strong> LLM turns run up to ~30 s; default 60 s LB
+  idle/backend timeouts will truncate them. Also set connection draining
+  / deregistration delay so in-flight turns + the WAL flush finish on the
+  graceful SIGTERM shutdown.</li>
+<li><strong>Forward-only migrations + single-writer ⇒ deploy = snapshot → update
+  → verify → (restore to roll back).</strong> No blue/green (can't run two
+  writers on one volume); deploy stops the old process and starts the new
+  one on the same instance+volume → brief downtime. Schedule deploys
+  outside session windows. Verify on <code>/healthz</code> (it returns
+  <code>schema_version</code>, <code>phase_b_enabled</code> — must be <code>false</code> — and
+  <code>llm_configured</code> — must be <code>true</code>).</li>
+<li><strong>EU region (GDPR).</strong> UvA = Netherlands; keep data in the EU, sign the
+  provider DPA, and keep the per-study <strong>pseudonym map out of the export
+  archive and out of any deposit-eligible bucket</strong> (the app already
+  writes it separately).</li>
+</ul>
+<h2 id="dns-domain">DNS &amp; domain</h2>
+<p>The study domain is <strong><code>elenchus.chat</code></strong>, registered via <strong>Route 53</strong>.
+Registrar/DNS are decoupled from compute — owning the domain on Route 53
+does <strong>not</strong> commit the app to AWS hosting; a Route 53 record can point
+at a VM on any substrate (including SURF).</p>
+<ul>
+<li><strong>Hosted zone:</strong> <code>elenchus.chat</code> in Route 53 (created with the
+  registration); manage all records there.</li>
+<li><strong>Hostname:</strong> decide apex (<code>elenchus.chat</code>) vs subdomain
+  (<code>app.</code>/<code>study.elenchus.chat</code>). A static-IP VM takes an A record at the
+  apex; if fronted by an ALB, use a Route 53 <strong>alias</strong> at the apex (apex
+  can't be a CNAME).</li>
+<li><strong>TLS by substrate:</strong></li>
+<li><em>AWS + ALB:</em> ACM cert, DNS-validated automatically via the Route 53
+    zone, auto-renewed — no manual cert ops.</li>
+<li><em>SURF / any plain VM:</em> <code>certbot</code> with the <strong><code>dns-route53</code></strong> plugin —
+    Let's Encrypt DNS-01 against the Route 53 zone (an IAM principal
+    scoped to that zone), unattended issue + renew, supports apex +
+    wildcard. Hands-off certs off-AWS using the zone you already own.</li>
+<li><strong>Email sender ≠ web domain:</strong> send participant mail from the UvA
+  <code>@uva.nl</code> SMTP relay (deliverability/trust) even though links point to
+  <code>elenchus.chat</code>; frame it in the invite so the mismatch doesn't read as
+  phishing.</li>
+<li><strong>Registration hygiene:</strong> auto-renew ON (a lapse takes the site down),
+  transfer-lock, and track which AWS account owns it (continuity; the DPO
+  will care if that account also hosts).</li>
+</ul>
+<h2 id="ops-machinery-managing-such-a-deployment">Ops machinery ("managing such a deployment")</h2>
+<ul>
+<li><strong>IaC — Terraform</strong> (one config, modules: <code>network</code>, <code>compute+volume</code>,
+  <code>lb+cert+dns</code>, <code>secrets</code>, <code>storage</code>, <code>observability</code>, <code>iam</code>). Pin
+  instance count = 1. Tear-down-able, reviewable.</li>
+<li><strong>Image &amp; provisioning</strong> — bake a golden image (Packer: OS + Python +
+  the package + the monitoring agent) so instance replacement is
+  deterministic; minimal cloud-init does mount-data-volume → fetch-secrets
+  → start service. Alternative: pure cloud-init from a stock image.</li>
+<li><strong>Deploy/update</strong> — release artifact (tagged build → object store or a
+  package registry) → <strong>snapshot</strong> → update + <code>systemctl restart</code> via the
+  session broker's run-command → <strong>verify <code>/healthz</code></strong> → roll back by
+  restore if needed. Migrations auto-apply at startup.</li>
+<li><strong>Backups — two layers + a drill.</strong></li>
+<li><em>Block snapshots</em> (managed schedule, e.g. every 6–24 h, 14-day
+    retention) — fast whole-volume restore.</li>
+<li><em>App <code>EXPORT DATABASE</code> archives</em> (<code>scripts/backup.py</code>, the existing
+    cron) synced to the object store — logical, portable across DuckDB
+    versions; this is the authoritative restore for engine upgrades.</li>
+<li><strong>Restore drill on a schedule</strong> — an untested backup is not a backup.
+    Periodically restore the latest archive into a throwaway instance and
+    run <code>elenchus audit</code> + <code>/healthz</code>.</li>
+<li>RPO ≈ snapshot/export interval (tunable; sessions are resumable, so a
+    few hours' loss is recoverable). RTO ≈ minutes (attach volume / launch
+    from snapshot + boot).</li>
+<li><strong>Monitoring/alerting</strong> — uptime check on <code>/healthz</code> (assert 200 +
+  <code>phase_b_enabled:false</code>, <code>llm_configured:true</code>); data-volume disk-usage<blockquote>
+<p>80 %; file-descriptor count (registry warns &lt; 256); instance status →
+  auto-recover; error-rate via a log metric filter on <code>ERROR</code> /
+  <code>LLMCallError</code> categories; <strong>cost budget</strong> alarm. Route the app's own
+  <code>ALERT_EMAIL_TO</code> alerts through the same email path so platform alerts
+  and infra alerts land together.</p>
+</blockquote>
+</li>
+<li><strong>Access</strong> — keyless session-broker shell only; <strong>no inbound SSH</strong>;
+  audit logging on; OS patching via the provider's patch manager.</li>
+<li><strong>DR / recovery runbook</strong> — instance failure → auto-recover (same
+  volume, same data) or launch a new instance + attach the existing data
+  volume + restore-if-needed; document the exact steps and the RTO/RPO.</li>
+<li><strong>Scaling trigger</strong> — vertical resize only. Migrate to Postgres (and
+  then a stateless multi-instance tier) when <em>any</em> of: need &gt;1 app
+  instance / HA SLA, multi-region, concurrent load beyond one VM, or the
+  platform graduates from pilot to standing shared service.</li>
+</ul>
+<h2 id="security-compliance">Security &amp; compliance</h2>
+<ul>
+<li>Encryption at rest (block volume + object store, provider KMS/CMEK) and
+  in transit (TLS to the LB and from app → SMTP/LLM/object store).</li>
+<li>Least-privilege VM identity; <strong>no static credentials</strong> anywhere.</li>
+<li>App port reachable only from the LB; admin only via the session broker;
+  egress allowed for LLM API + email + object store.</li>
+<li>Audit logging (CloudTrail / Cloud Audit Logs) on; consider VPC flow
+  logs.</li>
+<li><strong>GDPR:</strong> EU region + signed DPA; run a DPIA if UvA requires; document
+  retention + erasure; exports bucket access-restricted; pseudonym map
+  stored apart from the archive and excluded from any public deposit.</li>
+</ul>
+<h2 id="cost-rough-monthly-pilot-scale">Cost (rough monthly, pilot scale)</h2>
+<p>VM (small) + L7 LB + block volume (20–50 GB) + object store + DNS +
+logs/metrics + secrets ≈ <strong>~$50–80/mo</strong>, plus LLM spend (~$15–25 per full
+pilot run, tracked in-app via the usage table). The LB is the largest
+fixed line item; the Nginx+certbot budget path removes it.</p>
+<hr />
+<h2 id="hosting-at-uva-surf-the-likely-first-choice">Hosting at UvA (SURF) — the likely first choice</h2>
+<p>For a University of Amsterdam pilot, the national research-IT route is
+usually preferable to a personal hyperscaler account: NL/EU-resident,
+pre-vetted for sensitive research data, institutional login, and
+<em>subsidised</em> for Dutch researchers (a compute allocation, not a
+credit-card bill) — which makes the DPO/IRB conversation far easier.
+Lead with this; fall back to AWS/GCP only if SURF lacks something
+specific.</p>
+<p><strong>SURF</strong> (the Dutch national education/research ICT cooperative; UvA is a
+member) gives you VMs you fully control, so the single-instance design
+above applies almost unchanged — SURF is just the substrate. You trade
+the hyperscalers' <em>managed</em> TLS/secrets/monitoring for the on-VM
+equivalents <code>OPERATIONS.md</code> already documents, and gain residency,
+compliance, institutional login, and (likely) no direct bill.</p>
+<table>
+<thead>
+<tr>
+<th>Block</th>
+<th>SURF / UvA option</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM</td>
+<td><strong>SURF Research Cloud</strong> workspace (a VM; IaaS, choose OS+software; built for sensitive data) — or <strong>SURF HPC Cloud</strong> (self-managed, straightforwardly persistent)</td>
+</tr>
+<tr>
+<td>Data volume</td>
+<td>workspace/VM block storage; <strong>Research Drive</strong> for adjacent research data</td>
+</tr>
+<tr>
+<td>TLS / DNS</td>
+<td><strong>ICTS</strong> for the <code>*.uva.nl</code> subdomain + records; terminate TLS on the VM (Nginx + cert) — no managed-LB-with-auto-cert like the hyperscalers, so the <code>OPERATIONS.md</code> Nginx+certbot path is the natural fit</td>
+</tr>
+<tr>
+<td>Backups</td>
+<td>volume snapshots (per SURF) + the app <code>EXPORT DATABASE</code> archives → Research Drive / object storage; <strong>run the restore drill</strong></td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td>no hyperscaler-style secrets manager — root-owned <code>0640</code> env file on the VM (per <code>OPERATIONS.md</code>) or a self-hosted store</td>
+</tr>
+<tr>
+<td>Email</td>
+<td>UvA institutional <strong>SMTP relay</strong> (recommended regardless)</td>
+</tr>
+<tr>
+<td>Logs/metrics</td>
+<td>on-VM (journald + log rotation) + SURF monitoring where available; a simple external <code>/healthz</code> uptime check</td>
+</tr>
+<tr>
+<td>Identity/access</td>
+<td>institutional login (<strong>SURFconext</strong>); SSH per SURF's access model</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>NL / EU by default</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Authoritative gate.</strong> <em>Where participant data may be hosted</em> is decided
+by your faculty <strong>data steward</strong>, <strong>RDM Support</strong> (<code>rdm-support@uva.nl</code>),
+and the <strong>privacy officer (FG/DPO)</strong> — not by technical fit. Engage them
+first; they also set the DMP/DPIA requirements. Request the SURF
+allocation via your institution's access route / SURF <strong>Cloud Research
+Consultancy</strong>, and the <code>uva.nl</code> subdomain via <strong>ICTS</strong>.</p>
+<p><strong>Two things to confirm explicitly:</strong></p>
+<ul>
+<li><strong>Persistence.</strong> SURF Research Cloud workspaces carry a budget/"wallet"
+  and can be oriented to interactive / time-bounded use — confirm you can
+  run a <strong>24/7, long-lived</strong> workspace for the pilot's duration, or use
+  <strong>HPC Cloud</strong> (persistent by default). The single-writer constraint
+  holds either way.</li>
+<li><strong>LLM egress (a separate DPO item, independent of where the server
+  sits).</strong> Dialogue turns go to Anthropic's US API. In this study that
+  content is <em>domain reasoning</em>; participant PII (identities/emails)
+  stays in the platform DB and is not sent to the model — but the DPO
+  must still bless the cross-border data flow and the processing terms.
+  Often the longer pole than hosting.</li>
+</ul>
+<h2 id="aws-mapping">AWS mapping</h2>
+<table>
+<thead>
+<tr>
+<th>Block</th>
+<th>AWS service</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM</td>
+<td><strong>EC2</strong> t3.small/medium (or t4g/Graviton for cost)</td>
+<td>one instance, pinned</td>
+</tr>
+<tr>
+<td>Data volume</td>
+<td><strong>EBS gp3</strong>, separate, KMS-encrypted</td>
+<td>not the root volume</td>
+</tr>
+<tr>
+<td>Snapshots</td>
+<td><strong>Data Lifecycle Manager (DLM)</strong></td>
+<td>schedule + retention</td>
+</tr>
+<tr>
+<td>LB + cert</td>
+<td><strong>ALB + ACM</strong> (free auto-renew cert)</td>
+<td>idle timeout 120 s; target-group health check → <code>/healthz</code>; deregistration delay ~30 s</td>
+</tr>
+<tr>
+<td>DNS</td>
+<td><strong>Route 53</strong></td>
+<td>alias → ALB</td>
+</tr>
+<tr>
+<td>Object store</td>
+<td><strong>S3</strong></td>
+<td>versioning; lifecycle → IA/Glacier; Block Public Access; separate bucket/prefix for exports</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><strong>Secrets Manager</strong> (or <strong>SSM Parameter Store</strong> SecureString, cheaper)</td>
+<td>IAM-scoped</td>
+</tr>
+<tr>
+<td>Email</td>
+<td><strong>SES</strong> (verify domain + DKIM, exit sandbox) — or institutional SMTP</td>
+<td>prefer UvA relay</td>
+</tr>
+<tr>
+<td>Logs/metrics</td>
+<td><strong>CloudWatch Agent + Logs + Alarms</strong>; <strong>Synthetics canary</strong> or Route 53 health check on <code>/healthz</code>; <strong>EC2 auto-recovery</strong> alarm</td>
+<td></td>
+</tr>
+<tr>
+<td>Shell</td>
+<td><strong>SSM Session Manager</strong> (+ Patch Manager)</td>
+<td>no SSH port</td>
+</tr>
+<tr>
+<td>Identity</td>
+<td><strong>IAM instance role</strong></td>
+<td>read its secrets, write its S3 prefixes, CloudWatch, SSM</td>
+</tr>
+<tr>
+<td>IaC / image</td>
+<td><strong>Terraform</strong> AWS provider; <strong>Packer</strong> AMI</td>
+<td></td>
+</tr>
+<tr>
+<td>Region</td>
+<td><strong>eu-central-1</strong> (Frankfurt) / eu-west-1 / eu-north-1</td>
+<td>no NL region; Frankfurt is closest</td>
+</tr>
+</tbody>
+</table>
+<p>AWS gotchas: ACM public certs attach only to ALB/CloudFront, not EC2 —
+that's the reason for the ALB. SSM + S3 work via a free S3 <strong>gateway VPC
+endpoint</strong>; if you put the instance in a private subnet you need a <strong>NAT
+gateway</strong> (~$32/mo) or interface endpoints for SSM/SES — for a pilot, a
+public subnet with a tight security group (app port from the ALB SG only,
+no SSH) + SSM is the cost-pragmatic posture. AWS has no live migration —
+rely on auto-recovery for host failure and heed scheduled-retirement
+events.</p>
+<h2 id="google-cloud-mapping">Google Cloud mapping</h2>
+<table>
+<thead>
+<tr>
+<th>Block</th>
+<th>GCP service</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM</td>
+<td><strong>Compute Engine</strong> e2-small/medium</td>
+<td>sustained-use discount auto-applies; one instance</td>
+</tr>
+<tr>
+<td>Data volume</td>
+<td><strong>Persistent Disk</strong> (balanced/SSD), separate, CMEK-encrypted</td>
+<td></td>
+</tr>
+<tr>
+<td>Snapshots</td>
+<td><strong>PD snapshot schedule</strong> (resource policy)</td>
+<td></td>
+</tr>
+<tr>
+<td>LB + cert</td>
+<td><strong>External HTTPS Load Balancer + Google-managed cert</strong></td>
+<td>backend timeout ≥ 120 s; health check → <code>/healthz</code></td>
+</tr>
+<tr>
+<td>DNS</td>
+<td><strong>Cloud DNS</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Object store</td>
+<td><strong>Cloud Storage</strong></td>
+<td>versioning; lifecycle → Nearline/Coldline; uniform bucket-level access + public-access prevention; separate bucket for exports</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><strong>Secret Manager</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Email</td>
+<td><strong>no native service</strong> → institutional SMTP relay (preferred) or third-party (SendGrid/Mailgun)</td>
+<td></td>
+</tr>
+<tr>
+<td>Logs/metrics</td>
+<td><strong>Ops Agent + Cloud Logging/Monitoring</strong>; <strong>uptime checks</strong> → alerting policy</td>
+<td></td>
+</tr>
+<tr>
+<td>Shell</td>
+<td><strong>IAP TCP tunnel for SSH + OS Login</strong> (IAM-tied); <strong>VM Manager</strong> for patching</td>
+<td>no public IP / open SSH</td>
+</tr>
+<tr>
+<td>Identity</td>
+<td><strong>service account</strong> attached to the VM (least-priv)</td>
+<td></td>
+</tr>
+<tr>
+<td>IaC / image</td>
+<td><strong>Terraform</strong> Google provider; <strong>Packer</strong> image / instance template</td>
+<td></td>
+</tr>
+<tr>
+<td>Region</td>
+<td><strong>europe-west4 (Netherlands)</strong> / europe-west1</td>
+<td>in-NL is a mild data-residency plus for UvA</td>
+</tr>
+</tbody>
+</table>
+<p>GCP notes: the managed cert needs the HTTPS LB (same reason as ACM/ALB).
+<strong>Live migration</strong> transparently moves the VM during host maintenance —
+a genuine availability plus for a single instance (planned host events
+don't cause downtime); failures still need auto-restart. If you use a
+managed instance group of size 1 for self-healing, note a read-write PD
+attaches to only one VM (which <em>helps</em> enforce single-writer), but the
+detach/reattach on replacement is fiddly — prefer a single instance with
+auto-restart + live migration. No native transactional email is the only
+real gap; the institutional SMTP relay closes it.</p>
+<h2 id="proof-of-concept-first-launch-gated-on-dpo-sign-off">Proof-of-concept first; launch gated on DPO sign-off</h2>
+<p>Plan of record: stand up a <strong>synthetic-data-only PoC on AWS</strong> to get the
+mechanics right, and <strong>do not launch with participants</strong> until the SURF
+discussion with the faculty data steward / privacy officer (FG-DPO) is
+settled. The domain is already on Route 53, so AWS is the fast path to a
+working PoC.</p>
+<ul>
+<li><strong>GDPR scope.</strong> A synthetic-only PoC processes <strong>no personal data</strong> —
+  drive it with <code>elenchus sim</code>, <code>scripts/run_dialectic.py</code>, and seeded
+  demo accounts, never real participants — so standing it up needs no DPO
+  gate. The data-steward / DPO gate applies to the <strong>production launch
+  with real participants</strong>, wherever that lands (likely SURF).</li>
+<li><strong>What transfers.</strong> The <strong>portable core</strong> carries to any substrate:
+  provision a VM, attach + mount an encrypted data volume, run the one
+  process under systemd, TLS, DNS, the two-layer backup + a restore
+  drill, <code>/healthz</code> monitoring, deploy/restart, teardown. The
+  <strong>AWS-managed periphery</strong> (ALB/ACM, Secrets Manager, DLM, SSM,
+  CloudWatch) does <em>not</em> transfer 1:1 — SURF uses the on-VM equivalents
+  in <code>OPERATIONS.md</code>.</li>
+<li><strong>Maximise transfer.</strong> Since production is likely SURF (on-VM
+  Nginx+certbot), the highest-value PoC exercises the <strong>substrate-portable
+  path</strong>: single EC2 + Nginx + <code>certbot dns-route53</code> + <code>EXPORT</code>→S3 +
+  <code>/healthz</code>. Add the ALB+ACM+Secrets-Manager managed variant only to
+  evaluate the AWS-native option on its merits.</li>
+<li><strong>Cheap + disposable.</strong> Everything in Terraform, <code>terraform destroy</code>-
+  able; tear it down between sessions.</li>
+</ul>
+<p><strong>Simplest PoC (recommended start):</strong> <a href="https://github.com/bradleypallen/elenchus-server/blob/main/deploy/manual-poc.md"><code>deploy/manual-poc.md</code></a>
+— one box, by hand (Lightsail/EC2 + <code>pip install</code> + Nginx + <code>certbot
+--nginx</code>), ~30 min, no Terraform, no IAM/SSM/S3/alarms. Proves
+HTTPS-on-a-real-domain and the on-box steps transfer directly to a SURF
+VM. For a synthetic, throwaway, pre-SURF PoC this is all you need.</p>
+<p>A fuller, reproducible Terraform scaffold lives in
+<a href="https://github.com/bradleypallen/elenchus-server/tree/main/deploy/aws-poc"><code>deploy/aws-poc/</code></a> (single EC2 + encrypted EBS +
+<code>certbot dns-route53</code> + <code>EXPORT</code>→S3 + SSM + auto-recovery) — reach for it
+<em>later</em>, when the substrate is settled and you want repeatable infra, not
+for the first "does it work" PoC.</p>
+<h2 id="implementation-roadmap">Implementation roadmap</h2>
+<ul>
+<li><strong>P0 — decisions:</strong> provider (per institutional DPA/billing/credits),
+  EU region (NL vs Frankfurt), instance size, study hostname, LB vs
+  Nginx+certbot, email (UvA SMTP vs cloud). Open the account/Org + DPA.</li>
+<li><strong>P1 — core infra (Terraform):</strong> network, VM, encrypted data volume,
+  VM identity, secrets; cloud-init/Packer to install + mount + start;
+  <code>/healthz</code> answering over HTTP on the instance.</li>
+<li><strong>P2 — TLS/DNS:</strong> LB + managed cert + DNS; <code>SESSION_COOKIE_SECURE=true</code>;
+  verify HTTPS end-to-end and <code>X-Forwarded-Proto</code>; LB timeout 120 s.</li>
+<li><strong>P3 — data safety:</strong> snapshot schedule + <code>backup.py</code> EXPORT→object-store
+  sync; admin bootstrap (<code>elenchus admin create</code>); <code>migrate-legacy</code> if
+  importing; <strong>run a restore drill</strong>.</li>
+<li><strong>P4 — observability:</strong> agent + log shipping + alarms + <code>/healthz</code>
+  uptime check + cost budget; route <code>ALERT_EMAIL_TO</code> through the email
+  path.</li>
+<li><strong>P5 — hardening + go-live gate:</strong> tight SG/firewall, session-broker
+  only, audit logs, encryption verified, GDPR/DPIA review; then run the
+  <code>OPERATIONS.md</code> <strong>pre-pilot checklist</strong> (<code>elenchus sim</code>,
+  <code>RUN_UI_E2E=1 pytest tests/e2e/</code>, healthz flags, invite-email smoke,
+  alert smoke, backup verified, TLS valid).</li>
+<li><strong>P6 — go-live:</strong> cut over DNS, monitor first sessions; deploy/restore/
+  recover runbooks in hand.</li>
+</ul>
+<h2 id="open-decisions">Open decisions</h2>
+<ul>
+<li>Provider: <strong>SURF first</strong> for a UvA pilot (residency + subsidy + DPO-
+  friendliness); AWS/GCP only as a fallback. The data steward / DPO and
+  any existing institutional agreement are the real deciders.</li>
+<li>Region: in-NL (GCP europe-west4) vs Frankfurt (AWS eu-central-1).</li>
+<li>TLS: managed LB+cert (hands-off, ~LB cost) vs Nginx+certbot (cheaper,
+  manual renew).</li>
+<li>Email: UvA SMTP relay (recommended for a university study) vs SES/3rd-party.</li>
+<li>Network posture: public subnet + tight SG + session broker (pilot-cheap)
+  vs private subnet + NAT/endpoints (stricter).</li>
+<li>Self-healing: single-instance auto-recovery (recommended) vs size-1
+  group.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 University of Amsterdam
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

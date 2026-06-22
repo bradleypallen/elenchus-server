@@ -1,0 +1,1374 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/OPERATIONS/">
+      
+      
+        <link rel="prev" href="../deployment/">
+      
+      
+        <link rel="next" href="../cloud-deployment/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Operations Runbook - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#operations-runbook" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Operations Runbook
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../administration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#email-via-amazon-ses-the-aws-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email via Amazon SES (the AWS path)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bootstrap-the-first-admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Bootstrap the first admin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-systemd-unit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. systemd unit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-nginx-tls-termination-reverse-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Nginx (TLS termination + reverse proxy)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-health-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Health monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-per-study-data-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Per-study data export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-log-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Log rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-operational-checklist-sloan-pilot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Operational checklist (Sloan pilot)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ards-study-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARDS Study (example design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eeq-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-api-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session API Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#email-via-amazon-ses-the-aws-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email via Amazon SES (the AWS path)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bootstrap-the-first-admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Bootstrap the first admin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-systemd-unit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. systemd unit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-nginx-tls-termination-reverse-proxy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Nginx (TLS termination + reverse proxy)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-health-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Health monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Backups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-per-study-data-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Per-study data export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-log-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Log rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-operational-checklist-sloan-pilot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Operational checklist (Sloan pilot)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="operations-runbook">Operations Runbook</h1>
+<p>This document covers deploying and operating an Elenchus server in
+production — the configuration the Sloan study pilot runs on. It
+assumes a single small Linux VM (2 vCPU / 4 GB RAM is ample for ≤24
+participants) with a public hostname and TLS.</p>
+<blockquote>
+<p>For a <strong>managed cloud deployment</strong> (AWS or Google Cloud) that wraps
+this on-instance core in managed TLS, backups, secrets, monitoring,
+and IaC — see <a href="../cloud-deployment/"><code>cloud-deployment.md</code></a>. It reuses
+the systemd unit, <code>backup.py</code>, <code>/healthz</code>, and the pre-pilot checklist
+below.</p>
+<p><strong>DuckDB is single-writer-per-file.</strong> Elenchus runs as <strong>one</strong>
+server process. Do not run multiple workers (<code>uvicorn --workers N</code>)
+or multiple containers against the same data directory — they will
+corrupt each other. Vertical scale only; horizontal scale means
+migrating the platform DB to Postgres (the <code>db/registry.py</code>
+boundary is shaped for that swap).</p>
+</blockquote>
+<h2 id="1-install">1. Install</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># As a dedicated unprivileged user, e.g. `elenchus`.</span>
+sudo<span class="w"> </span>useradd<span class="w"> </span>--system<span class="w"> </span>--create-home<span class="w"> </span>--shell<span class="w"> </span>/usr/sbin/nologin<span class="w"> </span>elenchus
+sudo<span class="w"> </span>-u<span class="w"> </span>elenchus<span class="w"> </span>-H<span class="w"> </span>bash
+<span class="nb">cd</span><span class="w"> </span>~
+python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>venv
+./venv/bin/pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+./venv/bin/pip<span class="w"> </span>install<span class="w"> </span>elenchus<span class="w">    </span><span class="c1"># or: pip install -e . from a checkout</span>
+</code></pre></div>
+
+<p>The data directory (<code>$ELENCHUS_DATA</code>, default <code>./dialectics</code>) holds
+everything stateful: <code>platform.duckdb</code>, <code>bases/{actor_id}/*.duckdb</code>,
+<code>backups/</code>, and <code>exports/</code>. Put it on persistent, backed-up storage.</p>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>-u<span class="w"> </span>elenchus<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/var/lib/elenchus
+</code></pre></div>
+
+<h2 id="2-environment">2. Environment</h2>
+<p>Create <code>/etc/elenchus/elenchus.env</code> (root-owned, mode 0640, group
+<code>elenchus</code>) — never commit secrets to the repo:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># ── Required ──</span>
+<span class="na">ELENCHUS_API_KEY</span><span class="o">=</span><span class="s">sk-ant-...</span><span class="w">          </span><span class="c1"># or ANTHROPIC_API_KEY</span>
+<span class="na">ELENCHUS_DATA</span><span class="o">=</span><span class="s">/var/lib/elenchus</span>
+<span class="na">PORT</span><span class="o">=</span><span class="s">8741</span>
+
+<span class="c1"># ── Recommended in production ──</span>
+<span class="na">ELENCHUS_MODEL</span><span class="o">=</span><span class="s">claude-opus-4-6</span>
+<span class="na">SESSION_COOKIE_SECURE</span><span class="o">=</span><span class="s">true</span><span class="w">           </span><span class="c1"># required behind HTTPS</span>
+<span class="na">BCRYPT_ROUNDS</span><span class="o">=</span><span class="s">12</span><span class="w">                     </span><span class="c1"># production default; never lower</span>
+<span class="c1"># Master key for encrypting the admin-set LLM API key at rest. Set once</span>
+<span class="c1"># (e.g. `openssl rand -base64 36`); lets an admin set/rotate the key from</span>
+<span class="c1"># the UI and have it survive restarts. Keep it stable — changing it makes</span>
+<span class="c1"># the stored key undecryptable.</span>
+<span class="na">ELENCHUS_SECRET_KEY</span><span class="o">=</span><span class="s">...</span>
+
+<span class="c1"># ── Sloan study: leave Phase B OFF ──</span>
+<span class="c1"># (omit ELENCHUS_ENABLE_PHASE_B entirely — default is off)</span>
+
+<span class="c1"># ── Alerting (Phase C) ──</span>
+<span class="na">ALERT_EMAIL_TO</span><span class="o">=</span><span class="s">ops@your-institution.edu</span>
+<span class="na">ALERT_EMAIL_MIN_SEVERITY</span><span class="o">=</span><span class="s">high</span>
+<span class="na">EMAIL_BACKEND</span><span class="o">=</span><span class="s">smtp</span>
+<span class="na">SMTP_HOST</span><span class="o">=</span><span class="s">smtp.your-institution.edu</span>
+<span class="na">SMTP_PORT</span><span class="o">=</span><span class="s">587</span>
+<span class="na">SMTP_USER</span><span class="o">=</span><span class="s">elenchus@your-institution.edu</span>
+<span class="na">SMTP_PASSWORD</span><span class="o">=</span><span class="s">...</span>
+<span class="na">SMTP_FROM</span><span class="o">=</span><span class="s">elenchus@your-institution.edu</span>
+
+<span class="c1"># ── Cost tracking (optional override of default rates) ──</span>
+<span class="c1"># ELENCHUS_PRICING_JSON={&quot;claude-opus-4-6&quot;:{&quot;input_per_1m&quot;:15,&quot;output_per_1m&quot;:75}}</span>
+
+<span class="c1"># ── Backup cron auth ──</span>
+<span class="na">ELENCHUS_BACKUP_EMAIL</span><span class="o">=</span><span class="s">admin@local</span>
+<span class="na">ELENCHUS_BACKUP_PASSWORD</span><span class="o">=</span><span class="s">...</span>
+<span class="na">ELENCHUS_URL</span><span class="o">=</span><span class="s">http://localhost:8741</span>
+</code></pre></div>
+
+<h3 id="email-via-amazon-ses-the-aws-path">Email via Amazon SES (the AWS path)</h3>
+<p><code>EMAIL_BACKEND=smtp</code> works with any relay; on AWS, SES is the natural one.
+Setup (region must match <code>SMTP_HOST</code>):</p>
+<ol>
+<li><strong>Verify the sending domain.</strong> <code>aws sesv2 create-email-identity
+   --email-identity &lt;domain&gt;</code> (Easy DKIM), then add the three returned
+   <code>&lt;token&gt;._domainkey.&lt;domain&gt; CNAME &lt;token&gt;.dkim.amazonses.com</code> records
+   (plus a <code>_dmarc</code> TXT) to DNS. SES flips to verified within minutes.</li>
+<li><strong>Create SMTP credentials</strong> in the SES console (<em>SMTP settings → Create
+   SMTP credentials</em>). This makes an IAM user behind the scenes and shows
+   the SMTP username/password <strong>once</strong> — put them in <code>SMTP_USER</code> /
+   <code>SMTP_PASSWORD</code>.</li>
+<li><strong>Env:</strong> <code>SMTP_HOST=email-smtp.&lt;region&gt;.amazonaws.com</code>, <code>SMTP_PORT=587</code>,
+   <code>SMTP_USE_TLS=true</code>, <code>SMTP_FROM=no-reply@&lt;domain&gt;</code> (any address at the
+   verified domain).</li>
+<li><strong>Sandbox:</strong> new SES accounts can only send to <em>verified</em> recipient
+   addresses and are capped (~200/day). Verify your test recipients, or
+   request production access (console, ~24 h) before emailing real
+   participants.</li>
+</ol>
+<h2 id="3-bootstrap-the-first-admin">3. Bootstrap the first admin</h2>
+<p>One-time, before first launch:</p>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>-u<span class="w"> </span>elenchus<span class="w"> </span>env<span class="w"> </span><span class="k">$(</span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s1">&#39;^#&#39;</span><span class="w"> </span>/etc/elenchus/elenchus.env<span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>/home/elenchus/venv/bin/elenchus<span class="w"> </span>admin<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--email<span class="w"> </span>admin@local<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;Study Admin&quot;</span>
+</code></pre></div>
+
+<p>(Or set <code>ELENCHUS_ADMIN_PASSWORD</code> in the env file for a non-interactive
+create.) Migrating from a pre-0.2 single-user install? Run
+<code>elenchus migrate-legacy --create-admin</code> once.</p>
+<h2 id="4-systemd-unit">4. systemd unit</h2>
+<p><code>/etc/systemd/system/elenchus.service</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">[Unit]</span>
+<span class="na">Description</span><span class="o">=</span><span class="s">Elenchus dialectical knowledge base server</span>
+<span class="na">After</span><span class="o">=</span><span class="s">network-online.target</span>
+<span class="na">Wants</span><span class="o">=</span><span class="s">network-online.target</span>
+
+<span class="k">[Service]</span>
+<span class="na">Type</span><span class="o">=</span><span class="s">simple</span>
+<span class="na">User</span><span class="o">=</span><span class="s">elenchus</span>
+<span class="na">Group</span><span class="o">=</span><span class="s">elenchus</span>
+<span class="na">EnvironmentFile</span><span class="o">=</span><span class="s">/etc/elenchus/elenchus.env</span>
+<span class="na">ExecStart</span><span class="o">=</span><span class="s">/home/elenchus/venv/bin/elenchus</span>
+<span class="na">Restart</span><span class="o">=</span><span class="s">on-failure</span>
+<span class="na">RestartSec</span><span class="o">=</span><span class="s">5</span>
+
+<span class="c1"># Graceful shutdown: the FastAPI lifespan handler closes every DuckDB</span>
+<span class="c1"># connection (flushing WALs) on SIGTERM. Give it room.</span>
+<span class="na">TimeoutStopSec</span><span class="o">=</span><span class="s">30</span>
+<span class="na">KillSignal</span><span class="o">=</span><span class="s">SIGTERM</span>
+
+<span class="c1"># Raise the file-descriptor limit — each open base costs ≥1 fd; the</span>
+<span class="c1"># registry warns below 256.</span>
+<span class="na">LimitNOFILE</span><span class="o">=</span><span class="s">4096</span>
+
+<span class="c1"># Hardening.</span>
+<span class="na">NoNewPrivileges</span><span class="o">=</span><span class="s">true</span>
+<span class="na">ProtectSystem</span><span class="o">=</span><span class="s">strict</span>
+<span class="na">ProtectHome</span><span class="o">=</span><span class="s">true</span>
+<span class="na">ReadWritePaths</span><span class="o">=</span><span class="s">/var/lib/elenchus</span>
+<span class="na">PrivateTmp</span><span class="o">=</span><span class="s">true</span>
+
+<span class="k">[Install]</span>
+<span class="na">WantedBy</span><span class="o">=</span><span class="s">multi-user.target</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>systemctl<span class="w"> </span>daemon-reload
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>elenchus
+sudo<span class="w"> </span>systemctl<span class="w"> </span>status<span class="w"> </span>elenchus
+journalctl<span class="w"> </span>-u<span class="w"> </span>elenchus<span class="w"> </span>-f<span class="w">         </span><span class="c1"># live logs</span>
+</code></pre></div>
+
+<h2 id="5-nginx-tls-termination-reverse-proxy">5. Nginx (TLS termination + reverse proxy)</h2>
+<p>Elenchus serves plain HTTP; terminate TLS at Nginx. With
+<code>SESSION_COOKIE_SECURE=true</code>, cookies are only sent over HTTPS, so the
+proxy <strong>must</strong> set <code>X-Forwarded-Proto</code>.</p>
+<p><code>/etc/nginx/sites-available/elenchus</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">server</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">443</span><span class="w"> </span><span class="s">ssl</span><span class="w"> </span><span class="s">http2</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">elenchus.your-institution.edu</span><span class="p">;</span>
+
+<span class="w">    </span><span class="kn">ssl_certificate</span><span class="w">     </span><span class="s">/etc/letsencrypt/live/elenchus.your-institution.edu/fullchain.pem</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">ssl_certificate_key</span><span class="w"> </span><span class="s">/etc/letsencrypt/live/elenchus.your-institution.edu/privkey.pem</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1"># LLM turns can take 30 s; don&#39;t let the proxy time them out.</span>
+<span class="w">    </span><span class="kn">proxy_read_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">client_max_body_size</span><span class="w"> </span><span class="mi">5m</span><span class="p">;</span>
+
+<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://127.0.0.1:8741</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w">              </span><span class="nv">$host</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Real-IP</span><span class="w">         </span><span class="nv">$remote_addr</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-For</span><span class="w">   </span><span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-Proto</span><span class="w"> </span><span class="nv">$scheme</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">server</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">80</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">elenchus.your-institution.edu</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">return</span><span class="w"> </span><span class="mi">301</span><span class="w"> </span><span class="s">https://</span><span class="nv">$host$request_uri</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>ln<span class="w"> </span>-s<span class="w"> </span>/etc/nginx/sites-available/elenchus<span class="w"> </span>/etc/nginx/sites-enabled/
+sudo<span class="w"> </span>nginx<span class="w"> </span>-t<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>reload<span class="w"> </span>nginx
+<span class="c1"># TLS cert (one-time): sudo certbot --nginx -d elenchus.your-institution.edu</span>
+</code></pre></div>
+
+<h2 id="6-health-monitoring">6. Health monitoring</h2>
+<p><code>GET /healthz</code> is unauthenticated and cheap (one platform-DB read; no
+per-base files touched). It returns <code>200 {"status":"ok",...}</code> when
+healthy and <code>503 {"status":"degraded",...}</code> when the platform DB is
+unreachable or the data dir isn't writable. Point your uptime monitor
+at it:</p>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-sf<span class="w"> </span>https://elenchus.your-institution.edu/healthz<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq
+<span class="c1"># {&quot;status&quot;:&quot;ok&quot;,&quot;schema_version&quot;:7,&quot;phase_b_enabled&quot;:false,</span>
+<span class="c1">#  &quot;llm_configured&quot;:true,&quot;checks&quot;:{&quot;platform_db&quot;:&quot;ok&quot;,&quot;data_dir&quot;:&quot;ok&quot;}}</span>
+</code></pre></div>
+
+<p>The response also surfaces two config sanity flags worth alerting on:
+<code>phase_b_enabled</code> (must be <code>false</code> for the Sloan study) and
+<code>llm_configured</code> (must be <code>true</code>, or every dialogue turn will fail).</p>
+<h2 id="7-backups">7. Backups</h2>
+<p><code>scripts/backup.py</code> calls <code>POST /api/admin/backup</code> over HTTP, so the
+backup runs <em>inside</em> the server process under DuckDB's locks (a
+parallel process opening the files would conflict). Daily cron:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># /etc/cron.d/elenchus-backup  —  03:00 daily, keep 14 archives</span>
+<span class="mi">0</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">elenchus</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">elenchus</span><span class="o">/</span><span class="n">elenchus</span><span class="o">.</span><span class="n">env</span><span class="p">;</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">elenchus</span><span class="o">/</span><span class="n">venv</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">python</span><span class="w"> </span><span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">elenchus</span><span class="o">/</span><span class="n">scripts</span><span class="o">/</span><span class="n">backup</span><span class="o">.</span><span class="n">py</span><span class="w"> </span><span class="o">--</span><span class="n">keep</span><span class="w"> </span><span class="mi">14</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">elenchus</span><span class="o">/</span><span class="n">backup</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span>
+</code></pre></div>
+
+<p>Archives land in <code>$ELENCHUS_DATA/backups/elenchus-*.tar.gz</code> (DuckDB
+<code>EXPORT DATABASE</code> dumps — restorable with <code>IMPORT DATABASE</code>). Copy
+them off-box (object storage) for durability; the cron only handles
+local retention.</p>
+<p><strong>Restore</strong> (manual, server stopped): extract an archive and
+<code>IMPORT DATABASE 'path/'</code> into a fresh DuckDB file per the export
+layout. Restoring is the rollback path — migrations are forward-only.</p>
+<h2 id="8-per-study-data-export">8. Per-study data export</h2>
+<p>At the end of a study, a researcher runs the export from the
+dashboard (Study tab → EXPORT) or via the API:</p>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-sf<span class="w"> </span>-b<span class="w"> </span>cookies.txt<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>https://elenchus.your-institution.edu/api/admin/study/PILOT/export
+</code></pre></div>
+
+<p>This writes <code>$ELENCHUS_DATA/exports/study-PILOT-*.tar.gz</code> (the
+analysis-ready archive with pseudonymized IDs) plus a
+<code>*.pseudonyms.json</code> mapping file <strong>next to</strong> the archive. The mapping
+file links opaque IDs back to real participants — keep it with your
+participant-tracking records and <strong>exclude it from any public
+deposit</strong> (Zenodo, OSF). The tar itself carries no emails or names.</p>
+<h2 id="9-log-rotation">9. Log rotation</h2>
+<p>systemd-journald already rotates <code>journalctl</code> output. The cron-side
+backup log needs its own rotation — <code>/etc/logrotate.d/elenchus</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">elenchus</span><span class="o">/*.</span><span class="n">log</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">weekly</span>
+<span class="w">    </span><span class="n">rotate</span><span class="w"> </span><span class="mi">12</span>
+<span class="w">    </span><span class="n">compress</span>
+<span class="w">    </span><span class="n">missingok</span>
+<span class="w">    </span><span class="n">notifempty</span>
+<span class="w">    </span><span class="n">create</span><span class="w"> </span><span class="mi">0640</span><span class="w"> </span><span class="n">elenchus</span><span class="w"> </span><span class="n">elenchus</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/var/log/elenchus<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>chown<span class="w"> </span>elenchus:elenchus<span class="w"> </span>/var/log/elenchus
+</code></pre></div>
+
+<h2 id="10-operational-checklist-sloan-pilot">10. Operational checklist (Sloan pilot)</h2>
+<p>Before the first participant session:</p>
+<ul>
+<li>[ ] <code>elenchus sim</code> (scripted) passes — the full study flow runs green
+      end-to-end through every role, <strong>including the access/auth probe
+      phase</strong> (tenant isolation, privilege gating, single-use tokens,
+      session revocation, judge-view blinding). Then <code>elenchus sim
+      --driver llm</code> against the production model as a dress rehearsal:
+      confirm real participants/judges complete, check the cost + p95
+      latency the report prints, and sanity-check that judge
+      condition-guess accuracy is near chance (the blinding holds).</li>
+<li>[ ] <code>RUN_UI_E2E=1 pytest tests/e2e/</code> passes — the real frontend
+      renders and routes in a browser (login, signup-from-invite,
+      participant study link, blinded judge view, graceful auth errors).
+      Requires <code>pip install -e ".[e2e]"</code> + <code>python -m playwright install
+      chromium</code>. See <code>tests/e2e/README.md</code>.</li>
+<li>[ ] <code>GET /healthz</code> returns 200 with <code>llm_configured:true</code> and
+      <code>phase_b_enabled:false</code>.</li>
+<li>[ ] Admin can log in; a test participant token consumes cleanly and
+      walks briefing → tutorial → active.</li>
+<li>[ ] <code>EMAIL_BACKEND=smtp</code> and a test invite email actually arrives
+      (the alerting + invite paths share the SMTP backend).</li>
+<li>[ ] <code>ALERT_EMAIL_TO</code> set; trigger a simulated failure (e.g. revoke
+      the API key for one turn) and confirm an alert email lands.</li>
+<li>[ ] Backup cron has run once and produced a readable archive.</li>
+<li>[ ] TLS valid; <code>SESSION_COOKIE_SECURE=true</code>; cookies flow.</li>
+<li>[ ] EEQ questionnaire wording reviewed and signed off (the eight
+      items in <code>questionnaires.py</code> ship as a draft). Review packet with
+      per-item construct/concern analysis + a decision sheet:
+      <a href="../eeq-review/"><code>docs/eeq-review.md</code></a>. Any reword → bump
+      <code>INSTRUMENT_VERSION</code>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 University of Amsterdam
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
