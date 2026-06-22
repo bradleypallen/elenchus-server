@@ -25,8 +25,38 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def _salvage_response_field(text: str) -> str | None:
+    """Best-effort extraction of the `response` prose when the structured
+    parse dropped it.
+
+    This handles the case where json-repair recovered `new_tensions` from a
+    malformed envelope but lost the trailing `response` string (the
+    malformation sits *before* `response`, so the repair desyncs and returns
+    an empty response). `response` is the protocol's last field, so we take
+    everything from the key to the closing `"}`. Returns None if there is no
+    `response` key or it's empty.
+    """
+    m = re.search(r'"response"\s*:\s*"', text)
+    if not m:
+        return None
+    rest = text[m.end() :]
+    end = re.search(r'"\s*\}\s*$', rest)  # prefer the proper "} terminator
+    if end:
+        body = rest[: end.start()]
+    else:
+        cut = rest.rfind('"')
+        body = rest[:cut] if cut > 0 else rest
+    # Decode the escapes the model actually emits; leave other chars
+    # (em-dashes, accented letters) untouched.
+    body = (
+        body.replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+    ).strip()
+    return body or None
 
 
 def parse_llm_response(text: str) -> dict | None:
@@ -113,6 +143,14 @@ def parse_llm_response(text: str) -> dict | None:
         if isinstance(repaired, dict) and any(
             k in repaired for k in ("response", "new_tensions", "speech_acts")
         ):
+            # json-repair tends to drop the trailing `response` when the
+            # malformation is inside an earlier field (e.g. new_tensions).
+            # Salvage the prose directly so the live turn still shows a reply.
+            resp = repaired.get("response")
+            if not (isinstance(resp, str) and resp.strip()):
+                salvaged = _salvage_response_field(clean[start:])
+                if salvaged:
+                    repaired["response"] = salvaged
             logger.warning("Recovered opponent payload via json-repair (len=%d)", len(text))
             return repaired
     except Exception:

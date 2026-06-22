@@ -79,6 +79,27 @@ class TestParseLlmResponse:
         assert len(parsed["new_tensions"]) == 1
         assert parsed["new_tensions"][0]["gamma"] == ["P1"]
 
+    def test_malformed_tension_keeps_response_prose(self):
+        # The vanishing-bubble bug: an unescaped " inside new_tensions makes
+        # json-repair recover the tension but drop the trailing `response`,
+        # so the live turn showed no opponent bubble (only visible on
+        # reload). The response prose must still come through.
+        text = (
+            '{"speech_acts": [], '
+            '"new_tensions": [{"gamma": ["P1"], "delta": ["it is "really" so"], "reason": "r"}], '
+            '"response": "Here is my actual reply, with a quoted \'term\' inside."}'
+        )
+        parsed = parse_llm_response(text)
+        assert parsed is not None
+        assert len(parsed["new_tensions"]) == 1
+        assert "actual reply" in parsed["response"]
+
+    def test_salvage_response_field_recovers_trailing_prose(self):
+        from elenchus.response_parsing import _salvage_response_field
+
+        text = '{"new_tensions": [broken, "response": "Line one.\\n\\nLine two."}'
+        assert _salvage_response_field(text) == "Line one.\n\nLine two."
+
 
 class TestExtractResponseText:
     def test_returns_response_field(self):

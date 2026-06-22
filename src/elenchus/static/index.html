@@ -1107,9 +1107,18 @@ function App() {
         method: 'POST', body: JSON.stringify({ message: msg })
       });
       setState(res.state);
-      if (res.response) {
+      // Always surface the opponent's turn. Normally that's its `response`
+      // prose; if the model returned only tensions/speech-acts with no
+      // prose, show a brief placeholder rather than nothing (the missing
+      // bubble was otherwise only visible after a reload).
+      const opp = res.response
+        ? res.response
+        : (res.new_tensions?.length
+            ? '(Proposed a new tension — see the Tensions pane.)'
+            : (res.speech_acts?.length ? '(Updated the position.)' : ''));
+      if (opp) {
         setMessages(prev => [...prev, {
-          role: 'opponent', content: res.response,
+          role: 'opponent', content: opp,
           acts: res.speech_acts, tensions: res.new_tensions
         }]);
       }

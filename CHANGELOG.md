@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-06-21
+
+### Fixed
+
+- The opponent's reply bubble no longer goes missing until reload. When a
+  malformed envelope put its defect inside `new_tensions`, the json-repair
+  recovery (0.3.2) salvaged the tension but dropped the trailing `response`
+  prose — so the message route returned an empty `response`, the live UI
+  appended nothing, and the reply only showed up on refresh (where the
+  frontend re-derives it from the stored payload). The parser now salvages
+  the `response` field directly when the structured parse loses it, so the
+  route, storage, PDF, and live UI all agree. As a safety net, the frontend
+  also shows a short placeholder when a turn returns only tensions/speech
+  acts with no prose, instead of rendering nothing.
+
 ## [0.3.2] — 2026-06-21
 
 ### Fixed
