@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-06-21
+
+### Fixed
+
+- Opponent turns no longer silently drop their proposed tensions
+  (sequents). The model frequently emits JSON with an unescaped `"` inside
+  a long natural-language string value, which neither strict nor lenient
+  `json.loads` can parse — so the turn's `new_tensions` were lost and no
+  sequents appeared in the dialectic. Added a `json-repair` recovery layer
+  after the strict-parse and brace-walk attempts; verified against real
+  failing payloads that it recovers the structured envelope with tensions
+  intact. New dependency: `json-repair`.
+
 ## [0.3.1] — 2026-06-19
 
 ### Fixed

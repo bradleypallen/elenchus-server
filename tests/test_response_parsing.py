@@ -64,6 +64,21 @@ class TestParseLlmResponse:
         assert parsed is not None
         assert parsed["response"] == "Line A.\nLine B."
 
+    def test_unescaped_quotes_recovered_with_tensions(self):
+        # The real-world failure mode: the model leaves unescaped " inside a
+        # natural-language string, which strict json (even strict=False)
+        # can't parse — and the whole turn's new_tensions were being dropped.
+        # The json-repair recovery layer salvages the structured payload.
+        text = (
+            '{"speech_acts": [], '
+            '"new_tensions": [{"gamma": ["P1"], "delta": ["P2"], "reason": "they clash"}], '
+            '"response": "You committed "X" and "Y", which conflict."}'
+        )
+        parsed = parse_llm_response(text)
+        assert parsed is not None
+        assert len(parsed["new_tensions"]) == 1
+        assert parsed["new_tensions"][0]["gamma"] == ["P1"]
+
 
 class TestExtractResponseText:
     def test_returns_response_field(self):

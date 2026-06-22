@@ -64,7 +64,8 @@ def parse_llm_response(text: str) -> dict | None:
     except json.JSONDecodeError:
         pass
 
-    # Strategy 2: locate the first `{` and walk braces (string-aware).
+    # Strategy 2: locate the first `{` and walk braces (string-aware), then
+    # parse that slice. On a parse error, fall through to Strategy 3.
     start = clean.find("{")
     if start < 0:
         return None
@@ -93,16 +94,30 @@ def parse_llm_response(text: str) -> dict | None:
                 candidate = clean[start : i + 1]
                 try:
                     parsed = json.loads(candidate, strict=False)
-                    preamble = clean[:start].strip()
-                    logger.warning(
-                        "Recovered JSON from mixed-content response "
-                        "(preamble=%d chars, candidate=%d chars)",
-                        len(preamble),
-                        len(candidate),
-                    )
+                    if clean[:start].strip():
+                        logger.warning("Recovered JSON from a mixed-content response")
                     return parsed
                 except json.JSONDecodeError:
-                    return None
+                    break  # malformed slice — try repair below
+
+    # Strategy 3: repair LLM-malformed JSON the strict parser can't handle —
+    # most often an unescaped double-quote inside a long natural-language
+    # string value (which ends the string early), or a missing comma. This
+    # is the common cause of opponent turns dropping their `new_tensions`.
+    # json-repair returns a best-effort object; accept it only if it has the
+    # opponent's expected shape so prose isn't passed through as "parsed".
+    try:
+        import json_repair
+
+        repaired = json_repair.loads(clean[start:])
+        if isinstance(repaired, dict) and any(
+            k in repaired for k in ("response", "new_tensions", "speech_acts")
+        ):
+            logger.warning("Recovered opponent payload via json-repair (len=%d)", len(text))
+            return repaired
+    except Exception:
+        logger.debug("json-repair recovery failed", exc_info=True)
+
     return None
 
 
