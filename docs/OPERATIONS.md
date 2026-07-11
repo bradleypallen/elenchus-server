@@ -1,7 +1,7 @@
 # Operations Runbook
 
 This document covers deploying and operating an Elenchus server in
-production — the configuration the Sloan study pilot runs on. It
+production — the configuration the planned study pilot runs on. It
 assumes a single small Linux VM (2 vCPU / 4 GB RAM is ample for ≤24
 participants) with a public hostname and TLS.
 
@@ -59,7 +59,7 @@ BCRYPT_ROUNDS=12                     # production default; never lower
 # the stored key undecryptable.
 ELENCHUS_SECRET_KEY=...
 
-# ── Sloan study: leave Phase B OFF ──
+# ── planned study: leave Phase B OFF ──
 # (omit ELENCHUS_ENABLE_PHASE_B entirely — default is off)
 
 # ── Alerting (Phase C) ──
@@ -219,7 +219,7 @@ curl -sf https://elenchus.your-institution.edu/healthz | jq
 ```
 
 The response also surfaces two config sanity flags worth alerting on:
-`phase_b_enabled` (must be `false` for the Sloan study) and
+`phase_b_enabled` (must be `false` for the planned study) and
 `llm_configured` (must be `true`, or every dialogue turn will fail).
 
 ## 7. Backups
@@ -279,7 +279,7 @@ backup log needs its own rotation — `/etc/logrotate.d/elenchus`:
 sudo mkdir -p /var/log/elenchus && sudo chown elenchus:elenchus /var/log/elenchus
 ```
 
-## 10. Operational checklist (Sloan pilot)
+## 10. Operational checklist (study pilot)
 
 Before the first participant session:
 

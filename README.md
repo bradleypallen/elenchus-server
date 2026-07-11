@@ -270,7 +270,7 @@ Environment variables:
   speech acts (`ASSERT_IMPLICATION`, `INTRODUCE_BEARER`,
   `RETRACT_IMPLICATION`). **Off by default**: the live message route
   exposes only `{COMMIT, DENY, ACCEPT_TENSION, CONTEST_TENSION, RETRACT,
-  REFINE}` to match the Sloan study's Elenchus-condition vocabulary.
+  REFINE}` to match the planned study's Elenchus-condition vocabulary.
   Set to `1`/`true` outside study contexts.
 
 ### Using OpenRouter

@@ -1,6 +1,6 @@
 # Running a Study
 
-Elenchus ships a complete harness for the Sloan-funded human-subjects
+Elenchus ships a complete harness for the planned human-subjects
 study: issuing participant sessions, running them through a controlled
 flow under one of two conditions, collecting questionnaires, generating
 post-session reports, having blinded judges rate them, and exporting an

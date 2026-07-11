@@ -201,7 +201,7 @@ persisted key takes precedence over it at boot.
 
 `GET /healthz` is unauthenticated and cheap. Point an uptime monitor at
 it and alert on two flags in the response: `llm_configured` (must be
-`true`) and `phase_b_enabled` (must be `false` for the Sloan study).
+`true`) and `phase_b_enabled` (must be `false` for the planned study).
 
 ## Admin API reference
 
