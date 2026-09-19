@@ -5,6 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-19
+
+Partner institutions and the funder acknowledgement on the landing pages.
+No schema changes.
+
 ### Added
 
 - **Partner institutions on the landing pages.** A footer band on the
