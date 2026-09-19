@@ -190,7 +190,12 @@ class TestBaselineRespond:
             asyncio.run(opp.async_baseline_respond("hi", state))
 
         _args, kwargs = mock.call_args
-        assert kwargs["system"] == BASELINE_SYSTEM_PROMPT
+        # The baseline prompt, plus the session's topic (the base name) —
+        # the baseline assistant is shown no state, so that is the only
+        # way it learns what the expert is writing about.
+        assert kwargs["system"].startswith(BASELINE_SYSTEM_PROMPT)
+        assert kwargs["system"].endswith("THE EXPERT'S TOPIC: baseline")
+        assert "opponent" not in kwargs["system"].lower()
         state.base.con.close()
 
     def test_context_window_trims_old_turns(self):

@@ -14,7 +14,7 @@ new code path can forget to. Callers pass an `EventContext` to say who
 is behind the change; without one the event is recorded as 'direct'.
 """
 
-from . import turn_log
+from . import study_text, turn_log
 from .material_base import MaterialBase, set_to_str, str_to_set
 from .turn_log import EventContext
 
@@ -56,10 +56,12 @@ class DialecticalState:
             "SELECT COALESCE(MAX(id), 0) FROM conversation"
         ).fetchone()[0]
         self.base.con.execute(f"CREATE SEQUENCE conv_seq START {max_cid + 1}")
-        # turn_log_seq / state_event_seq track the capture tables.
+        # The capture tables' sequences (turn_log.py, study_text.py).
         for seq, table in (
             (turn_log.TURN_SEQ, "turn_log"),
             (turn_log.EVENT_SEQ, "state_events"),
+            (study_text.SNAPSHOT_SEQ, "text_snapshots"),
+            (study_text.EDITOR_EVENT_SEQ, "editor_events"),
         ):
             self.base.con.execute(f"DROP SEQUENCE IF EXISTS {seq}")
             max_id = self.base.con.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table}").fetchone()[

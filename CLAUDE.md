@@ -63,6 +63,10 @@ pytest -v
   **Off by default** so the live message route matches the Sloan proposal's
   Elenchus-condition speech-act vocabulary exactly. Set to `1`/`true`/`yes`/
   `on` outside study contexts.
+- `ELENCHUS_TASK_MINUTES` — intended length of the study's main task
+  (default `60`). Drives the writing pane's clock and its two **soft**
+  warnings (ten minutes before, and at, the limit); nothing is cut off.
+  Set low (e.g. `10`) for training runs and demos.
 - `ELENCHUS_PRICING_JSON` — JSON object mapping model → `{input_per_1m,
   output_per_1m}` USD rates. Overrides the defaults in `pricing.py`.
 - `ALERT_EMAIL_TO` — recipient for the email alert channel. Unset = console-only.
@@ -158,6 +162,15 @@ The study's formal analysis (NMMS, RDF translation) is done **offline from captu
 - **`state_events`** — one row per state transition or attempted transition, with `source` (`opponent` / `ui` / `direct`), `turn_id`, `actor_id`, and `outcome` (`applied` / `noop` / `dropped`). `positions` is an upsert and retractions carry no timestamp, so this is the only history of the position.
 
 Events are written **inside the `DialecticalState` mutators**, not by their callers, so no code path can bypass capture. A new mutator must call `self._log_event(...)`; a new caller should pass `event=EventContext(...)` to say who is behind the change (the UI action routes pass `source="ui"`; the opponent passes `source="opponent"` with the turn id). A speech act that `_apply` drops (Phase B firewall, malformed) is logged there as `dropped`. Turn rows and their events are written inside the turn's transaction — a rolled-back turn leaves no log. Both tables are in the study export (`turn_log.json`, `state_events.json`, pseudonymized) and summarized under `capture` in the integrity report, where `uncaptured_assistant_turns` should be 0 for any session run after the migration.
+
+## Study Text (the judged artifact)
+
+Each study participant writes a short prose introduction to a topic, in their own words, while working with the LLM; an expert panel rates **that text** (absolute ratings on coverage, correctness, concision, and whether the reasoning holds together). The LLM-generated structured report (`study_reports.py`) is no longer what judges see. Formal analysis (NMMS, RDF) is offline, from the capture log.
+
+- **Topic** — `participant_session_tokens.topic_title` / `topic_brief` (platform migration `0009`). The task base is named after `topic_title`; `baseline_system_prompt(topic)` tells the baseline assistant.
+- **Writing pane** — `<WritingPane>` in `static/index.html`, shown to participants in `tutorial` (practice base) and `active` (task base), same in both conditions. Autosaves via `PUT /api/study/session/text`; drafts are append-only `text_snapshots`, editor events (`paste` = length only, `soft_warning_shown`) are `editor_events` (base migration `0004`, `study_text.py`). The text routes are `async` and take the per-base lock so a save can't land inside an opponent turn's transaction.
+- **Finish** — `POST /api/study/session/finish` stores a `submit` snapshot, writes the platform `study_texts` row (once per session) and moves `active → post_session`. The generic `advance` route refuses `post_session` without a submitted text.
+- **Clock** — `_study_session_payload` returns `state_elapsed_seconds` (database clock both ends), `task_minutes` and `soft_warning_minutes`; the pane ticks locally from that anchor. Guidance only — there is no hard cutoff.
 
 ## Settings
 

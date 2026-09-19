@@ -357,7 +357,9 @@ Do NOT use "Tension #7" or "Proposition 3" — always use the short form: T7, P3
 # contrast between conditions is interaction structure, not prompt
 # quality.
 
-BASELINE_SYSTEM_PROMPT = """You are a helpful AI assistant. A domain expert is working on a conceptual specification of their research area — identifying the key concepts, the relationships between them, and the rules that govern them.
+BASELINE_SYSTEM_PROMPT = """You are a helpful AI assistant. A domain expert is writing a short introduction to a topic in their field — the kind of introduction a well-informed colleague would want to read before working in the area: what the key concepts are, how each is defined, how they relate to one another, where the boundaries lie, and what follows from drawing them there. The target is two or three paragraphs.
+
+The expert writes the text themselves, in an editor beside this conversation that you cannot see. This conversation is their working space.
 
 YOUR ROLE:
 - Answer questions about the domain when asked.
@@ -372,7 +374,20 @@ STYLE:
 - When the expert asks for your opinion, give it briefly without grandstanding.
 - Avoid filler phrases ("Great question!", "Absolutely!"). Get to the substance.
 
-The expert will use this conversation to develop a conceptual specification of their domain. The conversation transcript itself is the deliverable — make it useful."""
+The finished text is the expert's deliverable, not this conversation — make the conversation useful to them."""
+
+
+def baseline_system_prompt(topic: str = "") -> str:
+    """The baseline condition's system prompt for a session on `topic`.
+
+    The Elenchus opponent learns the topic from the state it is shown
+    ("Topic: ..."); the baseline assistant is shown no state, so the
+    topic rides on the system prompt instead. Generic base names (no
+    topic issued) add nothing."""
+    topic = (topic or "").strip()
+    if not topic or topic == "Study task":
+        return BASELINE_SYSTEM_PROMPT
+    return f"{BASELINE_SYSTEM_PROMPT}\n\nTHE EXPERT'S TOPIC: {topic}"
 
 
 def _parse_tension_id(tid) -> int:
@@ -815,16 +830,18 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         messages = list(history)
         messages.append({"role": "user", "content": user_message})
 
+        system = baseline_system_prompt(state.base.name)
         turn = {
             "actor_id": actor_id,
             "request_content": user_message,
             "history_window": len(history),
             "summary_included": False,
+            "system_prompt": system,
         }
         try:
             raw_text = await self._async_chat(
                 messages,
-                system=BASELINE_SYSTEM_PROMPT,
+                system=system,
                 max_tokens=2000,
                 on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
             )
@@ -855,10 +872,12 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
     # ── Research capture (turn_log.py) ──
 
-    def _prompt_identity(self, mode: str) -> tuple[str, str]:
-        """(name, sha256) of the system prompt a turn in `mode` ran under."""
+    def _prompt_identity(self, mode: str, system_prompt: str | None = None) -> tuple[str, str]:
+        """(name, sha256) of the system prompt a turn in `mode` ran
+        under. `system_prompt` is the text actually sent, when the
+        caller has it (the baseline prompt varies with the topic)."""
         if mode == "baseline":
-            return "baseline", turn_log.prompt_fingerprint(BASELINE_SYSTEM_PROMPT)
+            return "baseline", turn_log.prompt_fingerprint(system_prompt or BASELINE_SYSTEM_PROMPT)
         name = "phase_b" if self.enable_phase_b else "sloan"
         return name, turn_log.prompt_fingerprint(self._system_prompt())
 
@@ -879,7 +898,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
     def _turn_fields(self, mode: str, turn: dict | None) -> dict:
         """The `record_turn` keyword arguments carried by `turn`."""
         turn = turn or {}
-        name, sha = self._prompt_identity(mode)
+        name, sha = self._prompt_identity(mode, turn.get("system_prompt"))
         return {
             "mode": mode,
             "actor_id": turn.get("actor_id"),

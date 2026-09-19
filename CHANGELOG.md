@@ -7,6 +7,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Writing pane: the participant's own text is now the study's judged
+  artifact.** Each participant token can carry a topic (`topic_title`,
+  `topic_brief`); the task base is named after it, so the Elenchus
+  opponent sees it as the dialectic's topic, and the baseline assistant is
+  told it in its system prompt. During the tutorial and the main task a
+  pane beside the dialogue — identical in both conditions — shows the
+  topic, the brief and the standing task instruction, and holds an editor
+  that autosaves. Every distinct draft is kept as a timestamped snapshot
+  (`text_snapshots`, migration `base/0004`); pastes are logged by **length
+  and time only**, never content, along with soft-timer warnings shown
+  (`editor_events`). An elapsed clock anchored to the server gives **soft**
+  time guidance — a warning ten minutes before `ELENCHUS_TASK_MINUTES`
+  (default 60) and again when it is up; nothing is cut off. FINISH SESSION
+  now submits the text (`POST /api/study/session/finish`, stored in
+  `study_texts`, migration `platform/0009`, written once) and the task
+  cannot be left without one. The study export gains `text.json`,
+  `text_snapshots.json` and `editor_events.json` per session, and the
+  session's topic. The pilot simulation writes, pastes, probes the
+  no-text guard and finishes.
+
 - **Research capture log.** Two append-only per-base tables (migration
   `base/0003`) record what the live tables don't keep, so formal analysis
   can be done offline from captured data alone. `turn_log` has one row per
@@ -33,6 +53,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`derivable`, `trace`, `depth_reached`, `cache_hits`) rather than
   pyNMMS's `ProofResult`, whose `trace` changed from a field to a
   read-only property across the supported pyNMMS range.
+- The baseline condition's system prompt describes the actual task (the
+  expert is writing a short introduction in an editor the assistant can't
+  see) instead of calling the conversation transcript the deliverable.
+  **Study-design wording — review before the pilot.** The Elenchus
+  opponent's prompt is unchanged.
+- Participant-facing copy (briefing, post-task screen) rewritten for the
+  writing task; baseline participants no longer see Elenchus wording
+  ("Opponent is considering…", "commit, deny, respond to tensions…") in
+  the chat box.
+- `GET /api/study/session` and the routes that return a session no longer
+  include the participant's token; the export's `session.json` omits it
+  too.
 
 ### Fixed
 
@@ -67,6 +99,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`(A) |~ A`) answered False there while answering True on later releases.
 - A padded quote (`< A >`) resolves to the known atom `A` instead of
   silently becoming a different, unknown atom.
+- The service worker served the HTML shell cache-first, so a browser that
+  had visited before kept running the **old frontend after a server
+  upgrade**. The shell is now network-first (cache only as the offline
+  fallback); `CACHE_NAME` bumped to `elenchus-v3`.
+- A reply arriving no longer pulls keyboard focus out of the writing pane.
 - An opponent reply that was valid JSON but not an object (a bare string
   or list) no longer crashes the turn; it is treated as prose like any
   other unparseable reply.

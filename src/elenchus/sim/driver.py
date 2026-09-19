@@ -140,6 +140,12 @@ def _scripted_rating(persona: JudgePersona) -> dict:
     }
 
 
+def _topic_for(persona: ParticipantPersona, condition: str) -> str:
+    """A persona brings a different topic to each condition, as the
+    study's participants do."""
+    return persona.elenchus_domain if condition == "elenchus" else persona.baseline_domain
+
+
 class ScriptedDriver:
     """Deterministic, free, CI-able. The server's opponent runs on
     `CannedLLMClient`, so the full stack still executes."""
@@ -157,6 +163,18 @@ class ScriptedDriver:
     ) -> str:
         msgs = persona.scripted_task_messages
         return msgs[min(turn_idx, len(msgs) - 1)] if msgs else "Continue."
+
+    def participant_text(self, persona: ParticipantPersona, condition: str, state: dict) -> str:
+        """The introduction the participant submits. Deterministic, and
+        built only from the persona's topic — so the scripted run's texts
+        carry no tell about which condition produced them."""
+        topic = _topic_for(persona, condition)
+        return (
+            f"This is an introduction to {topic}. The area rests on a small set of core "
+            f"concepts, each defined partly by its relation to the others.\n\n"
+            f"The boundaries between those concepts are where practice in {topic} "
+            f"diverges, and where a newcomer should read most carefully."
+        )
 
     def survey_response(self, instrument: str) -> dict:
         return _full_survey_response(instrument)
@@ -200,6 +218,22 @@ class LLMDriver:
         )
         result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=200)
         return result.text.strip() if result.ok else "Let me continue with the domain."
+
+    def participant_text(self, persona: ParticipantPersona, condition: str, state: dict) -> str:
+        topic = _topic_for(persona, condition)
+        system = (
+            f"You are a domain expert in {topic}. Write the kind of introduction a "
+            f"well-informed colleague would want to read before working in this area: "
+            f"the key concepts, how each is defined, how they relate, and where the "
+            f"boundaries lie. Two or three paragraphs of plain prose, in your own words. "
+            f"No headings, lists, or meta-commentary."
+        )
+        commitments = "; ".join(state.get("commitments", [])[:8]) or "(none recorded)"
+        user = f"Points you settled on while working: {commitments}. Write the introduction now."
+        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=700)
+        if result.ok and result.text.strip():
+            return result.text.strip()
+        return ScriptedDriver().participant_text(persona, condition, state)
 
     def survey_response(self, instrument: str) -> dict:
         return _full_survey_response(instrument)

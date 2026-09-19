@@ -156,5 +156,8 @@ class SimClient:
     def post(self, path: str, json: Any = None, **kw) -> tuple[int, Any]:
         return self.request("POST", path, json=json, **kw)
 
+    def put(self, path: str, json: Any = None, **kw) -> tuple[int, Any]:
+        return self.request("PUT", path, json=json, **kw)
+
     def delete(self, path: str, **kw) -> tuple[int, Any]:
         return self.request("DELETE", path, **kw)

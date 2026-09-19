@@ -1096,15 +1096,18 @@ def create_participant_token(
     scheduled_start: str | None = None,
     scheduled_end: str | None = None,
     notes: str = "",
+    topic_title: str = "",
+    topic_brief: str = "",
 ) -> None:
     """Insert one participant_session_tokens row. The caller has
     already validated condition; the DB has its own CHECK as a
-    backstop."""
+    backstop. `topic_title` / `topic_brief` are the writing task the
+    participant is given in this session (migration 0009)."""
     con.execute(
         "INSERT INTO participant_session_tokens "
         "(token, actor_id, study_id, condition, issued_by, "
-        "scheduled_start, scheduled_end, notes) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "scheduled_start, scheduled_end, notes, topic_title, topic_brief) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             token,
             actor_id,
@@ -1114,6 +1117,8 @@ def create_participant_token(
             scheduled_start,
             scheduled_end,
             notes,
+            topic_title,
+            topic_brief,
         ],
     )
 
@@ -1126,7 +1131,7 @@ def find_participant_token(con, token: str) -> dict | None:
     row = con.execute(
         "SELECT token, actor_id, study_id, condition, scheduled_start, "
         "scheduled_end, issued_by, issued_at, used_at, session_id, "
-        "status, notes "
+        "status, notes, topic_title, topic_brief "
         "FROM participant_session_tokens WHERE token = ?",
         [token],
     ).fetchone()
@@ -1145,6 +1150,8 @@ def find_participant_token(con, token: str) -> dict | None:
         "session_id": row[9],
         "status": row[10],
         "notes": row[11],
+        "topic_title": row[12] or "",
+        "topic_brief": row[13] or "",
     }
 
 
@@ -1213,7 +1220,7 @@ def list_participant_tokens(
     rows = con.execute(
         f"SELECT token, actor_id, study_id, condition, scheduled_start, "
         f"scheduled_end, issued_by, issued_at, used_at, session_id, "
-        f"status, notes "
+        f"status, notes, topic_title "
         f"FROM participant_session_tokens {where} "
         f"ORDER BY issued_at DESC",
         params,
@@ -1232,9 +1239,105 @@ def list_participant_tokens(
             "session_id": r[9],
             "status": r[10],
             "notes": r[11],
+            "topic_title": r[12] or "",
         }
         for r in rows
     ]
+
+
+# ─── Study texts (the judged artifact) ────────────────────────────────
+
+
+def session_state_elapsed_seconds(con, session_id: int) -> int | None:
+    """Whole seconds the session has been in its current state, by the
+    database clock on both ends (so no time-zone or client-clock skew).
+    In the `active` state this is time on task."""
+    row = con.execute(
+        "SELECT date_diff('second', state_changed_at, CAST(CURRENT_TIMESTAMP AS TIMESTAMP)) "
+        "FROM sessions WHERE id = ?",
+        [session_id],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return max(0, int(row[0]))
+
+
+def create_study_text(
+    con,
+    *,
+    session_id: int,
+    actor_id: int,
+    condition: str,
+    topic_title: str,
+    content: str,
+    word_count: int,
+    active_elapsed_seconds: int | None,
+) -> int | None:
+    """Store a session's submitted text. Written once: returns the new
+    row id, or None if the session already has one (a double-clicked
+    Finish must not replace what was first submitted)."""
+    if find_study_text_for_session(con, session_id) is not None:
+        return None
+    row = con.execute(
+        "INSERT INTO study_texts (session_id, actor_id, condition, topic_title, "
+        "content, word_count, char_count, active_elapsed_seconds) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            session_id,
+            actor_id,
+            condition,
+            topic_title,
+            content,
+            word_count,
+            len(content),
+            active_elapsed_seconds,
+        ],
+    ).fetchone()
+    return int(row[0])
+
+
+_STUDY_TEXT_COLUMNS = (
+    "id, session_id, actor_id, condition, topic_title, content, word_count, "
+    "char_count, active_elapsed_seconds, submitted_at"
+)
+
+
+def _row_to_study_text(row) -> dict:
+    return {
+        "id": row[0],
+        "session_id": row[1],
+        "actor_id": row[2],
+        "condition": row[3],
+        "topic_title": row[4] or "",
+        "content": row[5],
+        "word_count": row[6],
+        "char_count": row[7],
+        "active_elapsed_seconds": row[8],
+        "submitted_at": row[9],
+    }
+
+
+def find_study_text_for_session(con, session_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_STUDY_TEXT_COLUMNS} FROM study_texts WHERE session_id = ?", [session_id]
+    ).fetchone()
+    return _row_to_study_text(row) if row else None
+
+
+def list_study_texts(con, *, study_id: str | None = None) -> list[dict]:
+    """Submitted texts, oldest first; optionally one study's only."""
+    if study_id is None:
+        rows = con.execute(f"SELECT {_STUDY_TEXT_COLUMNS} FROM study_texts ORDER BY id").fetchall()
+    else:
+        cols = ", ".join(f"x.{c.strip()}" for c in _STUDY_TEXT_COLUMNS.split(","))
+        rows = con.execute(
+            f"SELECT {cols} FROM study_texts x "
+            "JOIN sessions s ON s.id = x.session_id "
+            "JOIN participant_session_tokens t ON t.token = s.study_token "
+            "WHERE t.study_id = ? ORDER BY x.id",
+            [study_id],
+        ).fetchall()
+    return [_row_to_study_text(r) for r in rows]
 
 
 # ─── Usage / cost tracking ────────────────────────────────────────────

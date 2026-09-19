@@ -17,7 +17,7 @@ import pytest
 from elenchus import turn_log
 from elenchus.dialectical_state import DialecticalState
 from elenchus.llm_client import ChatCategory, ChatResult
-from elenchus.opponent import BASELINE_SYSTEM_PROMPT, LLMCallError, Opponent
+from elenchus.opponent import LLMCallError, Opponent, baseline_system_prompt
 from elenchus.response_parsing import parse_llm_response_with_strategy
 from elenchus.turn_log import EventContext
 
@@ -403,7 +403,9 @@ class TestBaselineTurn:
         assert turn["parse_strategy"] == "plain"
         assert turn["state_before"] is None and turn["parsed"] is None
         assert turn["system_prompt_name"] == "baseline"
-        assert turn["system_prompt_sha256"] == turn_log.prompt_fingerprint(BASELINE_SYSTEM_PROMPT)
+        assert turn["system_prompt_sha256"] == turn_log.prompt_fingerprint(
+            baseline_system_prompt("t")
+        )
         assert turn["user_conversation_id"] is not None
         assert turn_log.list_state_events(state.base.con) == []
 

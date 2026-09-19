@@ -842,6 +842,9 @@ function App() {
   // surveyed → complete routing.
   const [studySession, setStudySession] = useState(null);
   const [studyBusy, setStudyBusy] = useState(false);
+  // The participant's text (the writing pane's content). Held here
+  // because FINISH SESSION, in the header, is what submits it.
+  const [studyText, setStudyText] = useState('');
   const isParticipant = actor?.kind === 'participant';
   const isBaseline = studySession?.condition === 'baseline';
   const [displayPrefs, setDisplayPrefs] = useState(() => {
@@ -980,6 +983,28 @@ function App() {
     setStudyBusy(false);
   };
 
+  const studyFinish = async () => {
+    if (studyBusy) return;
+    const words = countWords(studyText);
+    if (words === 0) {
+      setError('Your text is empty — please write your introduction before finishing.');
+      return;
+    }
+    const prompt = words < 60
+      ? `Your text is only ${words} words — the target is two or three paragraphs. Finish anyway? You will not be able to return to the task.`
+      : 'Finish the session and submit your text? You will not be able to return to the task.';
+    if (!confirm(prompt)) return;
+    setStudyBusy(true); setError(null);
+    try {
+      const s = await api('/api/study/session/finish', {
+        method: 'POST', body: JSON.stringify({ content: studyText }),
+      });
+      setStudySession(s);
+      setCurrent(null); setCurrentSessionId(null); setState(null);
+    } catch (e) { setError(e.message); }
+    setStudyBusy(false);
+  };
+
   const studyAdvance = async (toState) => {
     if (studyBusy) return;
     setStudyBusy(true); setError(null);
@@ -993,7 +1018,12 @@ function App() {
     setStudyBusy(false);
   };
   useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { if (view !== 'home') inputRef.current?.focus(); }, [view, loading]);
+  useEffect(() => {
+    // A participant may be typing in the writing pane when the reply
+    // lands — leave the cursor where they put it.
+    if (document.activeElement?.dataset?.studyEditor === '1') return;
+    if (view !== 'home') inputRef.current?.focus();
+  }, [view, loading]);
 
   // Build a dialectic-verb URL. Session-keyed when we hold a session id
   // (normal flow), else name-keyed via the retained alias (participant
@@ -1439,14 +1469,19 @@ function App() {
         <StudyShell fs={fs} title="Welcome to the study">
           <div style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
             <p style={{ marginBottom: 12 }}>
-              In this session you will work with an AI to develop a written
-              specification of the key concepts and rules of a research domain.
-              The session has four parts:
+              In this session you will be given a topic from your field and
+              asked to write a short introduction to it — the kind a
+              well-informed colleague would want to read before working in
+              the area — while working with an AI. Two or three paragraphs,
+              in your own words. There is nothing to prepare and no reference
+              material: what we want on the page is what you actually believe
+              about how the concepts fit together. The AI is a working
+              partner, not a source; the finished text is yours.
             </p>
+            <p style={{ marginBottom: 12 }}>The session has three parts:</p>
             <ol style={{ paddingLeft: 22, marginBottom: 12 }}>
               <li style={{ marginBottom: 6 }}><b>Tutorial</b> (~15 minutes) — practice with the interface on a warm-up topic.</li>
-              <li style={{ marginBottom: 6 }}><b>Main task</b> (~60 minutes) — work on the domain you were given.</li>
-              <li style={{ marginBottom: 6 }}><b>Summary</b> — a short review of what you produced.</li>
+              <li style={{ marginBottom: 6 }}><b>Main task</b> (about {studySession.task_minutes || 60} minutes) — write your introduction in the panel on the right, beside your conversation with the AI. A clock shows your time; nothing is cut off, and you end the task yourself.</li>
               <li style={{ marginBottom: 6 }}><b>Questionnaires</b> (~10–15 minutes) — four short instruments about your experience.</li>
             </ol>
             <p style={{ marginBottom: 12 }}>
@@ -1470,7 +1505,7 @@ function App() {
       return (
         <StudyShell fs={fs} title="Main task complete">
           <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8, marginBottom: 12 }}>
-            Thank you — the main task is finished and your work has been saved.
+            Thank you — the main task is finished and your text has been submitted.
             The last step is a short set of questionnaires about your
             experience (about 10–15 minutes).
           </p>
@@ -1730,6 +1765,11 @@ function App() {
   const leftCount = s.commitments.length + s.denials.length;
   const rightCount = openTensionCount + s.implications.length;
 
+  // Participants write their text beside the dialogue, in the tutorial
+  // (to practise) and in the main task.
+  const showWritingPane = isParticipant &&
+    (studySession?.state === 'tutorial' || studySession?.state === 'active');
+
   // Build grid template: omit hidden columns and their drag handles.
   const gridCols = [
     leftVisible ? `${leftWidth}px` : null,
@@ -1737,6 +1777,8 @@ function App() {
     '1fr',
     rightVisible ? '4px' : null,
     rightVisible ? `${rightWidth}px` : null,
+    showWritingPane ? '1px' : null,
+    showWritingPane ? 'minmax(340px, 40%)' : null,
   ].filter(Boolean).join(' ');
 
   return (
@@ -1781,11 +1823,7 @@ function App() {
             }}>START THE MAIN TASK</button>
           )}
           {isParticipant && studySession?.state === 'active' && (
-            <button onClick={() => {
-              if (confirm('Finish the session? You will not be able to return to the task.')) {
-                studyAdvance('post_session');
-              }
-            }} disabled={studyBusy} style={{
+            <button onClick={studyFinish} disabled={studyBusy} style={{
               background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
               color: 'var(--accent)', cursor: studyBusy ? 'default' : 'pointer',
               fontSize: fs(10), padding: '3px 10px', lineHeight: 1.4,
@@ -1945,7 +1983,7 @@ function App() {
         {messages.map((msg, i) => <Message key={i} msg={msg} fs={fs} />)}
         {loading && (
           <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontStyle: 'italic', padding: '8px 0' }}>
-            Opponent is considering...
+            {isBaseline ? 'The assistant is thinking…' : 'Opponent is considering...'}
           </div>
         )}
         <div ref={msgEnd} />
@@ -1988,9 +2026,17 @@ function App() {
         </div>
       )}
 
+      {/* Writing pane (participants): its own column, full height */}
+      {showWritingPane && (
+        <div style={{ gridColumn: '-3 / -2', gridRow: '2 / 4', background: 'var(--border)' }} />
+      )}
+      {showWritingPane && (
+        <WritingPane fs={fs} studySession={studySession} text={studyText} setText={setStudyText} />
+      )}
+
       {/* Input */}
       <div style={{
-        gridColumn: '1 / -1', padding: '12px 20px',
+        gridColumn: showWritingPane ? '1 / -3' : '1 / -1', padding: '12px 20px',
         borderTop: '1px solid var(--border)',
         display: 'flex', gap: 10, alignItems: 'flex-end',
       }}>
@@ -2000,7 +2046,9 @@ function App() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
           disabled={loading}
-          placeholder="Speak naturally — commit, deny, respond to tensions, refine your position..."
+          placeholder={isBaseline
+            ? 'Message the assistant…'
+            : 'Speak naturally — commit, deny, respond to tensions, refine your position...'}
           rows={2}
           style={{
             flex: 1, padding: '10px 14px', background: 'var(--surface)',
@@ -2922,6 +2970,239 @@ function AdminDashboard({ fs, onBack }) {
 }
 
 // ── Study flow components (Sloan participants) ──
+
+// ─── Study: writing pane ─────────────────────────────────────────────
+// The participant's text is the study's judged artifact. It is written
+// here, beside the dialogue, in both conditions — same pane, same
+// wording — so nothing about the editor tells a judge (or the
+// participant) which condition a text came from.
+
+const STUDY_TASK_INSTRUCTION =
+  'Write the kind of introduction a well-informed colleague would want to read before ' +
+  'working in this area. What are the key concepts? How is each defined? How do they ' +
+  'relate to one another? Where do the boundaries lie, and what follows from drawing ' +
+  'them where you do? Two or three paragraphs is the target, in your own words — what ' +
+  'you actually believe about how these concepts fit together, including where you ' +
+  'think usage is unsettled.';
+
+function fmtClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60), sec = totalSeconds % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function countWords(text) {
+  const m = text.match(/\S+/g);
+  return m ? m.length : 0;
+}
+
+// Seconds on the main task: anchored to the server's figure (so a
+// reload or a second device shows the same time) and ticked locally.
+function useTaskClock(studySession) {
+  const [elapsed, setElapsed] = useState(null);
+  const active = studySession?.state === 'active';
+  const serverElapsed = studySession?.state_elapsed_seconds;
+  useEffect(() => {
+    if (!active || serverElapsed == null) { setElapsed(null); return; }
+    const anchor = Date.now() - serverElapsed * 1000;
+    const tick = () => setElapsed(Math.floor((Date.now() - anchor) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [studySession?.id, active, serverElapsed]);
+  return elapsed;
+}
+
+function WritingPane({ fs, studySession, text, setText }) {
+  const isTutorial = studySession.state === 'tutorial';
+  const [loaded, setLoaded] = useState(false);
+  const [saveState, setSaveState] = useState('saved'); // 'saved' | 'unsaved' | 'saving' | 'error'
+  const [briefOpen, setBriefOpen] = useState(true);
+  const lastSaved = useRef('');
+  const latest = useRef(text);
+  const nextTrigger = useRef('autosave');
+  const saving = useRef(false);
+  latest.current = text;
+  const elapsed = useTaskClock(studySession);
+
+  // Load the saved draft for this phase (the tutorial and the task each
+  // have their own text). Nothing autosaves until this has finished, so
+  // a slow load can never overwrite a draft with an empty editor.
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    api('/api/study/session/text').then(r => {
+      if (cancelled) return;
+      lastSaved.current = r.content || '';
+      setText(r.content || '');
+      setSaveState('saved');
+      setLoaded(true);
+    }).catch(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, [studySession.id, studySession.state]);
+
+  const save = useCallback(async (trigger) => {
+    const content = latest.current;
+    if (!loaded || saving.current || content === lastSaved.current) return;
+    saving.current = true; setSaveState('saving');
+    try {
+      await api('/api/study/session/text', {
+        method: 'PUT', body: JSON.stringify({ content, trigger }),
+      });
+      lastSaved.current = content;
+      setSaveState(latest.current === content ? 'saved' : 'unsaved');
+    } catch (e) {
+      setSaveState('error'); // retried by the next edit or the interval below
+    }
+    saving.current = false;
+  }, [loaded]);
+
+  // Autosave: shortly after typing pauses, and at least every 10 s
+  // while typing continues.
+  useEffect(() => {
+    if (!loaded || text === lastSaved.current) return;
+    setSaveState(st => (st === 'saving' ? st : 'unsaved'));
+    const trigger = nextTrigger.current;
+    const id = setTimeout(() => { nextTrigger.current = 'autosave'; save(trigger); },
+                          trigger === 'paste' ? 300 : 1500);
+    return () => clearTimeout(id);
+  }, [text, loaded, save]);
+  useEffect(() => {
+    const id = setInterval(() => save('autosave'), 10000);
+    return () => clearInterval(id);
+  }, [save]);
+
+  // Last-chance save when the page is closed or hidden mid-edit.
+  useEffect(() => {
+    const flush = () => {
+      if (!loaded || latest.current === lastSaved.current) return;
+      fetch(API + '/api/study/session/text', {
+        method: 'PUT', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: latest.current, trigger: 'blur' }),
+      }).catch(() => {});
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [loaded]);
+
+  const logEvents = (events) => {
+    api('/api/study/session/text/events', { method: 'POST', body: JSON.stringify({ events }) })
+      .catch(() => {});
+  };
+
+  // A paste is logged by its length only — never its content.
+  const onPaste = (e) => {
+    const pasted = e.clipboardData ? e.clipboardData.getData('text') : '';
+    logEvents([{ type: 'paste', length: pasted.length }]);
+    nextTrigger.current = 'paste';
+  };
+
+  // Soft time guidance. Nothing is cut off: the participant ends the
+  // task themselves. Each warning is logged the first time it is shown.
+  const warnAt = studySession.soft_warning_minutes || [];
+  const taskMinutes = studySession.task_minutes || 60;
+  const elapsedMin = elapsed == null ? null : elapsed / 60;
+  const crossed = elapsedMin == null ? [] : warnAt.filter(m => elapsedMin >= m);
+  const crossedKey = crossed.join(',');
+  useEffect(() => {
+    crossed.forEach(m => {
+      const key = `elenchus-study-warned-${studySession.id}-${m}`;
+      try {
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+      } catch (err) {}
+      logEvents([{ type: 'soft_warning_shown', threshold_minutes: m }]);
+    });
+  }, [crossedKey]);
+  const timeUp = elapsedMin != null && elapsedMin >= taskMinutes;
+  const minutesLeft = elapsedMin == null ? null : Math.max(1, Math.ceil(taskMinutes - elapsedMin));
+  const warning = timeUp
+    ? `The ${taskMinutes} minutes are up. Please bring your text to a close and press FINISH SESSION when you are ready.`
+    : crossed.length > 0
+      ? `About ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} left — a good moment to start wrapping up your text.`
+      : null;
+
+  const title = isTutorial ? studySession.practice_topic_title : studySession.topic_title;
+  const brief = isTutorial ? studySession.practice_topic_brief : studySession.topic_brief;
+  const words = countWords(text);
+  const saveLabel = { saved: 'Saved', unsaved: 'Unsaved changes…', saving: 'Saving…',
+                      error: 'Not saved — will retry' }[saveState];
+
+  return (
+    <div style={{
+      gridColumn: '-2 / -1', gridRow: '2 / 4', display: 'flex', flexDirection: 'column',
+      minHeight: 0, background: 'var(--surface)',
+    }}>
+      <div style={{
+        padding: '10px 14px', borderBottom: '1px solid var(--border)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10,
+      }}>
+        <span style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          Your text
+        </span>
+        {elapsed != null && (
+          <span title="Time on the main task" style={{
+            fontFamily: 'var(--mono)', fontSize: fs(11),
+            color: timeUp ? 'var(--deny)' : crossed.length ? 'var(--tension)' : 'var(--text-muted)',
+          }}>{fmtClock(elapsed)} / {taskMinutes}:00</span>
+        )}
+      </div>
+
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div onClick={() => setBriefOpen(o => !o)} style={{
+          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8,
+          fontFamily: 'var(--sans)', fontSize: fs(13), fontWeight: 600, color: 'var(--text)',
+        }}>
+          <span>{title || 'Your topic'}</span>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: fs(10), fontFamily: 'var(--mono)' }}>
+            {briefOpen ? 'HIDE TASK' : 'SHOW TASK'}
+          </span>
+        </div>
+        {briefOpen && (
+          <div style={{ marginTop: 6, fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.6, color: 'var(--text-dim)' }}>
+            {brief && <p style={{ marginBottom: 6 }}>{brief}</p>}
+            {!isTutorial && <p>{STUDY_TASK_INSTRUCTION}</p>}
+          </div>
+        )}
+      </div>
+
+      {warning && (
+        <div role="status" style={{
+          margin: '10px 14px 0', padding: '8px 10px', borderRadius: 4,
+          fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.5,
+          color: 'var(--text)',
+          background: timeUp ? 'var(--deny-bg)' : 'var(--tension-bg)',
+          border: `1px solid ${timeUp ? 'var(--deny)' : 'var(--tension-border)'}`,
+        }}>{warning}</div>
+      )}
+
+      <textarea
+        data-study-editor="1"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onPaste={onPaste}
+        onBlur={() => save('blur')}
+        disabled={!loaded}
+        placeholder={loaded ? 'Write your introduction here. It saves automatically.' : 'Loading your text…'}
+        spellCheck={true}
+        style={{
+          flex: 1, minHeight: 0, margin: 14, padding: '12px 14px', resize: 'none',
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+          color: 'var(--text)', fontFamily: 'var(--sans)', fontSize: fs(14), lineHeight: 1.7,
+          outline: 'none',
+        }}
+      />
+
+      <div style={{
+        padding: '0 14px 12px', display: 'flex', justifyContent: 'space-between',
+        fontFamily: 'var(--mono)', fontSize: fs(10), color: 'var(--text-muted)',
+      }}>
+        <span>{words} word{words === 1 ? '' : 's'}</span>
+        <span style={{ color: saveState === 'error' ? 'var(--deny)' : 'var(--text-muted)' }}>{saveLabel}</span>
+      </div>
+    </div>
+  );
+}
 
 function StudyShell({ fs, title, children }) {
   return (

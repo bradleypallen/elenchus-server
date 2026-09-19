@@ -9,7 +9,12 @@ analyze downstream. Layout inside the archive:
       manifest.json                  — export metadata + content listing
       judging.json                   — packages, assignments, ratings
       sessions/{pseudonym}-{cond}/   — one directory per session
-        session.json                 — lifecycle row (pseudonymized)
+        session.json                 — lifecycle row (pseudonymized), with the
+                                       session's topic
+        text.json                    — the submitted text: the judged artifact
+        text_snapshots.json          — every autosaved draft that led to it
+        editor_events.json           — pastes (length + time only), soft
+                                       timer warnings shown
         state.json                   — dialectic state (position, T, I, atoms)
         transcript.json              — conversation turns
         turn_log.json                — per-exchange capture: raw LLM output,
@@ -46,7 +51,7 @@ import os
 import shutil
 import tarfile
 
-from . import turn_log
+from . import study_text, turn_log
 from .db import get_registry
 from .db import platform as pdb
 from .integrity import compute_base_integrity
@@ -229,9 +234,18 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
     the caller records the failure and moves on."""
     os.makedirs(dest, exist_ok=True)
 
-    _write_json(os.path.join(dest, "session.json"), _pseudonymize(session, pseudonyms))
-
     sid = session["id"]
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    session_out = {
+        **{k: v for k, v in session.items() if k != "study_token"},  # a credential
+        "topic_title": token.get("topic_title", ""),
+        "topic_brief": token.get("topic_brief", ""),
+    }
+    _write_json(os.path.join(dest, "session.json"), _pseudonymize(session_out, pseudonyms))
+    _write_json(
+        os.path.join(dest, "text.json"),
+        _pseudonymize(pdb.find_study_text_for_session(con, sid), pseudonyms),
+    )
     _write_json(
         os.path.join(dest, "reports.json"),
         _pseudonymize(
@@ -249,6 +263,8 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
         # Briefing/tutorial-only session — no dialectic artifacts.
         _write_json(os.path.join(dest, "state.json"), None)
         _write_json(os.path.join(dest, "transcript.json"), [])
+        _write_json(os.path.join(dest, "text_snapshots.json"), [])
+        _write_json(os.path.join(dest, "editor_events.json"), [])
         _write_json(os.path.join(dest, "integrity.json"), None)
         return
 
@@ -267,11 +283,18 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
     events = turn_log.list_state_events(state.base.con)
     _write_json(os.path.join(dest, "turn_log.json"), _pseudonymize(turns, pseudonyms))
     _write_json(os.path.join(dest, "state_events.json"), _pseudonymize(events, pseudonyms))
+    snapshots = study_text.list_snapshots(state.base.con)
+    editor_events = study_text.list_editor_events(state.base.con)
+    _write_json(os.path.join(dest, "text_snapshots.json"), _pseudonymize(snapshots, pseudonyms))
+    _write_json(os.path.join(dest, "editor_events.json"), _pseudonymize(editor_events, pseudonyms))
     logger.info(
-        "Exported capture log for session %s: %d turns, %d state events",
+        "Exported capture log for session %s: %d turns, %d state events, "
+        "%d text snapshots, %d editor events",
         sid,
         len(turns),
         len(events),
+        len(snapshots),
+        len(editor_events),
     )
 
     # Consistent MVCC snapshot of the per-base DB (same mechanism as
