@@ -150,6 +150,21 @@ def _topic_for(persona: ParticipantPersona, condition: str) -> str:
     return persona.elenchus_domain if condition == "elenchus" else persona.baseline_domain
 
 
+def _scripted_text_rating(persona: JudgePersona) -> dict:
+    """A complete, schema-valid rating of one text. The scripted judge's
+    scores don't depend on the text (and so not on its condition): the
+    scripted run checks the plumbing, not the science."""
+    from ..text_judging import DIMENSION_KEYS
+
+    return {
+        "ratings": {d: 5 if persona.favor == "a" else 4 for d in DIMENSION_KEYS},
+        "justification": "Covers the core concepts; the boundaries could be sharper.",
+        "condition_guess": persona.guess,
+        "confidence": persona.confidence,
+        "seconds_spent": 240,
+    }
+
+
 class ScriptedDriver:
     """Deterministic, free, CI-able. The server's opponent runs on
     `CannedLLMClient`, so the full stack still executes."""
@@ -187,6 +202,9 @@ class ScriptedDriver:
 
     def judge_rating(self, persona: JudgePersona, slot_a: str, slot_b: str) -> dict:
         return _scripted_rating(persona)
+
+    def judge_text_rating(self, persona: JudgePersona, view: dict) -> dict:
+        return _scripted_text_rating(persona)
 
 
 class LLMDriver:
@@ -267,6 +285,46 @@ class LLMDriver:
                 return _coerce_rating(parsed)
         # Fall back to a neutral valid rating so the run continues.
         return _scripted_rating(JudgePersona(label=persona.label, favor="tie", guess="unsure"))
+
+    def judge_text_rating(self, persona: JudgePersona, view: dict) -> dict:
+        """Rate one blinded text against the rubric the platform serves —
+        the LLM judge sees exactly what a human judge does."""
+        rubric = view["rubric"]
+        dims = "\n".join(f"- {d['key']}: {d['help']}" for d in rubric["dimensions"])
+        options = ", ".join(f"'{o['value']}' ({o['label']})" for o in rubric["condition_guess"])
+        system = (
+            "You are an expert judge. Rate one short introduction to a topic, written by a "
+            "researcher in the field, on its own merits. Dimensions "
+            f"({rubric['scale']['min']}-{rubric['scale']['max']}):\n{dims}\n"
+            "Also guess which way of working with an AI produced it: "
+            f"{options}. Respond ONLY with JSON: "
+            '{"ratings":{"coverage":N,"correctness":N,"concision":N,"reasoning":N},'
+            '"justification":"...","condition_guess":"elenchus|baseline|unsure","confidence":N}'
+        )
+        user = f"TOPIC: {view['topic_title']}\n{view.get('topic_brief', '')}\n\nTEXT:\n{view['content']}"
+        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=500)
+        if result.ok:
+            parsed = _extract_json(result.text)
+            if isinstance(parsed, dict):
+                return _coerce_text_rating(parsed, rubric)
+        return _scripted_text_rating(
+            JudgePersona(label=persona.label, favor="tie", guess="unsure")
+        )
+
+
+def _coerce_text_rating(d: dict, rubric: dict) -> dict:
+    lo, hi = rubric["scale"]["min"], rubric["scale"]["max"]
+    raw = d.get("ratings") if isinstance(d.get("ratings"), dict) else {}
+    guess = d.get("condition_guess")
+    return {
+        "ratings": {
+            dim["key"]: _clamp(raw.get(dim["key"]), lo, hi, (lo + hi) // 2)
+            for dim in rubric["dimensions"]
+        },
+        "justification": str(d.get("justification") or "")[:1000],
+        "condition_guess": guess if guess in ("elenchus", "baseline", "unsure") else "unsure",
+        "confidence": _clamp(d.get("confidence"), 1, 7, 2),
+    }
 
 
 def _extract_json(text: str):

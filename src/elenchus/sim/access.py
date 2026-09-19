@@ -298,7 +298,7 @@ def run_access_probes(harness) -> None:
 
 
 def _judge_probes(harness, con, fresh) -> None:
-    rows = con.execute("SELECT id, judge_actor_id FROM judge_assignments ORDER BY id").fetchall()
+    rows = con.execute("SELECT id, judge_actor_id FROM text_assignments ORDER BY id").fetchall()
     if not rows:
         logger.info("No judge assignments to probe; skipping judge access checks")
         return
@@ -308,11 +308,16 @@ def _judge_probes(harness, con, fresh) -> None:
     # which condition produced either slot.
     jc = fresh(f"judge-{owner_judge}")
     jc.set_session_cookie(auth.create_session(owner_judge))
-    st, body = jc.probe(
-        "GET", f"/api/judge/assignments/{aid}", action="judge_view_own", expect=200
-    )
+    st, body = jc.probe("GET", f"/api/judge/texts/{aid}", action="judge_view_own", expect=200)
     if st == 200 and body is not None:
-        leak = _condition_leak(body)
+        # The rubric block is identical for every text; what must stay
+        # silent about a text's origin is everything else in the view.
+        leak = _condition_leak({k: v for k, v in body.items() if k != "rubric"})
+        if not leak:
+            for key in ("text_id", "session_id", "participant_code", "period", "actor_id"):
+                if key in body:
+                    leak = f"key '{key}'"
+                    break
         _record_check(
             harness.rec,
             jc.name,
@@ -331,7 +336,7 @@ def _judge_probes(harness, con, fresh) -> None:
         oc.set_session_cookie(auth.create_session(other))
         oc.probe(
             "GET",
-            f"/api/judge/assignments/{aid}",
+            f"/api/judge/texts/{aid}",
             action="judge_view_foreign",
             expect=403,
             note="not your assignment",

@@ -22,7 +22,7 @@ class SimReport:
     p95_latency_ms: int
     participants_completed: int
     participants_total: int
-    reports_generated: int
+    texts_submitted: int
     ratings_submitted: int
     blinding_total: int
     blinding_correct: int
@@ -72,8 +72,10 @@ def build_report(
         if conds.get("elenchus", {}).get("session_id")
         and conds.get("baseline", {}).get("session_id")
     )
-    reports = sum(1 for conds in outcomes.values() for c in conds.values() if c.get("report_id"))
-    ratings = sum(1 for s in rec.steps if s.action == "submit_rating" and s.ok)
+    texts = sum(
+        1 for conds in outcomes.values() for c in conds.values() if c.get("text_submitted")
+    )
+    ratings = sum(1 for s in rec.steps if s.action == "rate_text" and s.ok)
 
     b_total = len(blinding)
     b_correct = sum(1 for r in blinding if r["guess"] == r["truth"])
@@ -91,7 +93,7 @@ def build_report(
         p95_latency_ms=_percentile(latencies, 95),
         participants_completed=completed,
         participants_total=participants_total,
-        reports_generated=reports,
+        texts_submitted=texts,
         ratings_submitted=ratings,
         blinding_total=b_total,
         blinding_correct=b_correct,
@@ -116,7 +118,7 @@ def render_text(report: SimReport, *, show_timeline: bool = True) -> str:
         f"  Participants:         {report.participants_completed}/"
         f"{report.participants_total} completed both conditions"
     )
-    lines.append(f"  Reports generated:    {report.reports_generated}")
+    lines.append(f"  Texts submitted:      {report.texts_submitted}")
     lines.append(f"  Judge ratings:        {report.ratings_submitted}")
     lines.append(f"  Total HTTP steps:     {report.total_steps}")
     if report.access_probes_total:

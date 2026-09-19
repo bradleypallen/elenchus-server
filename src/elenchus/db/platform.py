@@ -1537,6 +1537,158 @@ def list_study_texts(con, *, study_id: str | None = None) -> list[dict]:
     return [_row_to_study_text(r) for r in rows]
 
 
+# ─── Text judging (migration 0011) ────────────────────────────────────
+
+
+def list_judges(con) -> list[dict]:
+    """Active judge accounts — what a researcher needs to assign work.
+    (The full user list is admin-only; this is the narrow slice.)"""
+    rows = con.execute(
+        "SELECT id, display_name, email FROM actors "
+        "WHERE kind = 'judge' AND deactivated_at IS NULL ORDER BY id"
+    ).fetchall()
+    return [{"id": r[0], "display_name": r[1], "email": r[2]} for r in rows]
+
+
+def create_text_assignment(
+    con, *, study_id: str, text_id: int, judge_actor_id: int, assigned_by: int, position: float
+) -> int | None:
+    """Assign one text to one judge. Returns the new id, or None if
+    that judge already has that text (assigning is idempotent, so
+    "assign everything" can be pressed again after more texts come in)."""
+    existing = con.execute(
+        "SELECT id FROM text_assignments WHERE text_id = ? AND judge_actor_id = ?",
+        [text_id, judge_actor_id],
+    ).fetchone()
+    if existing is not None:
+        return None
+    row = con.execute(
+        "INSERT INTO text_assignments (study_id, text_id, judge_actor_id, assigned_by, position) "
+        "VALUES (?, ?, ?, ?, ?) RETURNING id",
+        [study_id, text_id, judge_actor_id, assigned_by, position],
+    ).fetchone()
+    return int(row[0])
+
+
+_TEXT_ASSIGNMENT_COLUMNS = (
+    "id, study_id, text_id, judge_actor_id, assigned_by, assigned_at, position, "
+    "status, completed_at"
+)
+
+
+def _row_to_text_assignment(row) -> dict:
+    return {
+        "id": row[0],
+        "study_id": row[1],
+        "text_id": row[2],
+        "judge_actor_id": row[3],
+        "assigned_by": row[4],
+        "assigned_at": row[5],
+        "position": row[6],
+        "status": row[7],
+        "completed_at": row[8],
+    }
+
+
+def find_text_assignment(con, assignment_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_TEXT_ASSIGNMENT_COLUMNS} FROM text_assignments WHERE id = ?", [assignment_id]
+    ).fetchone()
+    return _row_to_text_assignment(row) if row else None
+
+
+def list_text_assignments_for_judge(con, judge_actor_id: int) -> list[dict]:
+    """A judge's queue, in that judge's own random order."""
+    rows = con.execute(
+        f"SELECT {_TEXT_ASSIGNMENT_COLUMNS} FROM text_assignments "
+        "WHERE judge_actor_id = ? ORDER BY position, id",
+        [judge_actor_id],
+    ).fetchall()
+    return [_row_to_text_assignment(r) for r in rows]
+
+
+def list_text_assignments_for_study(con, study_id: str) -> list[dict]:
+    rows = con.execute(
+        f"SELECT {_TEXT_ASSIGNMENT_COLUMNS} FROM text_assignments WHERE study_id = ? ORDER BY id",
+        [study_id],
+    ).fetchall()
+    return [_row_to_text_assignment(r) for r in rows]
+
+
+def find_study_text(con, text_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_STUDY_TEXT_COLUMNS} FROM study_texts WHERE id = ?", [text_id]
+    ).fetchone()
+    return _row_to_study_text(row) if row else None
+
+
+def record_text_rating(
+    con,
+    *,
+    assignment_id: int,
+    rubric_version: str,
+    ratings: dict,
+    justification: str,
+    condition_guess: str | None,
+    confidence: int | None,
+    seconds_spent: int | None,
+) -> int:
+    """Store a submission and mark the assignment completed. Every
+    submission is kept; `latest_text_rating` is the one that counts."""
+    import json
+
+    row = con.execute(
+        "INSERT INTO text_ratings (assignment_id, rubric_version, ratings, justification, "
+        "condition_guess, confidence, seconds_spent) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            assignment_id,
+            rubric_version,
+            json.dumps(ratings, sort_keys=True),
+            justification,
+            condition_guess,
+            confidence,
+            seconds_spent,
+        ],
+    ).fetchone()
+    con.execute(
+        "UPDATE text_assignments SET status = 'completed', completed_at = CURRENT_TIMESTAMP "
+        "WHERE id = ?",
+        [assignment_id],
+    )
+    return int(row[0])
+
+
+def list_text_ratings(con, assignment_id: int) -> list[dict]:
+    """Every submission for an assignment, oldest first."""
+    import json
+
+    rows = con.execute(
+        "SELECT id, assignment_id, rubric_version, ratings, justification, condition_guess, "
+        "confidence, seconds_spent, submitted_at FROM text_ratings "
+        "WHERE assignment_id = ? ORDER BY id",
+        [assignment_id],
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "assignment_id": r[1],
+            "rubric_version": r[2],
+            "ratings": json.loads(r[3]),
+            "justification": r[4] or "",
+            "condition_guess": r[5],
+            "confidence": r[6],
+            "seconds_spent": r[7],
+            "submitted_at": r[8],
+        }
+        for r in rows
+    ]
+
+
+def latest_text_rating(con, assignment_id: int) -> dict | None:
+    ratings = list_text_ratings(con, assignment_id)
+    return ratings[-1] if ratings else None
+
+
 # ─── Usage / cost tracking ────────────────────────────────────────────
 
 

@@ -44,7 +44,7 @@ class StudyHarness:
         self.study_id = study_id
         self.rec = recorder or Recorder()
         self.researcher: SimClient | None = None  # set in run()
-        # Outcome tracking: label → condition → {session_id, report_id}
+        # Outcome tracking: label → condition → {session_id, text_submitted}
         self.outcomes: dict[str, dict[str, dict]] = {}
         # Blinding analysis rows: {guess, truth} per slot.
         self.blinding: list[dict] = []
@@ -232,7 +232,7 @@ class StudyHarness:
             note="can't leave the task without submitting a text",
         )
         # active → post_session (via finish) → surveyed.
-        participant.post(
+        finish_status, _ = participant.post(
             "/api/study/session/finish",
             json={"content": text},
             action="finish",
@@ -264,68 +264,58 @@ class StudyHarness:
             note="complete",
         )
 
-        # 10. Researcher generates the structured report.
-        st, body = self.researcher.post(
-            f"/api/study/session/{session_id}/generate-report",
-            action="generate_report",
-            note=f"{label}/{cond}",
-        )
-        report_id = body.get("id") if st == 200 and body else None
-        self.outcomes[label][cond] = {"session_id": session_id, "report_id": report_id}
+        # The submitted text is what the panel rates; the LLM-generated
+        # structured report of the old design is no longer part of the
+        # flow (and would cost an LLM call per session in `--driver llm`).
+        self.outcomes[label][cond] = {
+            "session_id": session_id,
+            "text_submitted": finish_status == 200,
+        }
 
     # ── Judging ──
 
     def _run_judging(self, researcher: SimClient):
+        """The panel rates the submitted texts: every judge gets every
+        text (in their own random order), sees it blinded, and gives
+        absolute ratings on the rubric's four dimensions."""
         judge_clients = [self._make_staff("judge", j.label) for j in self.judges]
 
-        for label, conds in self.outcomes.items():
-            e = conds.get("elenchus", {}).get("report_id")
-            b = conds.get("baseline", {}).get("report_id")
-            if not (e and b):
-                continue  # both reports must exist to pair them
-            st, pkg = researcher.post(
-                "/api/admin/study/judge-packages",
-                json={
-                    "study_id": self.study_id,
-                    "report_id_elenchus": e,
-                    "report_id_baseline": b,
-                },
-                action="create_package",
-                note=label,
+        researcher.get(f"/api/admin/study/{self.study_id}/texts", action="list_texts")
+
+        for jc, jp in zip(judge_clients, self.judges, strict=False):
+            researcher.post(
+                f"/api/admin/study/{self.study_id}/text-assignments",
+                json={"judge_actor_id": jc._actor_id},
+                action="assign_texts",
+                note=jp.label,
             )
-            if st != 200:
-                continue
-            # Truth map for the blinding analysis.
-            truth = {
-                "a": pkg["slot_a_condition"],
-                "b": pkg["slot_b_condition"],
-            }
-            for jc, jp in zip(judge_clients, self.judges, strict=False):
-                st, asg = researcher.post(
-                    "/api/admin/study/judge-assignments",
-                    json={"package_id": pkg["id"], "judge_actor_id": jc._actor_id},
-                    action="assign_judge",
-                    note=f"{label}→{jp.label}",
-                )
+            st, queue = jc.get("/api/judge/texts", action="judge_queue")
+            for item in (queue or {}).get("assignments", []):
+                aid = item["assignment_id"]
+                st, view = jc.get(f"/api/judge/texts/{aid}", action="view_text")
                 if st != 200:
                     continue
-                aid = asg["id"]
-                st, view = jc.get(f"/api/judge/assignments/{aid}", action="view_assignment")
-                if st != 200:
-                    continue
-                rating = self.driver.judge_rating(
-                    jp,
-                    view["slot_a"]["content"],
-                    view["slot_b"]["content"],
-                )
+                rating = self.driver.judge_text_rating(jp, view)
                 jc.post(
-                    f"/api/judge/assignments/{aid}/rate",
+                    f"/api/judge/texts/{aid}/rate",
                     json=rating,
-                    action="submit_rating",
-                    note=f"{jp.label} {label}",
+                    action="rate_text",
+                    note=jp.label,
                 )
-                # Record blinding outcome for both slots.
-                for slot in ("a", "b"):
+                # Blinding outcome. The ground truth comes from the
+                # platform DB — it is, by design, nowhere in what the
+                # judge was sent.
+                truth = (
+                    get_registry()
+                    .platform_con()
+                    .execute(
+                        "SELECT x.condition FROM text_assignments a "
+                        "JOIN study_texts x ON x.id = a.text_id WHERE a.id = ?",
+                        [aid],
+                    )
+                    .fetchone()
+                )
+                if truth is not None:
                     self.blinding.append(
-                        {"guess": rating.get(f"condition_guess_{slot}"), "truth": truth[slot]}
+                        {"guess": rating.get("condition_guess"), "truth": truth[0]}
                     )

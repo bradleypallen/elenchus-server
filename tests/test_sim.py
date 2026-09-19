@@ -42,12 +42,12 @@ class TestScriptedSimulation:
         assert report.participants_total == 3
         assert report.participants_completed == 3
 
-    def test_reports_and_ratings_produced(self):
+    def test_texts_and_ratings_produced(self):
         report = run_simulation(driver_mode="scripted", participants=2, judges=2)
-        # 2 participants × 2 conditions = 4 reports.
-        assert report.reports_generated == 4
-        # 2 packages (one per participant) × 2 judges = 4 ratings.
-        assert report.ratings_submitted == 4
+        # 2 participants × 2 sessions = 4 submitted texts.
+        assert report.texts_submitted == 4
+        # Absolute ratings: every judge rates every text → 4 × 2 = 8.
+        assert report.ratings_submitted == 8
 
     def test_every_role_is_exercised(self):
         report = run_simulation(driver_mode="scripted", participants=2, judges=2)
@@ -67,11 +67,13 @@ class TestScriptedSimulation:
             "task_turn",
             "accept_tension",
             "submit_survey",
-            "generate_report",
-            "create_package",
-            "assign_judge",
-            "view_assignment",
-            "submit_rating",
+            "autosave_text",
+            "finish",
+            "list_texts",
+            "assign_texts",
+            "judge_queue",
+            "view_text",
+            "rate_text",
             "export_study",
         ):
             assert needed in actions, f"action {needed!r} never succeeded"
@@ -89,7 +91,7 @@ class TestScriptedSimulation:
 
     def test_blinding_recorded(self):
         report = run_simulation(driver_mode="scripted", participants=2, judges=2)
-        # 2 packages × 2 judges × 2 slots = 8 blinding observations.
+        # 4 texts × 2 judges = 8 blinding observations (one guess per rating).
         assert report.blinding_total == 8
         # Scripted judges always guess 'unsure'.
         assert report.blinding_unsure == 8
@@ -112,8 +114,8 @@ class TestScriptedSimulation:
         report = run_simulation(driver_mode="scripted", participants=1, judges=1)
         assert isinstance(report.problems, list)
         assert report.ok
-        # Single participant, single judge → 1 package × 1 judge = 1 rating.
-        assert report.ratings_submitted == 1
+        # Single participant (2 texts), single judge → 2 ratings.
+        assert report.ratings_submitted == 2
 
 
 class TestAccessProbes:
