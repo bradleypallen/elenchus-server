@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import __version__ as elenchus_version
 from . import audit as audit_mod
 from . import auth, invites, secretbox, study_enrolment, study_text, text_judging
 from . import backup as backup_mod
@@ -2970,6 +2971,10 @@ def healthz(response: Response):
 
     body = {
         "status": "ok" if healthy else "degraded",
+        # The *running* code's version. After a deploy, this is how to
+        # tell the service really restarted onto the new release (a pip
+        # upgrade alone leaves the old process serving the old code).
+        "version": elenchus_version,
         "schema_version": schema_version,
         "phase_b_enabled": opponent.enable_phase_b,
         "llm_configured": opponent._has_api_key,

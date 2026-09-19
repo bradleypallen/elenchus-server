@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-19
+
+The pilot redesign. The study now compares **what participants write** —
+a short prose introduction to a topic, in their own words — rated by a
+blinded expert panel; formal analysis (NMMS, RDF) moves offline, so the
+platform captures everything that analysis will need. Adds topics, a
+writing pane, one-step counterbalanced enrolment, absolute rating of
+texts, and a research capture log; fixes `/derive` under pyNMMS ≥ 0.6.2.
+**Upgrading:** platform schema 8 → 11 and per-base schema 2 → 4 migrate
+automatically on start (forward-only — back up first); study export
+format is now `2`; run the server with `TZ=UTC`.
+
 ### Added
 
 - **Blinded rating of the participants' texts.** The expert panel now
@@ -107,6 +119,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `GET /api/study/session` and the routes that return a session no longer
   include the participant's token; the export's `session.json` omits it
   too.
+
+### Added (operations)
+
+- `/healthz` reports the running code's `version`, and
+  `elenchus.__version__` now reads the installed distribution's version
+  (it was a stale hard-coded `0.1.0`) — so a deploy can be verified to
+  have actually restarted onto the new release.
 
 ### Documentation
 

@@ -32,6 +32,10 @@ class TestHealthz:
         assert body["checks"]["platform_db"] == "ok"
         assert body["checks"]["data_dir"] == "ok"
         assert isinstance(body["schema_version"], int)
+        # The running code's version, for verifying a deploy took effect.
+        import elenchus
+
+        assert body["version"] == elenchus.__version__ and body["version"]
         assert body["schema_version"] >= 1
 
     def test_no_auth_required(self):
