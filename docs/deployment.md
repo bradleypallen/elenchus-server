@@ -87,6 +87,10 @@ only** (no participants, no DPO gate), two scaffolds live in the repo:
   --nginx`, ~30 minutes, no IaC. The on-box steps match a SURF VM, so
   nothing is wasted. *(This exact path was executed and verified
   end-to-end before being torn down.)*
+- [`deploy/account-migration.md`](https://github.com/bradleypallen/elenchus-server/blob/main/deploy/account-migration.md)
+  — checklist for moving a running PoC (box, data, DNS, domain
+  registration) into a dedicated project AWS account, with one short
+  downtime window and a rollback.
 - [`deploy/aws-poc/`](https://github.com/bradleypallen/elenchus-server/tree/main/deploy/aws-poc)
   — a reproducible, `terraform destroy`-able single-EC2 scaffold
   (encrypted EBS, `certbot dns-route53`, `EXPORT`→S3, SSM, auto-recovery,

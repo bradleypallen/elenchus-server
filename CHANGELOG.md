@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- `deploy/account-migration.md` — a checklist for moving a running PoC
+  (box, data, DNS zone, domain registration, SES identity) into a
+  dedicated project AWS account: one short downtime window, a rehearsal
+  beforehand, a one-minute rollback, and no secret carried between
+  accounts (the box gets a fresh master key and the LLM API key is
+  re-entered in Settings — a path verified end to end).
+
 ## [0.4.1] — 2026-09-19
 
 Partner institutions and the funder acknowledgement on the landing pages.

@@ -128,3 +128,9 @@ dialectic — or point a synthetic run at it. **No real participants.**
 
 Delete the Lightsail instance + its static IP, and remove the
 `poc.elenchus.chat` A record in Route 53. Done.
+
+## Moving it to another AWS account
+
+To move a running PoC — box, data, DNS and the domain registration — into
+a dedicated project account with one short downtime window, follow
+[`account-migration.md`](account-migration.md).
