@@ -165,7 +165,7 @@ Events are written **inside the `DialecticalState` mutators**, not by their call
 
 ## Partner Strip
 
-`<PartnerStrip>` (sign-in `AuthShell`, home, participant `StudyShell` — never the working interface) renders `static/partners.json`: per partner `name`, `title`, `url` (https), `logo` (a file in `static/logos/`, or `null` → shown as a text link). Logos come **from the organisations, with permission** — never redraw or fetch one; `static/logos/README.md` has the rules. `tests/test_partners.py` fails on a named-but-missing logo, an orphan logo file, or a non-https link. `sw.js` deliberately skips `/static/partners.json` and `/static/logos/` so edits aren't pinned by the cache-first rule.
+`<PartnerStrip>` (sign-in `AuthShell`, home, participant `StudyShell` — never the working interface) renders `static/partners.json`: per partner `name`, `title`, `caption`, `url` (https), `logo` (a file in `static/logos/`, or `null` → shown as a text link), plus a top-level `funding` sentence (the Sloan acknowledgement; `link_text` + `url` link the funder's name). Universities are written out in full — never "UvA" / "VU" — and a lab's logo carries its university as the `caption`. Logos come **from the organisations, with permission** — never redraw or fetch one; `static/logos/README.md` has the rules. `tests/test_partners.py` fails on a named-but-missing logo, an orphan logo file, or a non-https link. `sw.js` deliberately skips `/static/partners.json` and `/static/logos/` so edits aren't pinned by the cache-first rule.
 
 ## Study Text (the judged artifact)
 

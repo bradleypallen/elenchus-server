@@ -26,10 +26,20 @@ the strip is always presentable.
 | Field | |
 |---|---|
 | `label` (top level) | Optional small heading above the strip, e.g. `"A collaboration of"`. Leave `""` for none. The wording states a relationship — agree it with the partners. |
-| `name` | Short name; shown when there is no logo. |
+| `name` | Shown when there is no logo. Write institutions out **in full** ("University of Amsterdam", "Vrije Universiteit Amsterdam"), never abbreviated. |
+| `caption` | Optional small line under the logo — for a lab's logo, the university it belongs to, in full. Not shown in names-only mode (the `name` already says it). |
 | `title` | Full name; the logo's alt text and the link's tooltip. |
 | `url` | Where the logo links to. Must be `https://`. |
 | `logo` | File name in this directory, or `null`. |
+
+## The funding line
+
+`"funding"` (top level) is the funder acknowledgement shown under the
+strip: `text` is the whole sentence, and `link_text` + `url` turn those
+words of it into a link. If the funder requires particular wording or a
+grant number, put it in `text` — for example
+`"Funded by the Alfred P. Sloan Foundation (grant G-2026-XXXXX)."`.
+Remove the `"funding"` key to show nothing.
 
 `tests/test_partners.py` checks the file is well-formed and that every
 logo it names exists. These two paths are deliberately not cached by the

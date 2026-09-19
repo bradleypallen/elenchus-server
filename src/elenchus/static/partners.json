@@ -4,26 +4,35 @@
     {
       "name": "ADSA",
       "title": "ADSA",
+      "caption": "",
       "url": "https://academicdatascience.org/",
       "logo": null
     },
     {
-      "name": "INDElab",
-      "title": "Intelligent Data Engineering Lab, University of Amsterdam",
+      "name": "INDElab, University of Amsterdam",
+      "title": "Intelligent Data Engineering Lab (INDElab), University of Amsterdam",
+      "caption": "University of Amsterdam",
       "url": "https://indelab.org/",
       "logo": null
     },
     {
-      "name": "VU L&R",
-      "title": "Learning & Reasoning group, Vrije Universiteit Amsterdam",
+      "name": "Learning & Reasoning Group, Vrije Universiteit Amsterdam",
+      "title": "Learning & Reasoning Group, Vrije Universiteit Amsterdam",
+      "caption": "Vrije Universiteit Amsterdam",
       "url": "https://lr.cs.vu.nl/",
       "logo": null
     },
     {
       "name": "Old Dominion University",
       "title": "Old Dominion University",
+      "caption": "",
       "url": "https://www.odu.edu/",
       "logo": null
     }
-  ]
+  ],
+  "funding": {
+    "text": "Funded by the Alfred P. Sloan Foundation.",
+    "link_text": "Alfred P. Sloan Foundation",
+    "url": "https://sloan.org/"
+  }
 }
