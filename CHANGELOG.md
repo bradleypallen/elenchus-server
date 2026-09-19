@@ -5,6 +5,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `elenchus costs --days 0` printed the "All time" total twice.
+
 ## [0.5.0] — 2026-09-19
 
 A cost dashboard for admins, and a way to change a person's role.
