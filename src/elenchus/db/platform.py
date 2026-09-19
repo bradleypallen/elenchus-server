@@ -75,6 +75,32 @@ def update_actor_password(con, actor_id: int, password_hash: str) -> None:
     con.execute("UPDATE actors SET password_hash = ? WHERE id = ?", [password_hash, actor_id])
 
 
+# The kinds a person can hold and an admin can move them between. The
+# other kinds ('participant', 'opponent_llm', 'system') are identities
+# the platform creates for itself and never change.
+ASSIGNABLE_KINDS = ("admin", "researcher", "user", "judge")
+
+
+def update_actor_kind(con, actor_id: int, kind: str) -> None:
+    """Change an actor's role. Takes effect on their next request —
+    sessions resolve the actor row each time, so no re-login is needed."""
+    if kind not in ASSIGNABLE_KINDS:
+        raise ValueError(f"Not an assignable kind: {kind!r}")
+    con.execute("UPDATE actors SET kind = ? WHERE id = ?", [kind, actor_id])
+
+
+def count_judging_assignments(con, actor_id: int) -> int:
+    """How many pieces of judging work (texts, and legacy report
+    packages) have been assigned to this actor as a judge."""
+    texts = con.execute(
+        "SELECT COUNT(*) FROM text_assignments WHERE judge_actor_id = ?", [actor_id]
+    ).fetchone()[0]
+    packages = con.execute(
+        "SELECT COUNT(*) FROM judge_assignments WHERE judge_actor_id = ?", [actor_id]
+    ).fetchone()[0]
+    return int(texts) + int(packages)
+
+
 def deactivate_actor(con, actor_id: int) -> None:
     con.execute(
         "UPDATE actors SET deactivated_at = CURRENT_TIMESTAMP WHERE id = ?",

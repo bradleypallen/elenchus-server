@@ -2607,6 +2607,30 @@ function AdminUsersTab({ fs }) {
     setBusyId(null);
   };
 
+  // Role changes keep the account (and everything it has done) and
+  // apply from the person's next request. The server refuses the ones
+  // that would lock the platform out or unblind a judge.
+  const ROLES = ['admin', 'researcher', 'user', 'judge'];
+  const ROLE_NOTES = {
+    admin: 'Full control: invites, users, LLM settings, costs, backups — plus everything a researcher can do.',
+    researcher: 'Runs studies (Study and Judging tabs). No invites, users, settings or costs.',
+    user: 'Their own dialectics only.',
+    judge: 'Rates assigned texts, blinded. Sees nothing else.',
+  };
+  const changeRole = async (u, role) => {
+    if (role === u.kind) return;
+    if (!confirm(
+      `Change ${u.display_name || u.email || 'this account'} from ${u.kind} to ${role}?\n\n`
+      + `${ROLE_NOTES[role]}\n\nIt applies immediately; they don't need to log in again.`
+    )) return;
+    setBusyId(u.id); setError(null); setResetInfo(null);
+    try {
+      await api(`/api/admin/users/${u.id}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+    } catch (e) { setError(e.message); }
+    await load();
+    setBusyId(null);
+  };
+
   const actionBtn = (label, color, onClick, disabled) => (
     <button onClick={onClick} disabled={disabled} style={{
       background: 'none', border: `1px solid ${color}`, color,
@@ -2639,8 +2663,16 @@ function AdminUsersTab({ fs }) {
             const deactivated = !!u.deactivated_at;
             return (
             <tr key={u.id} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>
-                {u.kind}
+              <td style={{ padding: '8px', fontFamily: 'var(--sans)', whiteSpace: 'nowrap' }}>
+                {!isSelf && !deactivated && ROLES.includes(u.kind) ? (
+                  <select aria-label={`Role of ${u.display_name || u.email || 'account ' + u.id}`}
+                          value={u.kind} disabled={busyId === u.id}
+                          onChange={e => changeRole(u, e.target.value)}
+                          style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4,
+                                   color: 'var(--text)', fontSize: fs(11), fontFamily: 'var(--sans)', padding: '2px 4px' }}>
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                ) : u.kind}
                 {u.kind === 'admin' && (
                   <span style={{ marginLeft: 4, color: 'var(--accent)' }}>★</span>
                 )}

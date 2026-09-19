@@ -21,6 +21,15 @@ Platform schema 11 → 12 (`usage.purpose`); applied automatically at startup.
   how much of the period has passed. Display only — nothing is cut off.
 - `elenchus costs [--days N] [--json]` prints the same report, for a grant
   file or a post-run record.
+- **Change a person's role** from the Users tab (`PUT
+  /api/admin/users/{id}/role`). Until now the only way to make someone an
+  admin was to invite them as one; an existing account — a researcher who
+  should now administer the platform — could not be promoted. The account
+  keeps its id (and so its studies, enrolments and dialectics) and the
+  change applies from the person's next request. Refused: your own role,
+  demoting the last active admin, the platform's own identities, and any
+  change to or from `judge` once judging work is assigned (it would
+  unblind the ratings).
 - `usage.purpose` (platform migration `0012`): what each LLM call was for
   — Elenchus turn, baseline turn, rolling summary, PDF-report summary,
   study report, simulation persona — so participants' turns can be told
