@@ -79,6 +79,23 @@ _QUERY_SYNTAX_HELP = (
 )
 
 
+class QuerySyntaxError(ValueError):
+    """A derivability query sentence the *caller* wrote is malformed.
+
+    A `ValueError` subclass for compatibility, but its own type so the
+    `/derive` route and the CLI can report it as the caller's mistake
+    without also swallowing a `ValueError` from inside pyNMMS — e.g. a
+    future grammar change rejecting the atoms this module builds, which
+    is a server fault and has to surface as one (the outage this layer
+    was written to fix looked exactly like that)."""
+
+
+# Long enough for any real query; short enough that pyNMMS's recursive
+# descent parser and prover can't be driven into a RecursionError.
+MAX_QUERY_SENTENCE_CHARS = 2000
+MAX_QUERY_NESTING = 100
+
+
 def quote_atom(sentence):
     """Elenchus proposition → the pyNMMS quoted atom that stands for it."""
     escaped = _NMMS_ESCAPE_RE.sub(lambda m: _NMMS_ESCAPES[m.group()], sentence)
@@ -125,11 +142,17 @@ def to_nmms_sentence(sentence, known_atoms=frozenset()):
     remaining run of text between connectives / parentheses is a
     proposition (so identifier-style queries like `A -> B` keep working).
 
-    Raises ValueError, phrased in terms of the original sentence, if the
-    result is not a well-formed pyNMMS sentence — or if a known atom that
-    contains syntax characters ("R&D is up") appears unquoted inside a
-    larger sentence, where reading it as syntax would silently answer a
-    different question.
+    Returns the sentence in pyNMMS's own canonical form (`str` of the
+    parsed sentence), not the string assembled here: pyNMMS 0.6.2
+    compares sentences as strings, so a redundant pair of parentheses
+    left in — `(<A>)` for `<A>` — would silently fail Containment and
+    the exact base match there while succeeding on later releases.
+
+    Raises QuerySyntaxError, phrased in terms of the original sentence,
+    if the result is not a well-formed pyNMMS sentence — or if a known
+    atom that contains syntax characters ("R&D is up") appears unquoted
+    inside a larger sentence, where reading it as syntax would silently
+    answer a different question.
     """
     for candidate in (sentence, sentence.strip()):
         if candidate in known_atoms:
@@ -139,7 +162,18 @@ def to_nmms_sentence(sentence, known_atoms=frozenset()):
     syntax_atoms = [a for a in known_atoms if _QUERY_SYNTAX_RE.search(a)]
 
     def malformed(reason):
-        return ValueError(f"Malformed query sentence {sentence!r}: {reason}. {_QUERY_SYNTAX_HELP}")
+        # Logged here, once, so every rejection leaves a record whoever
+        # the caller is (route, CLI, script).
+        logger.info("to_nmms_sentence: rejected %r: %s", sentence[:200], reason)
+        return QuerySyntaxError(
+            f"Malformed query sentence {sentence[:200]!r}: {reason}. {_QUERY_SYNTAX_HELP}"
+        )
+
+    if len(sentence) > MAX_QUERY_SENTENCE_CHARS:
+        raise malformed(f"longer than {MAX_QUERY_SENTENCE_CHARS} characters")
+    nesting = sentence.count("(") + sentence.count("~")
+    if nesting > MAX_QUERY_NESTING:
+        raise malformed(f"more than {MAX_QUERY_NESTING} negations and parentheses")
 
     out = []
     run = []  # characters of the current unquoted proposition
@@ -173,7 +207,17 @@ def to_nmms_sentence(sentence, known_atoms=frozenset()):
             end = _closing_quote(sentence, i, known_atoms)
             if end == -1:
                 raise malformed("'<' opens a quoted proposition that is never closed with '>'")
-            emit(quote_atom(sentence[i + 1 : end]), True, True)
+            content = sentence[i + 1 : end]
+            # Quoted text is verbatim — but unquoted text is stripped, so
+            # `< A >` for the known atom `A` would otherwise become a
+            # different, unknown atom and answer False without a word. A
+            # genuinely padded atom still matches verbatim first.
+            if content not in known_atoms and content.strip() in known_atoms:
+                logger.debug(
+                    "to_nmms_sentence: quoted %r taken as known atom %r", content, content.strip()
+                )
+                content = content.strip()
+            emit(quote_atom(content), True, True)
             i = end + 1
         elif sentence.startswith("->", i):
             flush_run()
@@ -203,9 +247,12 @@ def to_nmms_sentence(sentence, known_atoms=frozenset()):
     except ValueError as e:
         logger.debug("to_nmms_sentence: pyNMMS rejected %r (from %r): %s", translated, sentence, e)
         raise malformed("connectives and parentheses do not form a sentence") from None
+    except RecursionError:
+        raise malformed("nested too deeply") from None
+    canonical = str(parsed)
     if parsed.type != "atom":
-        logger.debug("to_nmms_sentence: %r read as complex sentence %s", sentence, translated)
-    return translated
+        logger.debug("to_nmms_sentence: %r read as complex sentence %s", sentence, canonical)
+    return canonical
 
 
 @dataclass(frozen=True)
@@ -394,14 +441,27 @@ class MaterialBase:
         """Check `{premises} |~ {conclusions}` and return a `DerivationResult`.
 
         Each premise / conclusion is a known atom verbatim or a logically
-        complex query sentence (see `to_nmms_sentence`). Raises ValueError
-        if one is malformed.
+        complex query sentence (see `to_nmms_sentence`). Raises
+        `QuerySyntaxError` if one is malformed; any other exception is a
+        fault on this side of the boundary, not the caller's.
         """
         known = self.atoms
         gamma = frozenset(to_nmms_sentence(s, known) for s in premises)
         delta = frozenset(to_nmms_sentence(s, known) for s in conclusions)
         self._ensure_reasoner()
-        proof = self._reasoner.derives(gamma, delta)
+        try:
+            proof = self._reasoner.derives(gamma, delta)
+        except RecursionError:
+            # `to_nmms_sentence` caps nesting per sentence; this is the
+            # backstop for a query the prover still can't get through.
+            logger.warning(
+                "derives %s |~ %s: proof search exceeded the recursion limit",
+                fmt_set(premises),
+                fmt_set(conclusions),
+            )
+            raise QuerySyntaxError(
+                "This query is too deeply nested to check. Try a simpler sentence."
+            ) from None
         trace = [unquote_atoms(line) for line in proof.trace]
         logger.info(
             "derives %s |~ %s → %s (depth=%d, cache_hits=%d, trace_lines=%d)",

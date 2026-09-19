@@ -13,6 +13,7 @@ import argparse
 import os
 
 from .dialectical_state import DialecticalState
+from .material_base import QuerySyntaxError
 from .opponent import Opponent
 
 
@@ -198,7 +199,7 @@ def _derive(msg, state):
             delta = [x.strip() for x in right.split(",") if x.strip()]
             try:
                 result = state.derive_with_trace(gamma, delta)
-            except ValueError as e:
+            except QuerySyntaxError as e:
                 print(f"  ✗ {e}")
                 return
             sym = "✓" if result.derivable else "✗"

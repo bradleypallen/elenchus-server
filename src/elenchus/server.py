@@ -31,6 +31,7 @@ from .db import get_registry, init_registry
 from .db import platform as pdb
 from .dialectical_state import DialecticalState
 from .llm_client import ChatCategory
+from .material_base import QuerySyntaxError
 from .opponent import LLMCallError, Opponent
 from .pdf_report import generate_pdf_report
 
@@ -1973,9 +1974,12 @@ def derive(name: str, req: DeriveRequest, actor: dict = Depends(auth.current_act
     state = _authorize_and_get_state(name, actor)
     try:
         result = state.derive_with_trace(req.gamma, req.delta)
-    except ValueError as e:
+    except QuerySyntaxError as e:
         # A malformed query sentence (dangling connective, unclosed
-        # `<...>` quote, ...) is the caller's error, not a 500.
+        # `<...>` quote, ...) is the caller's error, not a 500. Only
+        # that: any other ValueError from in here — pyNMMS rejecting an
+        # atom this server built, say — is a server fault and must
+        # surface as a 5xx, not be reported as the user's mistake.
         logger.warning(
             "Derive rejected: dialectic=%s, gamma=%r, delta=%r: %s", name, req.gamma, req.delta, e
         )

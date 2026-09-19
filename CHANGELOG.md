@@ -26,7 +26,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   inside a larger sentence; leaving it bare is reported as an error rather
   than silently parsed as syntax.
 - A malformed `/derive` query now returns HTTP 422 with an explanatory
-  message (and the CLI prints it) instead of a 500 / REPL crash.
+  message (and the CLI prints it) instead of a 500 / REPL crash — including
+  a query nested deeply enough to exhaust the parser's recursion (sentences
+  are capped at 2000 characters and 100 negations/parentheses). Malformed
+  queries raise a dedicated `QuerySyntaxError`, and only that is reported
+  as the caller's mistake: a `ValueError` from inside pyNMMS is a server
+  fault and surfaces as a 5xx, rather than masquerading as a bad query.
+  Every rejection is logged.
+- Query sentences are handed to pyNMMS in its own canonical form. pyNMMS
+  0.6.2 compares sentences as strings, so a redundant pair of parentheses
+  (`(A) |~ A`) answered False there while answering True on later releases.
+- A padded quote (`< A >`) resolves to the known atom `A` instead of
+  silently becoming a different, unknown atom.
 
 ### Changed
 

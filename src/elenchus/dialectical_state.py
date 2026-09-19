@@ -341,7 +341,7 @@ class DialecticalState:
 
     def derive_with_trace(self, gamma: list, delta: list):
         """Return a `DerivationResult` (derivable, trace, depth). Raises
-        ValueError if a query sentence is malformed."""
+        `QuerySyntaxError` if a query sentence is malformed."""
         return self.base.derive_with_trace(set(gamma), set(delta))
 
     # ── Atom IDs (sequential by creation order) ──

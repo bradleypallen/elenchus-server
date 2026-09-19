@@ -119,7 +119,7 @@ src/elenchus/
 - **Tension** — A proposed incoherence `{gamma} |~ {delta}` where gamma draws from C; stored with status open/accepted/contested
 - **Material implication** — An accepted tension becomes an assessment in the base consequence relation
 - **Speech acts** — COMMIT, DENY, RETRACT, REFINE, ACCEPT_TENSION, CONTEST_TENSION
-- **Derivability** — Checked by pyNMMS's `NMMSReasoner`: backward proof search with Containment (Ax1), exact base consequence match (Ax2, no Weakening), and 8 Ketonen-style propositional rules. Returns a `ProofResult` with human-readable trace. Invoked on-demand via `/derive` (CLI and API), never automatically during the dialectic flow.
+- **Derivability** — Checked by pyNMMS's `NMMSReasoner`: backward proof search with Containment (Ax1), exact base consequence match (Ax2, no Weakening), and 8 Ketonen-style propositional rules. Returns an Elenchus `DerivationResult` (`derivable`, `trace`, `depth_reached`, `cache_hits`) with a human-readable trace; a malformed query raises `QuerySyntaxError`. Invoked on-demand via `/derive` (CLI and API), never automatically during the dialectic flow.
 
 ## UI Action Flow (Two-Phase Pattern)
 

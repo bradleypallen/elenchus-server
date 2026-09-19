@@ -439,6 +439,28 @@ class TestDeriveEndpoint:
         assert r.status_code == 200, r.text
         assert r.json()["derives"] is True
 
+    def test_derive_internal_value_error_is_not_blamed_on_the_query(self):
+        """If pyNMMS rejects something *this server* built (as it did when
+        0.6.2 tightened the atom grammar), that is a server fault. It must
+        not come back as a 422 "malformed query": that would blame the
+        user and hide the outage from 5xx alerting."""
+        from unittest.mock import patch
+
+        from elenchus.material_base import MaterialBase
+
+        self._whales("der6")
+        with (
+            patch.object(
+                MaterialBase, "_ensure_reasoner", side_effect=ValueError("add_atom: bad atom")
+            ),
+            pytest.raises(ValueError, match="add_atom"),
+        ):
+            # TestClient re-raises unhandled server exceptions — i.e. a 500.
+            client.post(
+                "/api/dialectics/der6/derive",
+                json={"gamma": ["Whales are mammals"], "delta": ["Whales are mammals"]},
+            )
+
     def test_derive_malformed_query_is_422_not_500(self):
         self._whales("der5")
         for bad in ["Whales are mammals &", "<unclosed", "", "~Whales breathe water (not air)"]:
@@ -448,6 +470,12 @@ class TestDeriveEndpoint:
             )
             assert r.status_code == 422, (bad, r.text)
             assert "Malformed query sentence" in r.json()["detail"]
+        # Deep nesting used to raise RecursionError past the handler → 500.
+        r = client.post(
+            "/api/dialectics/der5/derive",
+            json={"gamma": ["~" * 3000 + "Whales are mammals"], "delta": ["Whales are mammals"]},
+        )
+        assert r.status_code == 422, r.text
         # The dialectic is still usable afterwards.
         r = client.post(
             "/api/dialectics/der5/derive",

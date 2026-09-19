@@ -6,7 +6,10 @@ import pytest
 from pynmms import MaterialBase as NMMSBase
 
 from elenchus.material_base import (
+    MAX_QUERY_NESTING,
+    MAX_QUERY_SENTENCE_CHARS,
     MaterialBase,
+    QuerySyntaxError,
     fmt_set,
     quote_atom,
     set_to_str,
@@ -201,6 +204,15 @@ class TestAtomQuoting:
         assert unquote_atoms(line) == f"  AXIOM: x > 5, {WHALES} => a < b"
 
 
+def canon(nmms_sentence: str) -> str:
+    """pyNMMS's own canonical spelling of a sentence. `to_nmms_sentence`
+    returns that form (its bracketing differs across pyNMMS releases, so
+    the expectations below are stated through the parser, not as literals)."""
+    from pynmms import parse_sentence
+
+    return str(parse_sentence(nmms_sentence))
+
+
 class TestQueryTranslation:
     KNOWN = frozenset({WHALES, AIR, "A", "B", "R&D spending is up", "x > 5", "a < b"})
 
@@ -214,20 +226,22 @@ class TestQueryTranslation:
         assert to_nmms_sentence("Whales are fish", self.KNOWN) == "<Whales are fish>"
 
     def test_identifier_style_complex_query(self):
-        assert to_nmms_sentence("A -> B", self.KNOWN) == "<A> -> <B>"
-        assert to_nmms_sentence("~(A & B) | A", self.KNOWN) == "~(<A> & <B>) | <A>"
+        assert to_nmms_sentence("A -> B", self.KNOWN) == canon("<A> -> <B>")
+        assert to_nmms_sentence("~(A & B) | A", self.KNOWN) == canon("~(<A> & <B>) | <A>")
 
     def test_natural_language_complex_query(self):
-        assert to_nmms_sentence(f"{WHALES} -> {AIR}", self.KNOWN) == f"<{WHALES}> -> <{AIR}>"
+        assert to_nmms_sentence(f"{WHALES} -> {AIR}", self.KNOWN) == canon(
+            f"<{WHALES}> -> <{AIR}>"
+        )
         assert to_nmms_sentence(f"~{WHALES}", self.KNOWN) == f"~<{WHALES}>"
 
     def test_explicit_quotes_are_verbatim(self):
         got = to_nmms_sentence("<R&D spending is up> -> <A>", self.KNOWN)
-        assert got == "<R&D spending is up> -> <A>"
+        assert got == canon("<R&D spending is up> -> <A>")
 
     def test_quoted_known_atom_may_contain_angle_brackets(self):
         assert to_nmms_sentence("~<x > 5>", self.KNOWN) == "~<x %3E 5>"
-        assert to_nmms_sentence("<a < b> & <x > 5>", self.KNOWN) == "<a %3C b> & <x %3E 5>"
+        assert to_nmms_sentence("<a < b> & <x > 5>", self.KNOWN) == canon("<a %3C b> & <x %3E 5>")
 
     def test_unquoted_known_atom_with_syntax_chars_is_an_error(self):
         """Reading a stored proposition as syntax would silently answer a
@@ -242,6 +256,62 @@ class TestQueryTranslation:
     def test_malformed_query_raises_value_error(self, bad):
         with pytest.raises(ValueError, match="Malformed query sentence"):
             to_nmms_sentence(bad, self.KNOWN)
+
+    def test_malformed_query_has_its_own_error_type(self):
+        """Callers catch QuerySyntaxError, not bare ValueError, so a
+        ValueError from inside pyNMMS isn't mistaken for a bad query."""
+        with pytest.raises(QuerySyntaxError):
+            to_nmms_sentence("A &", self.KNOWN)
+        assert issubclass(QuerySyntaxError, ValueError)
+
+    def test_rejections_are_logged(self, caplog):
+        with (
+            caplog.at_level(logging.INFO, logger="elenchus.material_base"),
+            pytest.raises(QuerySyntaxError),
+        ):
+            to_nmms_sentence("<unclosed", self.KNOWN)
+        assert any("rejected '<unclosed'" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        ("query", "canonical"),
+        [("(A)", "<A>"), ("((A))", "<A>"), (" ( A ) ", "<A>"), ("~(A)", "~<A>")],
+    )
+    def test_result_is_canonical(self, query, canonical):
+        """pyNMMS 0.6.2 compares sentences as strings: `(<A>)` left as
+        assembled would fail Containment and the exact base match there."""
+        assert to_nmms_sentence(query, frozenset({"A"})) == canonical
+
+    def test_padded_quote_resolves_to_the_known_atom(self):
+        known = frozenset({"A", " padded "})
+        assert to_nmms_sentence("< A >", known) == quote_atom("A")
+        assert to_nmms_sentence("~< A >", known) == "~" + quote_atom("A")
+        # A genuinely padded atom still matches verbatim first...
+        assert to_nmms_sentence("< padded >", known) == quote_atom(" padded ")
+        # ...and unknown quoted text stays verbatim.
+        assert to_nmms_sentence("< new >", known) == quote_atom(" new ")
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "~" * 3000 + "A",
+            "(" * 3000 + "A" + ")" * 3000,
+            "~" * (MAX_QUERY_NESTING + 1) + "A",
+            "A & " * MAX_QUERY_SENTENCE_CHARS + "A",
+        ],
+    )
+    def test_oversized_query_is_a_syntax_error_not_a_crash(self, bad):
+        """A RecursionError here used to escape `except ValueError` and
+        surface as an HTTP 500 / REPL crash."""
+        with pytest.raises(QuerySyntaxError, match="Malformed query sentence"):
+            to_nmms_sentence(bad, frozenset({"A"}))
+
+    def test_nesting_at_the_cap_still_parses(self):
+        assert to_nmms_sentence("~" * MAX_QUERY_NESTING + "A", frozenset({"A"}))
+
+    def test_known_atom_is_exempt_from_the_caps(self):
+        """A stored proposition is an atom however many parentheses it has."""
+        atom = "f" + "(" * (MAX_QUERY_NESTING + 5)
+        assert to_nmms_sentence(atom, frozenset({atom})) == quote_atom(atom)
 
 
 class TestNaturalLanguageDerivability:
