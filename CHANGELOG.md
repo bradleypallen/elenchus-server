@@ -7,6 +7,27 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Participant enrolment for the crossover design.** A researcher sets a
+  study up once — its two topics and the minimum gap between a
+  participant's sessions (`PUT /api/admin/study/{id}/config`) — then
+  enrols a *person* (`POST /api/admin/study/{id}/participants`), which
+  issues **both** of their session links in one step, each carrying its
+  condition and topic. Which condition and which topic come first is drawn
+  by **permuted-block randomization** over the four order × topic cells,
+  so the cells stay balanced throughout recruitment and the next
+  allocation isn't predictable; a replacement can be placed by hand, and
+  sits outside the blocks. Each participant gets a code (`P01`, …) that
+  links their two sessions in the export (`participant_code`, `period`,
+  allocation in `session.json`; a name-free `participants.json` and
+  `study_config.json`; names only in the pseudonym file kept beside the
+  archive). A participant's **second link stays shut** until their first
+  session has ended and the study's gap has passed, with a message saying
+  when it opens; resuming a session is never blocked. Researchers can
+  close an abandoned session as `interrupted`
+  (`POST /api/admin/study/sessions/{id}/interrupt`) so it doesn't hold the
+  second one up. The Study tab gains study setup, one-click enrolment and
+  a roster (both sessions per person, status, text submitted, copy-link,
+  balance across cells). Platform migration `0010`; export format `2`.
 - **Writing pane: the participant's own text is now the study's judged
   artifact.** Each participant token can carry a topic (`topic_title`,
   `topic_brief`); the task base is named after it, so the Elenchus
@@ -68,6 +89,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Researcher accounts could not reach the Study or Judging tabs.** The
+  dashboard button and view were gated on `admin`, although the study
+  routes themselves have always allowed researchers. Researchers now get
+  a STUDY button and a dashboard showing the Study and Judging tabs only.
 - Derivability checks work again with pyNMMS ≥ 0.6.2. That release made
   the atom grammar strict (identifiers, `C(a)`, or quoted `<...>` only),
   so building the reasoner raised `ValueError` for every real dialectic —

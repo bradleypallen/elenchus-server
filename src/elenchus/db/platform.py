@@ -1098,16 +1098,21 @@ def create_participant_token(
     notes: str = "",
     topic_title: str = "",
     topic_brief: str = "",
+    participant_id: int | None = None,
+    period: int | None = None,
 ) -> None:
     """Insert one participant_session_tokens row. The caller has
     already validated condition; the DB has its own CHECK as a
     backstop. `topic_title` / `topic_brief` are the writing task the
-    participant is given in this session (migration 0009)."""
+    participant is given in this session (migration 0009);
+    `participant_id` / `period` tie the token to an enrolled participant
+    and say which of their two sessions it opens (migration 0010)."""
     con.execute(
         "INSERT INTO participant_session_tokens "
         "(token, actor_id, study_id, condition, issued_by, "
-        "scheduled_start, scheduled_end, notes, topic_title, topic_brief) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "scheduled_start, scheduled_end, notes, topic_title, topic_brief, "
+        "participant_id, period) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             token,
             actor_id,
@@ -1119,6 +1124,8 @@ def create_participant_token(
             notes,
             topic_title,
             topic_brief,
+            participant_id,
+            period,
         ],
     )
 
@@ -1131,7 +1138,7 @@ def find_participant_token(con, token: str) -> dict | None:
     row = con.execute(
         "SELECT token, actor_id, study_id, condition, scheduled_start, "
         "scheduled_end, issued_by, issued_at, used_at, session_id, "
-        "status, notes, topic_title, topic_brief "
+        "status, notes, topic_title, topic_brief, participant_id, period "
         "FROM participant_session_tokens WHERE token = ?",
         [token],
     ).fetchone()
@@ -1152,6 +1159,8 @@ def find_participant_token(con, token: str) -> dict | None:
         "notes": row[11],
         "topic_title": row[12] or "",
         "topic_brief": row[13] or "",
+        "participant_id": row[14],
+        "period": row[15],
     }
 
 
@@ -1220,7 +1229,7 @@ def list_participant_tokens(
     rows = con.execute(
         f"SELECT token, actor_id, study_id, condition, scheduled_start, "
         f"scheduled_end, issued_by, issued_at, used_at, session_id, "
-        f"status, notes, topic_title "
+        f"status, notes, topic_title, participant_id, period "
         f"FROM participant_session_tokens {where} "
         f"ORDER BY issued_at DESC",
         params,
@@ -1240,9 +1249,197 @@ def list_participant_tokens(
             "status": r[10],
             "notes": r[11],
             "topic_title": r[12] or "",
+            "participant_id": r[13],
+            "period": r[14],
         }
         for r in rows
     ]
+
+
+# ─── Study setup + enrolment (migration 0010) ─────────────────────────
+
+
+def upsert_study_config(
+    con,
+    *,
+    study_id: str,
+    topic_a_title: str,
+    topic_a_brief: str,
+    topic_b_title: str,
+    topic_b_brief: str,
+    min_gap_hours: int,
+    actor_id: int,
+) -> dict:
+    """Create or update a study's setup. `created_by` / `created_at`
+    are kept from the first write."""
+    if find_study_config(con, study_id) is None:
+        con.execute(
+            "INSERT INTO study_configs (study_id, topic_a_title, topic_a_brief, "
+            "topic_b_title, topic_b_brief, min_gap_hours, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                study_id,
+                topic_a_title,
+                topic_a_brief,
+                topic_b_title,
+                topic_b_brief,
+                min_gap_hours,
+                actor_id,
+            ],
+        )
+    else:
+        con.execute(
+            "UPDATE study_configs SET topic_a_title = ?, topic_a_brief = ?, "
+            "topic_b_title = ?, topic_b_brief = ?, min_gap_hours = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE study_id = ?",
+            [topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, min_gap_hours, study_id],
+        )
+    return find_study_config(con, study_id)
+
+
+def find_study_config(con, study_id: str) -> dict | None:
+    row = con.execute(
+        "SELECT study_id, topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, "
+        "min_gap_hours, created_by, created_at, updated_at "
+        "FROM study_configs WHERE study_id = ?",
+        [study_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "study_id": row[0],
+        "topics": {
+            "A": {"title": row[1], "brief": row[2] or ""},
+            "B": {"title": row[3], "brief": row[4] or ""},
+        },
+        "min_gap_hours": row[5],
+        "created_by": row[6],
+        "created_at": row[7],
+        "updated_at": row[8],
+    }
+
+
+def list_study_configs(con) -> list[dict]:
+    rows = con.execute("SELECT study_id FROM study_configs ORDER BY created_at").fetchall()
+    return [find_study_config(con, r[0]) for r in rows]
+
+
+_PARTICIPANT_COLUMNS = (
+    "id, study_id, participant_code, display_name, first_condition, first_topic, "
+    "allocation, enrolled_by, enrolled_at, notes"
+)
+
+
+def _row_to_participant(row) -> dict:
+    return {
+        "id": row[0],
+        "study_id": row[1],
+        "participant_code": row[2],
+        "display_name": row[3],
+        "first_condition": row[4],
+        "first_topic": row[5],
+        "allocation": row[6],
+        "enrolled_by": row[7],
+        "enrolled_at": row[8],
+        "notes": row[9] or "",
+    }
+
+
+def create_study_participant(
+    con,
+    *,
+    study_id: str,
+    participant_code: str,
+    display_name: str,
+    first_condition: str,
+    first_topic: str,
+    allocation: str,
+    enrolled_by: int,
+    notes: str = "",
+) -> int:
+    row = con.execute(
+        "INSERT INTO study_participants (study_id, participant_code, display_name, "
+        "first_condition, first_topic, allocation, enrolled_by, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            study_id,
+            participant_code,
+            display_name,
+            first_condition,
+            first_topic,
+            allocation,
+            enrolled_by,
+            notes,
+        ],
+    ).fetchone()
+    return int(row[0])
+
+
+def find_study_participant(con, participant_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_PARTICIPANT_COLUMNS} FROM study_participants WHERE id = ?", [participant_id]
+    ).fetchone()
+    return _row_to_participant(row) if row else None
+
+
+def list_study_participants(con, study_id: str) -> list[dict]:
+    """A study's participants in enrolment order — the order the
+    permuted blocks were drawn in."""
+    rows = con.execute(
+        f"SELECT {_PARTICIPANT_COLUMNS} FROM study_participants WHERE study_id = ? ORDER BY id",
+        [study_id],
+    ).fetchall()
+    return [_row_to_participant(r) for r in rows]
+
+
+def find_participant_period_token(con, participant_id: int, period: int) -> dict | None:
+    """The (non-voided, newest) token for one of a participant's two
+    sessions."""
+    row = con.execute(
+        "SELECT token FROM participant_session_tokens "
+        "WHERE participant_id = ? AND period = ? "
+        "ORDER BY (status = 'voided'), issued_at DESC LIMIT 1",
+        [participant_id, period],
+    ).fetchone()
+    return find_participant_token(con, row[0]) if row else None
+
+
+def second_session_gate(con, token_row: dict) -> dict | None:
+    """Why a participant's second link can't be opened yet — or None if
+    it can. The design wants the two sessions in order and apart: the
+    second opens only once the first has ended, and `min_gap_hours`
+    after that.
+
+    Returns `{"reason": ..., "opens_at": timestamp | None}`. Tokens
+    that aren't an enrolled participant's period 2 are never gated, and
+    a first session that was cancelled (token voided / expired unused)
+    doesn't hold the second one up.
+    """
+    if token_row.get("period") != 2 or token_row.get("participant_id") is None:
+        return None
+    first = find_participant_period_token(con, token_row["participant_id"], 1)
+    if first is None or first["status"] in ("voided", "expired"):
+        return None
+    if first["session_id"] is None:
+        return {"reason": "first_not_started", "opens_at": None}
+
+    config = find_study_config(con, token_row["study_id"]) or {}
+    gap = int(config.get("min_gap_hours", 0) or 0)
+    row = con.execute(
+        "SELECT state, closed_at, "
+        "closed_at + to_hours(?) AS opens_at, "
+        "closed_at + to_hours(?) <= CAST(CURRENT_TIMESTAMP AS TIMESTAMP) AS open_now "
+        "FROM sessions WHERE id = ?",
+        [gap, gap, first["session_id"]],
+    ).fetchone()
+    if row is None:
+        return None
+    state, closed_at, opens_at, open_now = row
+    if closed_at is None:
+        return {"reason": "first_still_open", "opens_at": None, "first_state": state}
+    if not open_now:
+        return {"reason": "too_soon", "opens_at": opens_at}
+    return None
 
 
 # ─── Study texts (the judged artifact) ────────────────────────────────

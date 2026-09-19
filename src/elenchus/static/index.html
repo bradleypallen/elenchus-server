@@ -1558,12 +1558,13 @@ function App() {
   // ── Home ──
   // ── Admin Dashboard ──
   if (view === 'admin') {
-    if (actor?.kind !== 'admin') {
-      // Defense in depth: non-admins shouldn't reach this; bounce home.
+    if (actor?.kind !== 'admin' && actor?.kind !== 'researcher') {
+      // Defense in depth: only admins and researchers reach the
+      // dashboard (researchers see its study tabs only); bounce home.
       setView('home');
       return null;
     }
-    return <AdminDashboard fs={fs} onBack={() => setView('home')} />;
+    return <AdminDashboard fs={fs} actor={actor} onBack={() => setView('home')} />;
   }
 
   if (view === 'home') {
@@ -1585,17 +1586,17 @@ function App() {
               )}
             </span>
           )}
-          {actor && actor.kind === 'admin' && (
+          {actor && (actor.kind === 'admin' || actor.kind === 'researcher') && (
             <button
               onClick={() => setView('admin')}
-              title="Admin dashboard"
+              title={actor.kind === 'admin' ? 'Admin dashboard' : 'Study dashboard'}
               style={{
                 background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
                 color: 'var(--accent)', cursor: 'pointer',
                 fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
                 letterSpacing: 1, fontFamily: 'var(--mono)',
               }}
-            >ADMIN</button>
+            >{actor.kind === 'admin' ? 'ADMIN' : 'STUDY'}</button>
           )}
           {actor && (
             <button
@@ -1893,17 +1894,17 @@ function App() {
             }}
           >PDF</button>
           )}
-          {actor && actor.kind === 'admin' && (
+          {actor && (actor.kind === 'admin' || actor.kind === 'researcher') && (
             <button
               onClick={() => { setCurrent(null); setCurrentSessionId(null); setState(null); setView('admin'); }}
-              title="Admin dashboard"
+              title={actor.kind === 'admin' ? 'Admin dashboard' : 'Study dashboard'}
               style={{
                 background: 'none', border: '1px solid var(--accent)', borderRadius: 4,
                 color: 'var(--accent)', cursor: 'pointer',
                 fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
                 letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
               }}
-            >ADMIN</button>
+            >{actor.kind === 'admin' ? 'ADMIN' : 'STUDY'}</button>
           )}
           {actor && (
             <span title={actor.email || ''} style={{
@@ -2561,6 +2562,226 @@ function AdminUsersTab({ fs }) {
   );
 }
 
+// Study setup + enrolment. A participant does two sessions — one per
+// condition, a different topic each time — so the researcher enrols a
+// *person* and gets both links at once; the server draws which condition
+// and topic come first (permuted blocks), which keeps the four cells
+// balanced and the two sessions linked in the data.
+function AdminEnrolmentPanel({ fs, onChanged }) {
+  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48 };
+  const [studies, setStudies] = useState([]);
+  const [studyId, setStudyId] = useState('');
+  const [cfg, setCfg] = useState(blank);
+  const [showSetup, setShowSetup] = useState(false);
+  const [roster, setRoster] = useState(null);
+  const [name, setName] = useState('');
+  const [manual, setManual] = useState(false);
+  const [cell, setCell] = useState({ first_condition: 'elenchus', first_topic: 'A' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(null);
+
+  const loadStudies = async () => {
+    try {
+      const r = await api('/api/admin/study/configs');
+      setStudies(r.studies || []);
+      if (!studyId && r.studies?.length) setStudyId(r.studies[0].study_id);
+      if (!r.studies?.length) setShowSetup(true);
+    } catch (e) { setError(e.message); }
+  };
+  const loadRoster = async (sid) => {
+    if (!sid) { setRoster(null); return; }
+    try { setRoster(await api(`/api/admin/study/${encodeURIComponent(sid)}/participants`)); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { loadStudies(); }, []);
+  useEffect(() => {
+    loadRoster(studyId);
+    const st = studies.find(x => x.study_id === studyId);
+    if (st) setCfg({
+      study_id: st.study_id, min_gap_hours: st.min_gap_hours,
+      topic_a_title: st.topics.A.title, topic_a_brief: st.topics.A.brief,
+      topic_b_title: st.topics.B.title, topic_b_brief: st.topics.B.brief,
+    });
+  }, [studyId, studies]);
+
+  const saveConfig = async () => {
+    if (busy || !cfg.study_id.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      const { study_id, ...body } = cfg;
+      await api(`/api/admin/study/${encodeURIComponent(study_id.trim())}/config`, {
+        method: 'PUT', body: JSON.stringify({ ...body, min_gap_hours: parseInt(body.min_gap_hours, 10) || 0 }),
+      });
+      setStudyId(study_id.trim()); setShowSetup(false);
+      await loadStudies();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const enrol = async () => {
+    if (busy || !studyId || !name.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/admin/study/${encodeURIComponent(studyId)}/participants`, {
+        method: 'POST', body: JSON.stringify({ display_name: name.trim(), ...(manual ? cell : {}) }),
+      });
+      setName(''); setManual(false);
+      await loadRoster(studyId); onChanged && onChanged();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const interrupt = async (sessionId) => {
+    if (!confirm('Close this session as interrupted? Use this when a participant has abandoned it. Everything captured so far is kept; the session cannot be reopened.')) return;
+    try {
+      await api(`/api/admin/study/sessions/${sessionId}/interrupt`, { method: 'POST' });
+      await loadRoster(studyId); onChanged && onChanged();
+    } catch (e) { setError(e.message); }
+  };
+
+  const linkFor = (token) => `${window.location.origin}/?study=${encodeURIComponent(token)}`;
+  const copy = async (token) => {
+    try { await navigator.clipboard.writeText(linkFor(token)); setCopied(token); setTimeout(() => setCopied(null), 1500); }
+    catch (e) { window.prompt('Copy this link:', linkFor(token)); }
+  };
+
+  const card = { marginBottom: 20, padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' };
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const input = { padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' };
+  const smallBtn = { background: 'none', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text-dim)',
+                     cursor: 'pointer', fontSize: fs(10), padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1 };
+  const LIVE = ['briefing', 'tutorial', 'active', 'post_session', 'surveyed'];
+  const gateText = (g) => !g ? null
+    : g.reason === 'too_soon' ? `opens ${String(g.opens_at).slice(0, 16).replace('T', ' ')} UTC`
+    : g.reason === 'first_still_open' ? 'waiting: session 1 still open'
+    : 'waiting: session 1 not started';
+
+  return (
+    <div>
+      {/* Study + setup */}
+      <div style={card}>
+        <div style={{ ...heading, display: 'flex', justifyContent: 'space-between' }}>
+          <span>STUDY</span>
+          <span onClick={() => { setShowSetup(v => !v); }} style={{ cursor: 'pointer', color: 'var(--accent)' }}>
+            {showSetup ? 'HIDE SETUP' : 'SETUP / EDIT TOPICS'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={studyId} onChange={e => setStudyId(e.target.value)} style={input}>
+            {studies.length === 0 && <option value="">no study set up yet</option>}
+            {studies.map(st => <option key={st.study_id} value={st.study_id}>{st.study_id}</option>)}
+          </select>
+          <button onClick={() => { setCfg(blank); setShowSetup(true); }} style={smallBtn}>NEW STUDY</button>
+          {roster && (
+            <span title={Object.entries(roster.cell_counts).map(([k, n]) => `${k}: ${n}`).join('\n')}
+                  style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', cursor: 'help' }}>
+              {roster.participants.length} enrolled · balance across the four order × topic cells: {Object.values(roster.cell_counts).join(' / ')}
+            </span>
+          )}
+        </div>
+        {showSetup && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <input value={cfg.study_id} onChange={e => setCfg(c => ({ ...c, study_id: e.target.value }))}
+              placeholder="study id (e.g. PILOT)" style={input} />
+            {['a', 'b'].map(k => (
+              <div key={k} style={{ display: 'grid', gap: 6 }}>
+                <input value={cfg[`topic_${k}_title`]} onChange={e => setCfg(c => ({ ...c, [`topic_${k}_title`]: e.target.value }))}
+                  placeholder={`Topic ${k.toUpperCase()} — title shown to the participant`} style={input} />
+                <textarea value={cfg[`topic_${k}_brief`]} onChange={e => setCfg(c => ({ ...c, [`topic_${k}_brief`]: e.target.value }))}
+                  placeholder={`Topic ${k.toUpperCase()} — brief (one or two sentences of framing)`} rows={2}
+                  style={{ ...input, resize: 'vertical' }} />
+              </div>
+            ))}
+            <label style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+              Minimum hours between a participant's two sessions{' '}
+              <input type="number" min="0" value={cfg.min_gap_hours}
+                onChange={e => setCfg(c => ({ ...c, min_gap_hours: e.target.value }))} style={{ ...input, width: 80 }} />
+            </label>
+            <div style={{ fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>
+              Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrolments only.
+            </div>
+            <button onClick={saveConfig} disabled={busy} style={{
+              justifySelf: 'start', padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4,
+              color: '#111', fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}>
+              SAVE STUDY</button>
+          </div>
+        )}
+      </div>
+
+      {/* Enrol */}
+      {studyId && (
+        <div style={card}>
+          <div style={heading}>ENROL PARTICIPANT — issues both session links</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') enrol(); }}
+              placeholder="participant name or label (never exported)" style={{ ...input, flex: '1 1 220px' }} />
+            <button onClick={enrol} disabled={busy || !name.trim()} style={{
+              padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+              fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer',
+              opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? '…' : 'ENROL'}</button>
+          </div>
+          <label style={{ display: 'block', marginTop: 8, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+            <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} />{' '}
+            Place by hand (a replacement taking someone's cell) — otherwise order and topic are randomized in balanced blocks of four
+          </label>
+          {manual && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <select value={cell.first_condition} onChange={e => setCell(c => ({ ...c, first_condition: e.target.value }))} style={input}>
+                <option value="elenchus">elenchus first</option><option value="baseline">baseline first</option>
+              </select>
+              <select value={cell.first_topic} onChange={e => setCell(c => ({ ...c, first_topic: e.target.value }))} style={input}>
+                <option value="A">topic A first</option><option value="B">topic B first</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <div style={{ color: 'var(--deny)', fontSize: fs(11), fontFamily: 'var(--sans)', marginBottom: 12 }}>{error}</div>}
+
+      {/* Roster */}
+      {roster && roster.participants.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={heading}>PARTICIPANTS ({roster.participants.length})</div>
+          {roster.participants.map(pt => (
+            <div key={pt.id} style={{ borderTop: '1px solid var(--border)', padding: '10px 0' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: 6 }}>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: fs(12) }}>{pt.participant_code}</span>
+                <span style={{ fontFamily: 'var(--sans)', fontSize: fs(12) }}>{pt.display_name}</span>
+                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+                  {pt.first_condition} first · topic {pt.first_topic} first{pt.allocation === 'manual' ? ' · placed by hand' : ''}
+                </span>
+              </div>
+              {pt.sessions.map(se => {
+                const live = se.session_state && LIVE.includes(se.session_state);
+                const status = se.session_state || se.token_status;
+                return (
+                  <div key={se.period} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+                        fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', padding: '3px 0 3px 14px' }}>
+                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>session {se.period}</span>
+                    <span>{se.condition}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{se.topic_title}</span>
+                    <span style={{ color: status === 'complete' ? 'var(--commit)' : live ? 'var(--tension)' : 'var(--text-muted)' }}>{status}</span>
+                    {se.text_submitted && <span style={{ color: 'var(--commit)' }}>text ✓</span>}
+                    {se.gate && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{gateText(se.gate)}</span>}
+                    {(se.token_status === 'scheduled' || live) && (
+                      <button onClick={() => copy(se.token)} style={smallBtn}>{copied === se.token ? 'COPIED' : 'COPY LINK'}</button>
+                    )}
+                    {live && <button onClick={() => interrupt(se.session_id)} style={{ ...smallBtn, color: 'var(--deny)' }}>CLOSE AS INTERRUPTED</button>}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminStudyTab({ fs }) {
   // Token issuance + cohort overview. Researchers issue one token per
   // (participant, condition); the same participant gets two tokens for
@@ -2640,11 +2861,15 @@ function AdminStudyTab({ fs }) {
 
   return (
     <div>
-      {/* Issue form */}
+      <AdminEnrolmentPanel fs={fs} onChanged={load} />
+
+      {/* Single-link issuance — for test links and one-off sessions.
+          Study participants are enrolled above, which issues both of
+          their links with a topic and a balanced allocation. */}
       <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
                     background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
-          ISSUE PARTICIPANT TOKEN
+          ISSUE A SINGLE TEST LINK (no topic, not part of the roster)
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <input value={form.study_id} onChange={e => setForm(f => ({ ...f, study_id: e.target.value }))}
@@ -2909,8 +3134,12 @@ function AdminJudgingTab({ fs }) {
   );
 }
 
-function AdminDashboard({ fs, onBack }) {
-  const [tab, setTab] = useState('invites');
+function AdminDashboard({ fs, actor, onBack }) {
+  // Researchers run studies but don't administer the platform: they get
+  // the Study and Judging tabs (whose routes are researcher-gated) and
+  // not Invites / Users (admin-only routes that would just 403).
+  const isAdmin = actor?.kind === 'admin';
+  const [tab, setTab] = useState(isAdmin ? 'invites' : 'study');
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -2922,7 +3151,7 @@ function AdminDashboard({ fs, onBack }) {
           <span style={{ fontSize: fs(13), fontWeight: 500, color: 'var(--opp)',
                          cursor: 'pointer' }} onClick={onBack}>Elenchus</span>
           <span style={{ color: 'var(--text-dim)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>
-            Admin dashboard
+            {isAdmin ? 'Admin dashboard' : 'Study dashboard'}
           </span>
         </div>
         <button
@@ -2940,11 +3169,11 @@ function AdminDashboard({ fs, onBack }) {
       <div style={{ padding: '12px 20px', display: 'flex', gap: 4,
                     borderBottom: '1px solid var(--border)' }}>
         {[
-          { id: 'invites', label: 'Invites' },
-          { id: 'users', label: 'Users' },
+          { id: 'invites', label: 'Invites', adminOnly: true },
+          { id: 'users', label: 'Users', adminOnly: true },
           { id: 'study', label: 'Study' },
           { id: 'judging', label: 'Judging' },
-        ].map(t => (
+        ].filter(t => isAdmin || !t.adminOnly).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
               background: tab === t.id ? 'var(--surface)' : 'none',

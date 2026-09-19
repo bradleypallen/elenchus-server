@@ -140,9 +140,13 @@ def _scripted_rating(persona: JudgePersona) -> dict:
     }
 
 
+# The simulated study's two topics. Every participant meets both — one
+# per condition; enrolment decides which goes with which.
+SIM_TOPICS = {"A": "biome classification", "B": "soil taxonomy"}
+
+
 def _topic_for(persona: ParticipantPersona, condition: str) -> str:
-    """A persona brings a different topic to each condition, as the
-    study's participants do."""
+    """Fallback topic when the caller doesn't pass the session's own."""
     return persona.elenchus_domain if condition == "elenchus" else persona.baseline_domain
 
 
@@ -164,11 +168,13 @@ class ScriptedDriver:
         msgs = persona.scripted_task_messages
         return msgs[min(turn_idx, len(msgs) - 1)] if msgs else "Continue."
 
-    def participant_text(self, persona: ParticipantPersona, condition: str, state: dict) -> str:
+    def participant_text(
+        self, persona: ParticipantPersona, condition: str, state: dict, topic: str | None = None
+    ) -> str:
         """The introduction the participant submits. Deterministic, and
-        built only from the persona's topic — so the scripted run's texts
+        built only from the session's topic — so the scripted run's texts
         carry no tell about which condition produced them."""
-        topic = _topic_for(persona, condition)
+        topic = topic or _topic_for(persona, condition)
         return (
             f"This is an introduction to {topic}. The area rests on a small set of core "
             f"concepts, each defined partly by its relation to the others.\n\n"
@@ -219,8 +225,10 @@ class LLMDriver:
         result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=200)
         return result.text.strip() if result.ok else "Let me continue with the domain."
 
-    def participant_text(self, persona: ParticipantPersona, condition: str, state: dict) -> str:
-        topic = _topic_for(persona, condition)
+    def participant_text(
+        self, persona: ParticipantPersona, condition: str, state: dict, topic: str | None = None
+    ) -> str:
+        topic = topic or _topic_for(persona, condition)
         system = (
             f"You are a domain expert in {topic}. Write the kind of introduction a "
             f"well-informed colleague would want to read before working in this area: "
@@ -233,7 +241,7 @@ class LLMDriver:
         result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=700)
         if result.ok and result.text.strip():
             return result.text.strip()
-        return ScriptedDriver().participant_text(persona, condition, state)
+        return ScriptedDriver().participant_text(persona, condition, state, topic=topic)
 
     def survey_response(self, instrument: str) -> dict:
         return _full_survey_response(instrument)
