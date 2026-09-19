@@ -52,6 +52,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The partner strip's config and logos are edited in place (same URL,
+  // new content). Cache-first would pin a returning browser to the old
+  // ones, so leave them to the browser's revalidating HTTP cache.
+  if (url.pathname === "/static/partners.json" || url.pathname.startsWith("/static/logos/")) {
+    return;
+  }
+
   // POST / PUT / DELETE never read from the cache. Only handle GETs.
   if (event.request.method !== "GET") {
     return;

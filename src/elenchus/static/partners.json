@@ -1,0 +1,29 @@
+{
+  "label": "",
+  "partners": [
+    {
+      "name": "ADSA",
+      "title": "ADSA",
+      "url": "https://academicdatascience.org/",
+      "logo": null
+    },
+    {
+      "name": "INDElab",
+      "title": "Intelligent Data Engineering Lab, University of Amsterdam",
+      "url": "https://indelab.org/",
+      "logo": null
+    },
+    {
+      "name": "VU L&R",
+      "title": "Learning & Reasoning group, Vrije Universiteit Amsterdam",
+      "url": "https://lr.cs.vu.nl/",
+      "logo": null
+    },
+    {
+      "name": "Old Dominion University",
+      "title": "Old Dominion University",
+      "url": "https://www.odu.edu/",
+      "logo": null
+    }
+  ]
+}
