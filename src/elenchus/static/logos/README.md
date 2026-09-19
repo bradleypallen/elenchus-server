@@ -36,10 +36,11 @@ the strip is always presentable.
 
 `"funding"` (top level) is the funder acknowledgement shown under the
 strip: `text` is the whole sentence, and `link_text` + `url` turn those
-words of it into a link. If the funder requires particular wording or a
-grant number, put it in `text` — for example
-`"Funded by the Alfred P. Sloan Foundation (grant G-2026-XXXXX)."`.
-Remove the `"funding"` key to show nothing.
+words of it into a link. The sentence is the funder's required
+acknowledgement, grant number included, and is **pinned word for word** in
+`tests/test_partners.py` — which also checks that `README.md` and
+`docs/index.md` carry the same sentence. Change it in all three places,
+and the test, together.
 
 `tests/test_partners.py` checks the file is well-formed and that every
 logo it names exists. These two paths are deliberately not cached by the

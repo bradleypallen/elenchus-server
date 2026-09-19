@@ -24,10 +24,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   University as names — universities written out in full, and named in a
   caption under a lab's logo; **logos to be supplied by the
   organisations**.
-- **Funder acknowledgement** under the strip: "Funded by the Alfred P.
-  Sloan Foundation.", with the foundation's name linked. The sentence
-  lives in `partners.json` (`funding`), so required wording or a grant
-  number can be added without a code change.
+- **Funder acknowledgement** under the strip, in the README and on the docs
+  home page: "This work was supported by a grant from the Alfred P. Sloan
+  Foundation to the Alliance for Data Science and AI (G-2026-79650)." The
+  app's copy lives in `partners.json` (`funding`), with the foundation's
+  name linked; the sentence is pinned word for word in
+  `tests/test_partners.py`, which also checks all three copies agree.
+  ADSA appears under its current name, the Alliance for Data Science and
+  AI, linking to its current site.
 
 ## [0.4.0] — 2026-09-19
 
