@@ -3403,10 +3403,322 @@ function AdminJudgingTab({ fs }) {
   );
 }
 
+// ── Costs (admin only) ──
+//
+// LLM spend, priced on the server *at read time* from the recorded
+// token counts (costs.py) — so the figures here are always under the
+// current price table, and a model without a rate shows as UNPRICED
+// rather than as $0.
+function usd(v, digits = 2) {
+  if (v === null || v === undefined) return '—';
+  return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+function compactTokens(n) {
+  if (!n) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k';
+  return String(n);
+}
+
+function AdminCostsTab({ fs }) {
+  const [days, setDays] = useState(30);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+  const [openStudy, setOpenStudy] = useState(null);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetForm, setBudgetForm] = useState({ llm_usd: '', period_start: '', period_end: '', label: '' });
+  const [budgetError, setBudgetError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async (d = days) => {
+    setError(null);
+    try { setReport(await api(`/api/admin/costs?days=${d}`)); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { load(days); }, [days]);
+
+  const startEditingBudget = () => {
+    const b = report?.budget;
+    setBudgetForm(b
+      ? { llm_usd: String(b.llm_usd), period_start: b.period_start, period_end: b.period_end, label: b.label || '' }
+      : { llm_usd: '', period_start: '', period_end: '', label: '' });
+    setBudgetError(null); setEditingBudget(true);
+  };
+  const saveBudget = async (clear) => {
+    if (busy) return;
+    setBusy(true); setBudgetError(null);
+    try {
+      await api('/api/admin/costs/budget', {
+        method: 'PUT',
+        body: JSON.stringify(clear ? {} : { ...budgetForm, llm_usd: parseFloat(budgetForm.llm_usd) }),
+      });
+      setEditingBudget(false);
+      await load(days);
+    } catch (e) { setBudgetError(e.message); }
+    setBusy(false);
+  };
+
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const card = { padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' };
+  const th = { padding: '6px 8px', fontWeight: 400, textAlign: 'left', color: 'var(--text-muted)' };
+  const thr = { ...th, textAlign: 'right' };
+  const td = { padding: '7px 8px', fontFamily: 'var(--sans)' };
+  const tdr = { ...td, textAlign: 'right', fontFamily: 'var(--mono)' };
+  const note = { fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.6 };
+  const input = { padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' };
+  const smallButton = { background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                        color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '3px 10px',
+                        letterSpacing: 1, fontFamily: 'var(--mono)' };
+
+  if (error) return <div style={{ ...note, color: 'var(--deny)' }}>{error}</div>;
+  if (!report) return <div style={note}>Loading…</div>;
+
+  const span = report.window.days ? `last ${report.window.days} days` : 'all time';
+  const t = report.totals;
+  const maxDay = Math.max(0, ...report.by_day.map(d => d.cost_usd));
+  const budget = report.budget;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={note}>
+          LLM spend, priced from recorded token counts under the current price table
+          (checked {report.prices_as_of}). The provider’s invoice is the final word.
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[[7, '7 D'], [30, '30 D'], [90, '90 D'], [0, 'ALL']].map(([d, label]) => (
+            <button key={d} onClick={() => setDays(d)} style={{
+              ...smallButton,
+              background: days === d ? 'var(--surface)' : 'none',
+              borderColor: days === d ? 'var(--border-focus)' : 'var(--border)',
+              color: days === d ? 'var(--text)' : 'var(--text-muted)' }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {report.unpriced.length > 0 && (
+        <div style={{ ...card, borderColor: 'var(--deny)', marginBottom: 16 }}>
+          <div style={{ ...heading, color: 'var(--deny)' }}>UNPRICED MODELS — NOT INCLUDED IN ANY FIGURE BELOW</div>
+          {report.unpriced.map(u => (
+            <div key={u.model} style={{ ...note, color: 'var(--text)' }}>
+              <span style={{ fontFamily: 'var(--mono)' }}>{u.model}</span> — {compactTokens(u.prompt_tokens)} tokens in,
+              {' '}{compactTokens(u.completion_tokens)} out, {u.calls} call{u.calls === 1 ? '' : 's'}
+            </div>
+          ))}
+          <div style={{ ...note, marginTop: 6 }}>
+            There is no rate for {report.unpriced.length === 1 ? 'this model' : 'these models'} in the price table.
+            Add one with the <span style={{ fontFamily: 'var(--mono)' }}>ELENCHUS_PRICING_JSON</span> setting and
+            restart; the history is then priced too.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {[['MONTH TO DATE', t.month_to_date], [span.toUpperCase(), t.window], ['ALL TIME', t.all_time]].map(([label, b]) => (
+          <div key={label} style={card}>
+            <div style={heading}>{label}</div>
+            <div style={{ fontSize: fs(22), fontFamily: 'var(--mono)', color: 'var(--text)' }}>{usd(b.cost_usd)}</div>
+            <div style={{ ...note, marginTop: 4 }}>
+              {b.calls.toLocaleString()} calls · {compactTokens(b.prompt_tokens)} in · {compactTokens(b.completion_tokens)} out
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={heading}>BUDGET{budget?.label ? ` — ${budget.label}` : ''}</div>
+          {!editingBudget && <button style={smallButton} onClick={startEditingBudget}>{budget ? 'EDIT' : 'SET A BUDGET'}</button>}
+        </div>
+        {!editingBudget && !budget && (
+          <div style={note}>No budget line set. Give the amount and the period it covers to see spend against it.</div>
+        )}
+        {!editingBudget && budget && (
+          <div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: fs(14), color: 'var(--text)' }}>
+              {usd(budget.spent_usd)} <span style={{ color: 'var(--text-muted)' }}>of {usd(budget.llm_usd)}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}> · {budget.pct_spent.toFixed(1)}% spent · {usd(budget.remaining_usd)} left</span>
+            </div>
+            <div title={`${budget.pct_spent.toFixed(1)}% of the budget spent; ${budget.pct_period_elapsed.toFixed(0)}% of the period elapsed`}
+                 style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--surface2)', margin: '10px 0 6px', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, budget.pct_spent)}%`, height: '100%',
+                            background: budget.pct_spent > 100 ? 'var(--deny)' : 'var(--accent)' }} />
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(100, budget.pct_period_elapsed)}%`,
+                            width: 2, background: 'var(--text)' }} />
+            </div>
+            <div style={note}>
+              {budget.period_start} → {budget.period_end} · the marker shows how much of the period has passed
+              ({budget.pct_period_elapsed.toFixed(0)}%).
+              {budget.spent_before_period_usd > 0 && ` ${usd(budget.spent_before_period_usd)} was spent before the period opened and is not charged to it.`}
+              {' '}Display only — nothing is cut off when a budget is exceeded.
+            </div>
+          </div>
+        )}
+        {editingBudget && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input aria-label="Budget amount in US dollars" placeholder="amount (USD)" inputMode="decimal" value={budgetForm.llm_usd}
+                     onChange={e => setBudgetForm({ ...budgetForm, llm_usd: e.target.value })} style={{ ...input, width: 130 }} />
+              <input aria-label="Period start" type="date" value={budgetForm.period_start}
+                     onChange={e => setBudgetForm({ ...budgetForm, period_start: e.target.value })} style={input} />
+              <span style={note}>to</span>
+              <input aria-label="Period end" type="date" value={budgetForm.period_end}
+                     onChange={e => setBudgetForm({ ...budgetForm, period_end: e.target.value })} style={input} />
+              <input aria-label="Label" placeholder="label (e.g. the grant line)" value={budgetForm.label}
+                     onChange={e => setBudgetForm({ ...budgetForm, label: e.target.value })} style={{ ...input, flex: '1 1 200px' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => saveBudget(false)} disabled={busy} style={{
+                padding: '6px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+                fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}>SAVE</button>
+              <button onClick={() => setEditingBudget(false)} style={smallButton}>CANCEL</button>
+              {budget && <button onClick={() => saveBudget(true)} disabled={busy} style={smallButton}>REMOVE BUDGET</button>}
+            </div>
+            {budgetError && <div style={{ ...note, color: 'var(--deny)', marginTop: 8 }}>{budgetError}</div>}
+          </div>
+        )}
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={heading}>SPEND PER DAY — {span.toUpperCase()}</div>
+        {report.by_day.length === 0 || maxDay === 0
+          ? <div style={note}>No priced spend in this window.</div>
+          : <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: report.by_day.length > 60 ? 0 : 2, height: 90 }}>
+                {report.by_day.map(d => (
+                  <div key={d.day} title={`${d.day}: ${usd(d.cost_usd)} · ${d.calls} calls`}
+                       style={{ flex: 1, minWidth: 1, height: `${Math.max(d.cost_usd > 0 ? 3 : 0, 100 * d.cost_usd / maxDay)}%`,
+                                background: 'var(--accent)', borderRadius: '2px 2px 0 0', opacity: 0.85 }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', ...note, marginTop: 4 }}>
+                <span>{report.by_day[0].day}</span>
+                <span>busiest day {usd(maxDay)}</span>
+                <span>{report.by_day[report.by_day.length - 1].day}</span>
+              </div>
+            </div>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={heading}>BY MODEL</div>
+          {report.by_model.length === 0 ? <div style={note}>No calls in this window.</div> :
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+              <thead><tr><th style={th}>model</th><th style={thr}>rate / 1M</th><th style={thr}>in</th><th style={thr}>out</th><th style={thr}>cost</th></tr></thead>
+              <tbody>{report.by_model.map(m => (
+                <tr key={m.model} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ ...td, fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>{m.model}</td>
+                  <td style={{ ...tdr, color: m.rate ? 'var(--text-dim)' : 'var(--deny)' }}
+                      title={m.rate ? `priced as ${m.rate.matched}` : 'no rate in the price table'}>
+                    {m.rate ? `$${m.rate.input_per_1m} / $${m.rate.output_per_1m}` : 'UNPRICED'}</td>
+                  <td style={tdr}>{compactTokens(m.prompt_tokens)}</td>
+                  <td style={tdr}>{compactTokens(m.completion_tokens)}</td>
+                  <td style={tdr}>{m.rate ? usd(m.cost_usd) : '—'}</td>
+                </tr>))}</tbody>
+            </table>}
+        </div>
+        <div style={card}>
+          <div style={heading}>BY PURPOSE</div>
+          {report.by_purpose.length === 0 ? <div style={note}>No calls in this window.</div> :
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+              <thead><tr><th style={th}>what the calls were for</th><th style={thr}>calls</th><th style={thr}>cost</th></tr></thead>
+              <tbody>{report.by_purpose.map(r => (
+                <tr key={r.purpose || 'unlabelled'} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={td}>{r.label}</td>
+                  <td style={tdr}>{r.calls.toLocaleString()}</td>
+                  <td style={tdr}>{usd(r.cost_usd)}</td>
+                </tr>))}</tbody>
+            </table>}
+          <div style={{ ...note, marginTop: 10 }}>
+            Failed calls: {report.waste.failed_calls} of {report.waste.calls}
+            {report.waste.by_category.length > 0 && ` (${report.waste.by_category.map(c => `${c.calls} ${c.category.replace(/_/g, ' ')}`).join(', ')})`}
+            {' '}· retry attempts: {report.waste.retry_attempts}. Providers don’t report the tokens of a failed
+            attempt, so retries are counted here, not priced.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={heading}>STUDIES — ALL TIME</div>
+        {report.studies.length === 0 ? <div style={note}>No participant sessions yet.</div> : report.studies.map(study => (
+          <div key={study.study_id} style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: fs(12), color: 'var(--text)' }}>
+                {study.study_id} <span style={{ color: 'var(--text-muted)' }}>· {usd(study.cost_usd)} so far</span>
+              </div>
+              <button style={smallButton} onClick={() => setOpenStudy(openStudy === study.study_id ? null : study.study_id)}>
+                {openStudy === study.study_id ? 'HIDE SESSIONS' : `SESSIONS (${study.sessions.length})`}</button>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+              <thead><tr>
+                <th style={th}>condition</th><th style={thr}>finished</th><th style={thr}>still to come</th>
+                <th style={thr}>practice</th><th style={thr}>task</th><th style={thr}>total</th><th style={thr}>per finished session</th>
+              </tr></thead>
+              <tbody>{Object.entries(study.conditions).map(([condition, c]) => (
+                <tr key={condition} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={td}>{condition}</td>
+                  <td style={tdr}>{c.finished_sessions} / {c.sessions}</td>
+                  <td style={tdr}>{c.outstanding_sessions}</td>
+                  <td style={tdr}>{usd(c.practice_cost_usd)}</td>
+                  <td style={tdr}>{usd(c.task_cost_usd)}</td>
+                  <td style={tdr}>{usd(c.cost_usd)}</td>
+                  <td style={tdr}>{usd(c.mean_cost_per_finished_session)}</td>
+                </tr>))}</tbody>
+            </table>
+            <div style={{ ...note, marginTop: 6 }}>
+              {study.projected_total_usd === null
+                ? 'No projection yet: a condition has sessions still to come but none finished to estimate them from.'
+                : `Projected total ${usd(study.projected_total_usd)} — ${usd(study.projected_remaining_usd)} still to come, at each condition’s mean cost per finished session.`}
+            </div>
+            {openStudy === study.study_id && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11), marginTop: 8 }}>
+                <thead><tr>
+                  <th style={th}>participant</th><th style={th}>session</th><th style={th}>condition</th><th style={th}>state</th>
+                  <th style={thr}>calls</th><th style={thr}>in</th><th style={thr}>out</th><th style={thr}>practice</th><th style={thr}>task</th><th style={thr}>total</th>
+                </tr></thead>
+                <tbody>{study.sessions.map((r, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{r.participant_code || '—'}</td>
+                    <td style={td}>{r.period || '—'}</td>
+                    <td style={td}>{r.condition}</td>
+                    <td style={{ ...td, color: r.finished ? 'var(--commit)' : 'var(--text-dim)' }}>{r.state || r.token_status}</td>
+                    <td style={tdr}>{r.calls}</td>
+                    <td style={tdr}>{compactTokens(r.prompt_tokens)}</td>
+                    <td style={tdr}>{compactTokens(r.completion_tokens)}</td>
+                    <td style={tdr}>{usd(r.practice_cost_usd)}</td>
+                    <td style={tdr}>{usd(r.task_cost_usd)}</td>
+                    <td style={tdr}>{r.unpriced_tokens > 0 ? 'UNPRICED' : usd(r.cost_usd)}</td>
+                  </tr>))}</tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={card}>
+        <div style={heading}>BY ACCOUNT — {span.toUpperCase()}</div>
+        {report.by_actor.length === 0 ? <div style={note}>No calls in this window.</div> :
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+            <thead><tr><th style={th}>account</th><th style={th}>kind</th><th style={thr}>calls</th><th style={thr}>cost</th></tr></thead>
+            <tbody>{report.by_actor.slice(0, 15).map(a => (
+              <tr key={a.actor_id === null ? 'system' : a.actor_id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={td}>{a.actor_id === null ? 'System (no account)' : (a.display_name || a.email || `actor ${a.actor_id}`)}</td>
+                <td style={{ ...td, color: 'var(--text-dim)' }}>{a.kind || '—'}</td>
+                <td style={tdr}>{a.calls.toLocaleString()}</td>
+                <td style={tdr}>{usd(a.cost_usd)}</td>
+              </tr>))}</tbody>
+          </table>}
+        {report.by_actor.length > 15 && <div style={{ ...note, marginTop: 6 }}>Showing the 15 largest of {report.by_actor.length}.</div>}
+      </div>
+    </div>
+  );
+}
+
 function AdminDashboard({ fs, actor, onBack }) {
   // Researchers run studies but don't administer the platform: they get
   // the Study and Judging tabs (whose routes are researcher-gated) and
-  // not Invites / Users (admin-only routes that would just 403).
+  // not Invites / Users / Costs (admin-only routes that would just 403).
   const isAdmin = actor?.kind === 'admin';
   const [tab, setTab] = useState(isAdmin ? 'invites' : 'study');
   return (
@@ -3442,6 +3754,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           { id: 'users', label: 'Users', adminOnly: true },
           { id: 'study', label: 'Study' },
           { id: 'judging', label: 'Judging' },
+          { id: 'costs', label: 'Costs', adminOnly: true },
         ].filter(t => isAdmin || !t.adminOnly).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
@@ -3461,6 +3774,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           {tab === 'users' && <AdminUsersTab fs={fs} />}
           {tab === 'study' && <AdminStudyTab fs={fs} />}
           {tab === 'judging' && <AdminJudgingTab fs={fs} />}
+          {tab === 'costs' && <AdminCostsTab fs={fs} />}
         </div>
       </div>
     </div>

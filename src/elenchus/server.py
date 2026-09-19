@@ -27,6 +27,7 @@ from . import __version__ as elenchus_version
 from . import audit as audit_mod
 from . import auth, invites, secretbox, study_enrolment, study_text, text_judging
 from . import backup as backup_mod
+from . import costs as costs_mod
 from . import integrity as integrity_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
@@ -772,6 +773,56 @@ def admin_usage(
         "by_day": pdb.daily_cost(con, days=days),
         "by_actor": pdb.cost_by_actor(con),
     }
+
+
+class CostBudgetRequest(BaseModel):
+    """The LLM budget line the cost dashboard reports against. All
+    fields None clears it."""
+
+    llm_usd: float | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+    label: str | None = None
+
+
+@app.get("/api/admin/costs")
+def admin_costs(
+    days: int = 30,
+    actor: dict = Depends(auth.require_admin),
+):
+    """The cost dashboard: LLM spend priced **at read time** from the
+    recorded token counts (`costs.py`), so a corrected price table
+    corrects the history too and an unpriced model is reported as
+    unpriced rather than as $0. `days` is the window for the by-day /
+    by-model / by-purpose / by-actor / waste views (0 = all time);
+    totals, the study rollup and the budget line ignore it."""
+    if days < 0 or days > 3660:
+        raise HTTPException(422, "days must be between 0 and 3660")
+    reg = get_registry()
+    with reg.platform_lock:
+        return costs_mod.build_report(reg.platform_con(), days=days)
+
+
+@app.put("/api/admin/costs/budget")
+def admin_set_cost_budget(
+    req: CostBudgetRequest,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Set (or clear) the LLM budget line shown on the cost dashboard.
+    Display only — nothing is cut off when it is exceeded."""
+    reg = get_registry()
+    clearing = req.llm_usd is None and not req.period_start and not req.period_end
+    with reg.platform_lock:
+        try:
+            budget = costs_mod.set_budget(
+                reg.platform_con(), None if clearing else req.model_dump()
+            )
+        except ValueError as e:
+            raise HTTPException(422, detail={"user_message": str(e)}) from None
+    logger.info(
+        "Cost budget %s by actor=%s: %s", "cleared" if clearing else "set", actor["id"], budget
+    )
+    return {"budget": budget}
 
 
 @app.get("/api/admin/audit")
@@ -2780,7 +2831,7 @@ def download_report_pdf(name: str, actor: dict = Depends(auth.current_actor)):
     """Generate and download a PDF report of the dialectic."""
     state = _authorize_and_get_state(name, actor)
     logger.info("Generating PDF report for dialectic '%s'", name)
-    summary = opponent.generate_summary(state)
+    summary = opponent.generate_summary(state, actor_id=actor["id"], base_id=name)
     pdf_bytes = generate_pdf_report(state, summary)
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in name)
     return Response(
@@ -3131,6 +3182,20 @@ def _run_audit(args) -> None:
     print(audit_mod_local.format_report(report))
 
 
+def _run_costs(args) -> None:
+    """Print the cost report (`costs.build_report`) — the same figures
+    as the admin dashboard, for a grant report or a post-run record."""
+    import json
+
+    reg = get_registry()
+    reg.migrate_platform()
+    report = costs_mod.build_report(reg.platform_con(), days=args.days)
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print(costs_mod.format_report(report))
+
+
 def _run_migrate_legacy(args) -> None:
     """Migrate every legacy flat-layout dialectic into the multi-user
     platform layout. Idempotent; safe to re-run."""
@@ -3203,6 +3268,17 @@ def main():
         help="Audit platform DB vs filesystem and per-base actor references",
     )
 
+    # `costs` subcommand — the cost dashboard's report, for the record.
+    costs_p = subparsers.add_parser(
+        "costs",
+        help="Print LLM spend priced from recorded tokens (stop the server first: "
+        "DuckDB allows one process per file)",
+    )
+    costs_p.add_argument(
+        "--days", type=int, default=30, help="Window for the breakdowns; 0 = all time"
+    )
+    costs_p.add_argument("--json", action="store_true", help="Emit the full report as JSON")
+
     # `migrate-legacy` subcommand — relocate legacy single-user dialectics
     # into the multi-user platform layout.
     mig = subparsers.add_parser(
@@ -3262,6 +3338,8 @@ def main():
             admin.print_help()
     elif args.command == "audit":
         _run_audit(args)
+    elif args.command == "costs":
+        _run_costs(args)
     elif args.command == "migrate-legacy":
         _run_migrate_legacy(args)
     elif args.command == "sim":

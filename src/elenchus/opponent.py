@@ -27,11 +27,17 @@ def _make_usage_recorder(
     *,
     actor_id: int | None,
     base_id: str | None,
+    purpose: str = "",
 ) -> Callable[[ChatResult], None] | None:
     """Return an `on_result` callback that writes one `usage` row per
     LLM call. Returns None if the platform DB isn't reachable (CLI,
     test in-memory bases) — in that case the call still happens, just
     without cost tracking.
+
+    `purpose` says what the call is for (`costs.PURPOSES`) so the cost
+    dashboard can tell a participant's turns from platform overhead.
+    Every LLM call the server makes should go through a recorder — a
+    call without one is spend nobody can see.
 
     The recorder is built per-call so each call carries its own
     actor/base context. The platform DB lock is acquired briefly to
@@ -65,6 +71,7 @@ def _make_usage_recorder(
                     cost_usd=cost,
                     attempts=result.attempts,
                     latency_ms=result.latency_ms,
+                    purpose=purpose,
                 )
         except RuntimeError as e:
             logger.debug("usage recording skipped (no registry): %s", e)
@@ -744,7 +751,9 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
                 messages,
                 system=self._system_prompt(),
                 max_tokens=2000,
-                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+                on_result=self._capturing(
+                    turn, actor_id=actor_id, base_id=base_id, purpose="dialectic_turn"
+                ),
             )
         except LLMCallError:
             self._record_failed_turn("elenchus", user_message, state, turn)
@@ -787,7 +796,9 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
                 messages,
                 system=self._system_prompt(),
                 max_tokens=2000,
-                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+                on_result=self._capturing(
+                    turn, actor_id=actor_id, base_id=base_id, purpose="dialectic_turn"
+                ),
             )
         except LLMCallError:
             if lock is None:
@@ -843,7 +854,9 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
                 messages,
                 system=system,
                 max_tokens=2000,
-                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+                on_result=self._capturing(
+                    turn, actor_id=actor_id, base_id=base_id, purpose="baseline_turn"
+                ),
             )
         except LLMCallError:
             if lock is None:
@@ -881,12 +894,17 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         name = "phase_b" if self.enable_phase_b else "sloan"
         return name, turn_log.prompt_fingerprint(self._system_prompt())
 
-    def _capturing(self, turn: dict, *, actor_id: int | None, base_id: str | None):
+    def _capturing(
+        self, turn: dict, *, actor_id: int | None, base_id: str | None, purpose: str = ""
+    ):
         """An `on_result` callback that keeps the call's `ChatResult` in
         `turn` for the turn log, then hands it to the usage recorder.
         It runs for failed calls too, which is how a failed turn's
         category / attempts / latency reach the log."""
-        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id, purpose=purpose)
+        # Kept so follow-on calls made on this turn's behalf (the
+        # rolling summary) are attributed to the same base.
+        turn["base_id"] = base_id
 
         def _on_result(result: ChatResult) -> None:
             turn["chat_result"] = result
@@ -1036,14 +1054,25 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
         total_turns = len(state.get_conversation())
         if total_turns > 0 and total_turns % 20 == 0:
-            self._update_summary(state)
+            self._update_summary(
+                state,
+                actor_id=(turn or {}).get("actor_id"),
+                base_id=(turn or {}).get("base_id"),
+            )
 
         return parsed
 
-    def generate_summary(self, state: DialecticalState) -> str:
+    def generate_summary(
+        self,
+        state: DialecticalState,
+        *,
+        actor_id: int | None = None,
+        base_id: str | None = None,
+    ) -> str:
         """Generate a substantive analytical summary of the dialectic.
 
         Returns the summary text without storing it. Used for PDF reports.
+        `actor_id` / `base_id` attribute the call in the usage table.
         """
         s = state.to_dict()
 
@@ -1124,7 +1153,13 @@ Retracted propositions:
 Write 1-3 short paragraphs. Be concise and precise. Describe the position as it stands now — do not narrate the history of how it got here. Do NOT include a title or heading — start directly with the substantive content. Use the identifiers shown (P1, T3, I2, etc.) when referring to specific atoms, tensions, or implications."""
 
         try:
-            summary = self._chat([{"role": "user", "content": prompt}], max_tokens=800)
+            summary = self._chat(
+                [{"role": "user", "content": prompt}],
+                max_tokens=800,
+                on_result=_make_usage_recorder(
+                    actor_id=actor_id, base_id=base_id, purpose="report_summary"
+                ),
+            )
             logger.info(
                 "Generated analytical summary for dialectic '%s' (%d chars)",
                 s["name"],
@@ -1135,7 +1170,13 @@ Write 1-3 short paragraphs. Be concise and precise. Describe the position as it 
             logger.error("Failed to generate summary for '%s': %s", s["name"], e)
             return f"Summary generation failed: {e}"
 
-    def _update_summary(self, state: DialecticalState):
+    def _update_summary(
+        self,
+        state: DialecticalState,
+        *,
+        actor_id: int | None = None,
+        base_id: str | None = None,
+    ):
         """Ask the LLM to summarize the dialectic so far."""
         s = state.to_dict()
         history = state.get_conversation()
@@ -1154,7 +1195,13 @@ Recent exchanges:
 """ + "\n".join(f"{m['role']}: {m['content'][:200]}" for m in sample[-10:])
 
         try:
-            summary = self._chat([{"role": "user", "content": prompt}], max_tokens=500)
+            summary = self._chat(
+                [{"role": "user", "content": prompt}],
+                max_tokens=500,
+                on_result=_make_usage_recorder(
+                    actor_id=actor_id, base_id=base_id, purpose="rolling_summary"
+                ),
+            )
             state.set_summary(summary)
         except Exception:
             logger.debug("Summary update failed (non-critical)")

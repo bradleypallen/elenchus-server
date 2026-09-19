@@ -221,6 +221,21 @@ class LLMDriver:
     def canned_llm_client(self):  # not used — server uses its real client
         return None
 
+    def _chat(self, user: str, *, system: str, max_tokens: int):
+        """One persona call, recorded in the platform `usage` table as
+        `sim_persona` so a rehearsal's persona spend shows on the cost
+        dashboard next to the opponent's. No actor or base: the persona
+        is the simulator's, not a session's."""
+        from ..opponent import _make_usage_recorder
+
+        result = self._llm.chat(
+            [{"role": "user", "content": user}], system=system, max_tokens=max_tokens
+        )
+        recorder = _make_usage_recorder(actor_id=None, base_id=None, purpose="sim_persona")
+        if recorder is not None:
+            recorder(result)
+        return result
+
     def participant_tutorial_message(self, persona: ParticipantPersona) -> str:
         return persona.tutorial_message
 
@@ -240,7 +255,7 @@ class LLMDriver:
             f"Current commitments: {commitments}. This is turn {turn_idx + 1}. "
             f"What is your next contribution to the specification?"
         )
-        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=200)
+        result = self._chat(user, system=system, max_tokens=200)
         return result.text.strip() if result.ok else "Let me continue with the domain."
 
     def participant_text(
@@ -256,7 +271,7 @@ class LLMDriver:
         )
         commitments = "; ".join(state.get("commitments", [])[:8]) or "(none recorded)"
         user = f"Points you settled on while working: {commitments}. Write the introduction now."
-        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=700)
+        result = self._chat(user, system=system, max_tokens=700)
         if result.ok and result.text.strip():
             return result.text.strip()
         return ScriptedDriver().participant_text(persona, condition, state, topic=topic)
@@ -278,7 +293,7 @@ class LLMDriver:
             '"condition_guess_b":"elenchus|baseline|unsure","confidence":N}'
         )
         user = f"OUTPUT A:\n{slot_a}\n\nOUTPUT B:\n{slot_b}"
-        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=800)
+        result = self._chat(user, system=system, max_tokens=800)
         if result.ok:
             parsed = _extract_json(result.text)
             if parsed is not None:
@@ -302,7 +317,7 @@ class LLMDriver:
             '"justification":"...","condition_guess":"elenchus|baseline|unsure","confidence":N}'
         )
         user = f"TOPIC: {view['topic_title']}\n{view.get('topic_brief', '')}\n\nTEXT:\n{view['content']}"
-        result = self._llm.chat([{"role": "user", "content": user}], system=system, max_tokens=500)
+        result = self._chat(user, system=system, max_tokens=500)
         if result.ok:
             parsed = _extract_json(result.text)
             if isinstance(parsed, dict):

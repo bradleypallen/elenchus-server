@@ -1712,18 +1712,22 @@ def record_usage(
     cost_usd: float,
     attempts: int,
     latency_ms: int,
+    purpose: str = "",
 ) -> int:
     """Insert one row into `usage`. Returns the new row's id.
 
     `actor_id` and `base_id` are nullable — system calls (summaries,
     batch jobs) may have neither. `category` is the `ChatCategory`
     string value; failure rows are recorded too so the dashboard can
-    surface error rates alongside cost."""
+    surface error rates alongside cost. `purpose` says what the call
+    was for (`costs.PURPOSES`). `cost_usd` is the estimate at the time
+    of the call and is kept for the record only — every reader prices
+    the tokens itself (see `costs.py`)."""
     row = con.execute(
         "INSERT INTO usage "
         "(actor_id, base_id, model, category, prompt_tokens, "
-        "completion_tokens, cost_usd, attempts, latency_ms) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "completion_tokens, cost_usd, attempts, latency_ms, purpose) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         [
             actor_id,
             base_id,
@@ -1734,16 +1738,26 @@ def record_usage(
             cost_usd,
             attempts,
             latency_ms,
+            purpose,
         ],
     ).fetchone()
     return int(row[0]) if row else -1
 
 
+def _usage_bucket(groups: list[dict]) -> dict:
+    """The rollup shape the usage helpers return, from priced groups."""
+    from .. import costs
+
+    return costs.summarize(groups)
+
+
 def total_cost(con, *, since: str | None = None, until: str | None = None) -> dict:
-    """Sum cost + token counts over a time window (ISO timestamps or
-    None to mean unbounded on that end). Returns
+    """Cost + token counts over a time window (ISO timestamps or None
+    to mean unbounded on that end), priced at read time. Returns
     {cost_usd, prompt_tokens, completion_tokens, calls,
-    successful_calls}."""
+    successful_calls, unpriced_tokens}."""
+    from .. import costs
+
     clauses = []
     params: list = []
     if since is not None:
@@ -1752,44 +1766,26 @@ def total_cost(con, *, since: str | None = None, until: str | None = None) -> di
     if until is not None:
         clauses.append("occurred_at < ?")
         params.append(until)
-    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    row = con.execute(
-        f"SELECT COALESCE(SUM(cost_usd), 0), "
-        f"COALESCE(SUM(prompt_tokens), 0), "
-        f"COALESCE(SUM(completion_tokens), 0), "
-        f"COUNT(*), "
-        f"COUNT(*) FILTER (WHERE category = 'success') "
-        f"FROM usage {where}",
-        params,
-    ).fetchone()
-    return {
-        "cost_usd": float(row[0] or 0.0),
-        "prompt_tokens": int(row[1] or 0),
-        "completion_tokens": int(row[2] or 0),
-        "calls": int(row[3] or 0),
-        "successful_calls": int(row[4] or 0),
-    }
+    groups = costs.priced_groups(con, where=" AND ".join(clauses) or None, params=params)
+    return _usage_bucket(groups)
 
 
 def daily_cost(con, *, days: int = 30) -> list[dict]:
-    """Per-day cost rollup for the last `days` days, newest first."""
-    rows = con.execute(
-        "SELECT CAST(occurred_at AS DATE) AS day, "
-        "SUM(cost_usd), SUM(prompt_tokens) + SUM(completion_tokens), "
-        "COUNT(*) "
-        "FROM usage "
-        "WHERE occurred_at >= CURRENT_TIMESTAMP - INTERVAL (?) DAY "
-        "GROUP BY day ORDER BY day DESC",
-        [days],
-    ).fetchall()
+    """Per-day cost rollup for the last `days` days, newest first,
+    priced at read time. Days without calls are omitted."""
+    from .. import costs
+
+    groups = costs.priced_groups(
+        con, where="occurred_at >= CURRENT_TIMESTAMP - INTERVAL (?) DAY", params=[days]
+    )
     return [
         {
-            "day": str(r[0]),
-            "cost_usd": float(r[1] or 0.0),
-            "tokens": int(r[2] or 0),
-            "calls": int(r[3] or 0),
+            "day": day.isoformat(),
+            "cost_usd": b["cost_usd"],
+            "tokens": b["prompt_tokens"] + b["completion_tokens"],
+            "calls": b["calls"],
         }
-        for r in rows
+        for day, b in sorted(costs.rollup(groups, "day").items(), reverse=True)
     ]
 
 
@@ -1806,16 +1802,13 @@ def usage_for_base(con, base_id: str) -> dict:
       * `attempts`: mean attempts per call (>1 = retries fired).
       * `first_call_at` / `last_call_at`: span of activity.
     """
-    total = total_cost_for_base(con, base_id)
+    from .. import costs
 
-    rows = con.execute(
-        "SELECT category, COUNT(*), SUM(cost_usd) "
-        "FROM usage WHERE base_id = ? "
-        "GROUP BY category ORDER BY category",
-        [base_id],
-    ).fetchall()
+    groups = costs.priced_groups(con, where="base_id = ?", params=[base_id])
+    total = _usage_bucket(groups)
     by_category = [
-        {"category": r[0], "calls": int(r[1]), "cost_usd": float(r[2] or 0.0)} for r in rows
+        {"category": c, "calls": b["calls"], "cost_usd": b["cost_usd"]}
+        for c, b in sorted(costs.rollup(groups, "category").items())
     ]
 
     latency_row = con.execute(
@@ -1856,53 +1849,35 @@ def total_cost_for_base(con, base_id: str) -> dict:
     """Like `total_cost` but filtered to one base. Lives next to the
     other rollups so the integrity report can fetch both with the
     same locking discipline."""
-    row = con.execute(
-        "SELECT COALESCE(SUM(cost_usd), 0), "
-        "COALESCE(SUM(prompt_tokens), 0), "
-        "COALESCE(SUM(completion_tokens), 0), "
-        "COUNT(*), "
-        "COUNT(*) FILTER (WHERE category = 'success') "
-        "FROM usage WHERE base_id = ?",
-        [base_id],
-    ).fetchone()
-    return {
-        "cost_usd": float(row[0] or 0.0),
-        "prompt_tokens": int(row[1] or 0),
-        "completion_tokens": int(row[2] or 0),
-        "calls": int(row[3] or 0),
-        "successful_calls": int(row[4] or 0),
-    }
+    from .. import costs
+
+    return _usage_bucket(costs.priced_groups(con, where="base_id = ?", params=[base_id]))
 
 
 def cost_by_actor(con, *, since: str | None = None) -> list[dict]:
-    """Per-actor cost rollup, joined to actors.email for readability.
-    Includes a NULL bucket for system calls."""
-    clauses = []
-    params: list = []
-    if since is not None:
-        clauses.append("u.occurred_at >= ?")
-        params.append(since)
-    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    rows = con.execute(
-        f"SELECT u.actor_id, a.email, a.display_name, "
-        f"SUM(u.cost_usd), "
-        f"SUM(u.prompt_tokens) + SUM(u.completion_tokens), "
-        f"COUNT(*) "
-        f"FROM usage u "
-        f"LEFT JOIN actors a ON a.id = u.actor_id "
-        f"{where} "
-        f"GROUP BY u.actor_id, a.email, a.display_name "
-        f"ORDER BY SUM(u.cost_usd) DESC",
-        params,
-    ).fetchall()
-    return [
+    """Per-actor cost rollup, priced at read time, joined to
+    actors.email for readability. Includes a NULL bucket for system
+    calls. Most expensive first."""
+    from .. import costs
+
+    groups = costs.priced_groups(
+        con,
+        where="occurred_at >= ?" if since is not None else None,
+        params=[since] if since is not None else None,
+    )
+    actors = {
+        r[0]: (r[1], r[2])
+        for r in con.execute("SELECT id, email, display_name FROM actors").fetchall()
+    }
+    rows = [
         {
-            "actor_id": r[0],
-            "email": r[1],
-            "display_name": r[2],
-            "cost_usd": float(r[3] or 0.0),
-            "tokens": int(r[4] or 0),
-            "calls": int(r[5] or 0),
+            "actor_id": actor_id,
+            "email": actors.get(actor_id, (None, None))[0],
+            "display_name": actors.get(actor_id, (None, None))[1],
+            "cost_usd": b["cost_usd"],
+            "tokens": b["prompt_tokens"] + b["completion_tokens"],
+            "calls": b["calls"],
         }
-        for r in rows
+        for actor_id, b in costs.rollup(groups, "actor_id").items()
     ]
+    return sorted(rows, key=lambda r: -r["cost_usd"])

@@ -95,11 +95,11 @@ class TestPricing:
         _ = rates_4  # silence unused
 
     def test_compute_cost_known(self):
-        # Claude opus 4-6 is $15/M input, $75/M output by default.
-        # 1000 prompt + 100 completion → 1000*15 + 100*75 = 22500 micro-dollars
-        # = $0.0225
+        # Claude opus 4-6 is $5/M input, $25/M output.
+        # 1000 prompt + 100 completion → 1000*5 + 100*25 = 7500 micro-dollars
+        # = $0.0075
         cost = pricing.compute_cost("claude-opus-4-6", 1000, 100)
-        assert cost == pytest.approx(0.0225, rel=1e-9)
+        assert cost == pytest.approx(0.0075, rel=1e-9)
 
     def test_compute_cost_unknown_returns_zero(self):
         cost = pricing.compute_cost("totally-fake-model-7", 1_000_000, 1_000_000)
@@ -182,8 +182,11 @@ class TestAggregations:
         category="success",
         prompt=10,
         completion=5,
-        cost=0.001,
+        cost=99.0,
     ):
+        # `cost` is the *stored* estimate. It defaults to a number that
+        # is obviously wrong, because no reader may use it: every
+        # figure is priced from the tokens at read time.
         con = get_registry().platform_con()
         pdb.record_usage(
             con,
@@ -200,21 +203,38 @@ class TestAggregations:
 
     def test_total_cost_aggregates(self):
         for _ in range(3):
-            self._seed_one(cost=0.10)
+            self._seed_one()
         result = pdb.total_cost(get_registry().platform_con())
-        assert result["cost_usd"] == pytest.approx(0.30)
+        assert result["cost_usd"] == pytest.approx(
+            3 * pricing.compute_cost("claude-opus-4-6", 10, 5)
+        )
         assert result["calls"] == 3
         assert result["successful_calls"] == 3
         assert result["prompt_tokens"] == 30
         assert result["completion_tokens"] == 15
 
     def test_total_cost_counts_failures_in_calls_but_not_in_successful(self):
-        self._seed_one(category="success", cost=0.10)
-        self._seed_one(category="rate_limit", cost=0.0)
+        self._seed_one(category="success")
+        self._seed_one(category="rate_limit", prompt=0, completion=0)
         result = pdb.total_cost(get_registry().platform_con())
         assert result["calls"] == 2
         assert result["successful_calls"] == 1
-        assert result["cost_usd"] == pytest.approx(0.10)
+        assert result["cost_usd"] == pytest.approx(pricing.compute_cost("claude-opus-4-6", 10, 5))
+
+    def test_stored_cost_is_ignored(self):
+        """The regression this design exists for: a row whose stored
+        `cost_usd` is 0 (written while the price table lacked the
+        model) still reports its real cost."""
+        self._seed_one(model="claude-sonnet-4-6", prompt=1_000_000, completion=0, cost=0.0)
+        result = pdb.total_cost(get_registry().platform_con())
+        assert result["cost_usd"] == pytest.approx(3.00)
+        assert result["unpriced_tokens"] == 0
+
+    def test_unpriced_model_is_flagged_not_free(self):
+        self._seed_one(model="totally-fake-model-7", prompt=1000, completion=500, cost=12.0)
+        result = pdb.total_cost(get_registry().platform_con())
+        assert result["cost_usd"] == 0.0
+        assert result["unpriced_tokens"] == 1500
 
     def test_cost_by_actor(self):
         con = get_registry().platform_con()
@@ -232,10 +252,11 @@ class TestAggregations:
             display_name="A2",
             password_hash=None,
         )
-        self._seed_one(actor_id=a1, cost=0.50)
-        self._seed_one(actor_id=a1, cost=0.30)
-        self._seed_one(actor_id=a2, cost=0.10)
-        self._seed_one(actor_id=None, cost=0.05)  # system call
+        # opus-4-6 input is $5 per 1M tokens.
+        self._seed_one(actor_id=a1, prompt=100_000, completion=0)  # $0.50
+        self._seed_one(actor_id=a1, prompt=60_000, completion=0)  # $0.30
+        self._seed_one(actor_id=a2, prompt=20_000, completion=0)  # $0.10
+        self._seed_one(actor_id=None, prompt=10_000, completion=0)  # system call
 
         rows = pdb.cost_by_actor(con)
         # Sorted by cost desc.
@@ -409,7 +430,9 @@ class TestAdminUsageEndpoint:
         data = r.json()
         assert data["window_days"] == 7
         assert data["total"]["calls"] == 1
-        assert data["total"]["cost_usd"] == pytest.approx(0.10)
+        # Priced from the tokens (200 × $5 + 100 × $25 per 1M), not the
+        # stored 0.10.
+        assert data["total"]["cost_usd"] == pytest.approx(0.0035)
         assert len(data["by_actor"]) == 1
         assert data["by_actor"][0]["email"] == "admin@example.com"
-        assert data["by_actor"][0]["cost_usd"] == pytest.approx(0.10)
+        assert data["by_actor"][0]["cost_usd"] == pytest.approx(0.0035)
