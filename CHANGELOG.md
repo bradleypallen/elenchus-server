@@ -5,6 +5,57 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Platform schema 11 → 12 (`usage.purpose`); applied automatically at startup.
+
+### Added
+
+- **Costs tab** in the admin dashboard (`GET /api/admin/costs`, admin
+  only): LLM spend month to date, over a 7/30/90-day or all-time window
+  and all time; spend per day; by model (with the rate used); by purpose;
+  failed calls and retry attempts; by account; and a **study rollup** —
+  per study and condition, sessions finished and still to come, practice
+  vs task share, the mean cost of a finished session, a projection for
+  the outstanding sessions, and every participant session's tokens and
+  cost. A **budget line** (`PUT /api/admin/costs/budget`: amount, period,
+  label) shows spend against, say, a grant's LLM line, with a marker for
+  how much of the period has passed. Display only — nothing is cut off.
+- `elenchus costs [--days N] [--json]` prints the same report, for a grant
+  file or a post-run record.
+- `usage.purpose` (platform migration `0012`): what each LLM call was for
+  — Elenchus turn, baseline turn, rolling summary, PDF-report summary,
+  study report, simulation persona — so participants' turns can be told
+  from platform overhead.
+
+### Changed
+
+- **Costs are priced when read, not when recorded.** Every figure — the new
+  report, `/api/admin/usage`, the integrity report — is computed from the
+  recorded token counts against the price table, at the rate in effect on
+  the day of each call. Correcting a rate corrects the history; the
+  `cost_usd` stored with each row is kept but no longer read.
+- The price table is **dated**: a rate can carry an `effective_from`, so a
+  provider's price change doesn't reprice earlier calls.
+  `ELENCHUS_PRICING_JSON` accepts a list of dated rates per model. Model
+  names are normalized before matching (`anthropic/claude-sonnet-4.6` →
+  `claude-sonnet-4-6`).
+
+### Fixed
+
+- **Every current model was recorded as costing $0.** The price table
+  predated the models in use — `claude-sonnet-4-6` (the deploy recipe's
+  default), `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5-1`,
+  `claude-haiku-4-5` all had no entry — and an unknown model was silently
+  costed at zero; `claude-opus-4-6` was listed at three times its price.
+  The table now covers the current Claude models (checked 2026-09-19), a
+  model without a rate is reported as **unpriced** — its tokens counted
+  and shown, its cost left out — rather than as free, and because costs
+  are now priced at read time the existing history is corrected too.
+- **Three kinds of LLM call left no usage row at all:** the rolling
+  context summary (every 20 messages), the PDF-report summary, and the
+  simulator's LLM personas (whose docstring said their spend was tracked).
+  All three are now recorded, labelled, and attributed to the account and
+  dialectic they were made for.
+
 ### Documentation
 
 - The public docs name the funder again. In July the wording was made

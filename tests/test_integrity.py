@@ -120,10 +120,16 @@ def _seed_usage(
     model: str = "claude-opus-4-6",
     prompt: int = 100,
     completion: int = 50,
-    cost: float = 0.005,
+    cost: float | None = None,
     attempts: int = 1,
     latency: int = 100,
 ):
+    """`cost` is what the call should be *reported* as costing. Costs
+    are priced from tokens at read time, so it is turned into input
+    tokens at opus-4-6's $5 per 1M; the stored `cost_usd` is left at a
+    deliberately wrong 0.0 to prove no reader uses it."""
+    if cost is not None:
+        prompt, completion = round(cost * 200_000), 0
     con = get_registry().platform_con()
     pdb.record_usage(
         con,
@@ -133,7 +139,7 @@ def _seed_usage(
         category=category,
         prompt_tokens=prompt,
         completion_tokens=completion,
-        cost_usd=cost,
+        cost_usd=0.0,
         attempts=attempts,
         latency_ms=latency,
     )
@@ -199,10 +205,11 @@ class TestUsageForBase:
 
 class TestTotalCostForBase:
     def test_isolates_to_one_base(self):
-        _seed_usage(base_id="alpha", cost=1.00, prompt=100, completion=50)
-        _seed_usage(base_id="beta", cost=9.99, prompt=999, completion=999)
+        _seed_usage(base_id="alpha", prompt=100, completion=50)
+        _seed_usage(base_id="beta", prompt=999, completion=999)
         result = pdb.total_cost_for_base(get_registry().platform_con(), "alpha")
-        assert result["cost_usd"] == pytest.approx(1.00)
+        # 100 × $5 + 50 × $25 per 1M tokens.
+        assert result["cost_usd"] == pytest.approx(0.00175)
         assert result["prompt_tokens"] == 100
         assert result["completion_tokens"] == 50
 

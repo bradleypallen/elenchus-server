@@ -181,7 +181,7 @@ async def generate_report(
     # callback for cost + alerting bookkeeping.
     from .opponent import _make_usage_recorder  # local — avoid import cycle
 
-    recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+    recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id, purpose="study_report")
 
     # Bypass `_async_chat` so we can pull token counts out of the
     # ChatResult. The LLMClient handles classification + retry.

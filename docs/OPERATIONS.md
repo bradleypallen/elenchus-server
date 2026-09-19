@@ -73,8 +73,9 @@ SMTP_USER=elenchus@your-institution.edu
 SMTP_PASSWORD=...
 SMTP_FROM=elenchus@your-institution.edu
 
-# ── Cost tracking (optional override of default rates) ──
-# ELENCHUS_PRICING_JSON={"claude-opus-4-6":{"input_per_1m":15,"output_per_1m":75}}
+# ── Cost tracking (optional: add or correct a model's rate; costs are
+#    priced from recorded tokens when read, so this fixes history too) ──
+# ELENCHUS_PRICING_JSON={"my-model":{"input_per_1m":1.0,"output_per_1m":2.0}}
 
 # ── Backup cron auth ──
 ELENCHUS_BACKUP_EMAIL=admin@local

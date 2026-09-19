@@ -68,7 +68,9 @@ pytest -v
   warnings (ten minutes before, and at, the limit); nothing is cut off.
   Set low (e.g. `10`) for training runs and demos.
 - `ELENCHUS_PRICING_JSON` — JSON object mapping model → `{input_per_1m,
-  output_per_1m}` USD rates. Overrides the defaults in `pricing.py`.
+  output_per_1m}` USD rates, or a list of such rates each with an
+  `effective_from` date. Replaces that model's entries in `pricing.py`.
+  Costs are priced at read time, so a corrected rate corrects history.
 - `ALERT_EMAIL_TO` — recipient for the email alert channel. Unset = console-only.
 - `ALERT_EMAIL_MIN_SEVERITY` — `critical|high|medium|low` (default `high`).
 - `ALERT_DEDUP_MINUTES` — dedup window for repeated alerts (default `5`).
@@ -88,6 +90,7 @@ src/elenchus/
 │   migrations/{platform,base}/*.sql
 ├── audit.py · backup.py · legacy.py           (operational tools)
 ├── turn_log.py                                 (append-only research capture)
+├── pricing.py · costs.py                       (dated price table; read-time cost report)
 ├── email_service.py                            (invites + magic links)
 ├── static/index.html                           (React 18 + Babel, single file)
 ├── cli.py                                      (CLI REPL, bypasses platform DB)
@@ -114,7 +117,7 @@ src/elenchus/
 
 9. **pdf_report.py** — Generates PDF reports of dialectics using fpdf2. Includes summary, bilateral position, tensions/implications, material base report, and conversation transcript. Converts Markdown formatting to HTML for rendering via `_md_to_html()`.
 
-**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a four-tab dashboard (Invites + Users + Study + Judging); researchers see a STUDY button that opens the same dashboard with only the Study and Judging tabs (the ones that drive the researcher-gated study routes). There is no Settings tab — runtime LLM settings live in the gear-icon modal (`PUT /api/settings`). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
+**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a five-tab dashboard (Invites + Users + Study + Judging + Costs); researchers see a STUDY button that opens the same dashboard with only the Study and Judging tabs (the ones that drive the researcher-gated study routes). There is no Settings tab — runtime LLM settings live in the gear-icon modal (`PUT /api/settings`). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
 
 **cli.py** — Standalone CLI REPL. Bypasses the platform layer entirely: same `Opponent` + `DialecticalState` stack, no auth, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
 
@@ -148,7 +151,7 @@ The opponent system prompt in `opponent.py` includes:
 
 The data directory (`$ELENCHUS_DATA`, default `./dialectics/`) holds:
 
-- `platform.duckdb` — `actors`, `auth_sessions`, `magic_links`, `invites`, `bases`, `sessions`, `platform_settings`, `meta` (schema version). Held open by the registry for the server's lifetime.
+- `platform.duckdb` — `actors`, `auth_sessions`, `magic_links`, `invites`, `bases`, `sessions`, `usage`, `platform_settings`, `meta` (schema version), plus the study tables. Held open by the registry for the server's lifetime.
 - `bases/{actor_id}/{name}.duckdb` — one per dialectic, owned by `actor_id`. Tables: `meta`, `atoms`, `assessments`, `positions`, `tensions`, `conversation`, `cases`, plus the append-only capture tables `turn_log` and `state_events` (see Research Capture). Sets are serialized as sorted comma-separated strings (with `\x1e` for new entries). The `base_sequents` view computes the active consequence relation from `current_assessments` (which filters on `status='active'`).
 - `backups/elenchus-*.tar.gz` — `EXPORT DATABASE` snapshots, one tar per run.
 
@@ -183,6 +186,10 @@ The panel gives each submitted text **absolute** ratings (texts on different top
 ## Enrolment (crossover design)
 
 Each participant does two sessions — one per condition, a different topic each time. `study_configs` holds a study's two topics (A, B) and `min_gap_hours`; `study_participants` holds one row per *person* (code `P01…`, `first_condition`, `first_topic`, `allocation`); tokens carry `participant_id` + `period` (platform migration `0010`). `POST /api/admin/study/{id}/participants` allocates the cell and issues **both** links. Allocation is permuted-block randomization over the 2×2 of (first condition × first topic) — pure functions in `study_enrolment.py`; manually-placed participants are excluded from the blocks. **A token still owns its own passwordless actor** (the session's identity, owner of that session's bases); the participant row is the person's identity and is what links the two sessions in the export. `pdb.second_session_gate` keeps a period-2 link shut (HTTP 409 with a `user_message`) until the period-1 session is terminal and the gap has passed — checked only when a `scheduled` token is first opened, never on resume; a voided first token doesn't hold the second. `POST /api/admin/study/sessions/{id}/interrupt` is the researcher's way to close an abandoned session. Hand-issued tokens (`POST /api/admin/study/tokens`) still work and are never gated. The dashboard (`<AdminEnrolmentPanel>`) is reachable by `researcher` **and** `admin` accounts; researchers see only the Study and Judging tabs.
+
+## Costs
+
+**Tokens are the source of truth; dollars are computed when read.** Every server-side LLM call writes one `usage` row (platform migration `0002`; `purpose` from `0012`) through `opponent._make_usage_recorder(actor_id=, base_id=, purpose=)` — a new LLM call site **must** pass a recorder as `on_result` (or call one), with a `purpose` from `costs.PURPOSES` (`dialectic_turn`, `baseline_turn`, `rolling_summary`, `report_summary`, `study_report`, `sim_persona`); a call without one is spend nobody can see (the two summary calls and the sim personas were exactly that until 0.5). `usage.cost_usd` is the estimate at write time and **nothing reads it**: `costs.priced_groups` fetches usage grouped by day × model × purpose × category × actor × base and prices each group with `pricing.lookup_rate(model, day)`, and every figure — `costs.build_report` (the Costs tab, `GET /api/admin/costs`, `elenchus costs`), and the older `pdb.total_cost` / `daily_cost` / `cost_by_actor` / `usage_for_base` behind `/api/admin/usage` and the integrity report — is a rollup of those groups. `pricing.py` is a *dated* table (`Rate.effective_from`), matched on a normalized name (routing prefix dropped, `.` → `-`) by longest registered prefix; keep keys specific (`claude-opus-4-1`, not `claude-opus-4`) so a future model can't inherit an old sibling's rate, and bump `PRICES_AS_OF` when you check the table. A model with no rate is **unpriced, never free**: `lookup_rate` → None, the report lists it under `unpriced` and leaves its tokens out of every dollar figure. Study sessions are attributed through the token's own actor; calls on `practice-{session_id}` are the tutorial's share; a session is *finished* (its cost final, counted in the per-condition mean used for the projection) from `post_session` on. The budget line is JSON under `platform_settings['cost_budget']` (`PUT /api/admin/costs/budget`), display only. Admin-only; infrastructure costs are not tracked.
 
 ## Settings
 

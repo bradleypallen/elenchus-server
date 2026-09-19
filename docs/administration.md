@@ -44,7 +44,7 @@ Migrating a pre-0.2 single-user install? Run `elenchus migrate-legacy
 ## The admin dashboard
 
 Admins see an **ADMIN** button in the home header. It opens a dashboard
-with four tabs:
+with five tabs:
 
 - **Invites** — issue an invite (pick a role, optionally pin it to an
   email), list outstanding/consumed/expired invites, and revoke unused
@@ -57,10 +57,13 @@ with four tabs:
   (See [Running a Study](study.md) and the [Study Runbook](study-runbook.md).)
 - **Judging** — assign submitted texts to judges and watch the panel's
   progress.
+- **Costs** — what the LLM calls have cost, against a budget line, by
+  model, by purpose and per study session. (See [Cost and
+  usage](#cost-and-usage).)
 
 The Study and Judging tabs drive researcher-gated routes. A `researcher`
 account sees a **STUDY** button instead of ADMIN, opening the same
-dashboard with just those two tabs; an admin sees all four, so a sole
+dashboard with just those two tabs; an admin sees all five, so a sole
 admin can run a pilot end to end. **Judge accounts are created by an
 admin** (invite with role `judge`) — researchers can assign work to judges
 but not create them.
@@ -131,12 +134,64 @@ change) must be **≥10 characters**.
 
 ## Cost and usage
 
-Every LLM call is recorded (model, tokens, latency, status, cost). The
-dashboard reads `GET /api/admin/usage?days=30` for a total, per-day
-buckets, and a per-actor breakdown. Costs are computed from per-model
-rates in `pricing.py`; override them with `ELENCHUS_PRICING_JSON` (a JSON
-map of `model → {input_per_1m, output_per_1m}`). Unknown models record
-zero cost with a warning rather than guessing.
+Every LLM call the server makes is recorded in the `usage` table: who
+made it, on which dialectic, the model, the token counts, latency,
+retries, whether it succeeded, and what it was **for** (an Elenchus turn,
+a baseline chat turn, a rolling context summary, a PDF-report summary, a
+simulation persona).
+
+**Tokens are the record; dollars are computed when you look.** The
+**Costs** tab (`GET /api/admin/costs?days=30`) prices the recorded tokens
+against the price table in `pricing.py` each time it is opened, at the
+rate in effect on the day of each call. So correcting a rate corrects the
+history as well, a provider's price change (a new entry with an
+`effective_from` date) leaves earlier calls at the old price, and a model
+with **no** rate is listed in a red *Unpriced models* box — its tokens
+counted, its cost left out of every figure — instead of being shown as
+$0. The figure stored with each row at the time of the call is kept but
+never used.
+
+The tab shows:
+
+- **Month to date / the chosen window / all time**, with a 7-, 30-,
+  90-day or all-time window for the breakdowns.
+- **Budget** — spend against a budget line you set (an amount and the
+  period it covers, e.g. a grant's LLM line and the grant period), with a
+  marker for how much of the period has passed. Display only: nothing is
+  cut off when it is exceeded.
+- **Spend per day**, **by model** (with the rate used) and **by
+  purpose** — which separates participants' turns from platform overhead
+  — plus failed calls and retry attempts. Providers don't report the
+  tokens of a failed attempt, so retries are counted, not priced.
+- **Studies** — per study and condition: sessions finished and still to
+  come, the practice and task shares, the mean cost of a finished
+  session, and a projection for the outstanding sessions at those means.
+  *Sessions* lists every participant session with its tokens and cost. A
+  session's spend is everything its own (passwordless) account did;
+  calls on its `practice-…` dialectic are the tutorial's share.
+- **By account** — the fifteen largest spenders in the window.
+
+The price table carries a "checked on" date, shown at the top of the tab.
+**The provider's invoice is the final word** — check the table against the
+provider's pricing page when you budget, and correct or extend it with
+`ELENCHUS_PRICING_JSON`, a JSON map of model name to a rate or a list of
+dated rates:
+
+```json
+{"my-model": {"input_per_1m": 1.0, "output_per_1m": 2.0},
+ "claude-opus-5": [
+   {"input_per_1m": 5, "output_per_1m": 25},
+   {"input_per_1m": 4, "output_per_1m": 20, "effective_from": "2027-01-01"}]}
+```
+
+Model names are matched after dropping a routing prefix (`anthropic/…`)
+and turning `.` into `-`, then by the longest registered name the model
+starts with, so dated revisions resolve to their family.
+
+For a grant report or a post-run record, `elenchus costs [--days N]
+[--json]` prints the same report from the command line (stop the server
+first — DuckDB allows one process per file). Infrastructure costs
+(hosting, domain) are not tracked by the platform.
 
 ## Integrity and audit
 
@@ -221,7 +276,9 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `GET /api/admin/users` | List all actors |
 | `PUT /api/admin/users/{id}/deactivate` | Soft-delete an actor |
 | `PUT /api/admin/users/{id}/reactivate` | Restore an actor |
-| `GET /api/admin/usage?days=N` | Cost/usage rollup |
+| `GET /api/admin/costs?days=N` | Cost dashboard report (N = 0 for all time) |
+| `PUT /api/admin/costs/budget` | Set (`llm_usd`, `period_start`, `period_end`, `label`) or clear (`{}`) the budget line |
+| `GET /api/admin/usage?days=N` | Older cost/usage rollup (same read-time pricing) |
 | `GET /api/admin/integrity` · `/{base_id}` | Per-base integrity summary / detail |
 | `GET /api/admin/audit` | Platform ↔ filesystem drift |
 | `POST /api/admin/backup` · `GET` | Run a backup / list archives |
