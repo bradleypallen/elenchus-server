@@ -192,6 +192,7 @@ async function api(path, opts = {}) {
       const e = new Error(err.detail.user_message);
       e.category = err.detail.category;
       e.attempts = err.detail.attempts;
+      e.detail = err.detail;
       throw e;
     }
     throw new Error(err.detail || res.statusText);
@@ -700,6 +701,25 @@ function AuthGate() {
           setActor(me); setPhase('authed');
           return;
         } catch (e) {
+          // A second-session link opened too early. Say so — and don't
+          // fall through to the cookie check below: this browser may
+          // still hold the *first* session's cookie, which would land
+          // the participant on a "finished" screen with no explanation.
+          if (e.detail && e.detail.status === 'not_yet') {
+            let msg = e.message;
+            if (e.detail.opens_at) {
+              // The server sends the instant; show it in their own zone.
+              const when = new Date(e.detail.opens_at).toLocaleString([], {
+                weekday: 'long', day: 'numeric', month: 'long',
+                hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+              });
+              msg = "Your second session isn't open yet — the two sessions are kept apart. " +
+                    `This link will work from ${when}.`;
+            }
+            setStudyError(msg);
+            setPhase('study-error');
+            return;
+          }
           // Already-used links are fine if we still hold the cookie —
           // a participant refreshing the page lands here.
           try {
@@ -2654,7 +2674,8 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                      cursor: 'pointer', fontSize: fs(10), padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1 };
   const LIVE = ['briefing', 'tutorial', 'active', 'post_session', 'surveyed'];
   const gateText = (g) => !g ? null
-    : g.reason === 'too_soon' ? `opens ${String(g.opens_at).slice(0, 16).replace('T', ' ')} UTC`
+    : g.reason === 'too_soon' ? `opens ${new Date(g.opens_at).toLocaleString([], {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}`
     : g.reason === 'first_still_open' ? 'waiting: session 1 still open'
     : 'waiting: session 1 not started';
 

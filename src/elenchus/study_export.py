@@ -215,6 +215,11 @@ def export_study(
             "study_id": study_id,
             "export_format_version": EXPORT_FORMAT_VERSION,
             "exported_at": ts,
+            # Columns named `*_at` in the platform tables (opened_at,
+            # submitted_at, …) are naive timestamps in THIS zone — DuckDB
+            # fills them in the server's local time. The capture log's
+            # `at_utc` fields are UTC regardless.
+            "server_timezone": con.execute("SELECT current_setting('TimeZone')").fetchone()[0],
             "sessions_exported": exported,
             "sessions_failed": failed,
             "judge_packages": len(judging),

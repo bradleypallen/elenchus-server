@@ -351,6 +351,29 @@ class TestSecondSessionGate:
         assert row["sessions"][0]["text_submitted"] is True
         assert row["sessions"][1]["gate"]["reason"] == "too_soon"
 
+    @pytest.mark.parametrize("zone", ["UTC", "Asia/Tokyo", "America/Los_Angeles"])
+    def test_opening_time_is_a_true_instant_whatever_zone_the_server_runs_in(self, zone):
+        """DuckDB fills naive TIMESTAMP columns in the server's local zone.
+        What a participant is told must not depend on that."""
+        from datetime import UTC, datetime, timedelta
+
+        con = get_registry().platform_con()
+        original = con.execute("SELECT current_setting('TimeZone')").fetchone()[0]
+        con.execute(f"SET TimeZone = '{zone}'")
+        try:
+            _setup()  # 48 h
+            first, second = _enrol()["sessions"]
+            pclient, _ = _open(first["token"])
+            _run_to_completion(pclient)
+            detail = _open(second["token"])[1].json()["detail"]
+            opens = datetime.fromisoformat(detail["opens_at"])
+            assert opens.utcoffset() == timedelta(0)
+            expected = datetime.now(UTC) + timedelta(hours=48)
+            assert abs((opens - expected).total_seconds()) < 120, (zone, opens, expected)
+            assert opens.strftime("%H:%M UTC") in detail["user_message"]
+        finally:
+            con.execute(f"SET TimeZone = '{original}'")
+
     def test_opens_once_first_is_done_and_gap_is_zero(self):
         _setup(min_gap_hours=0)
         first, second = _enrol()["sessions"]

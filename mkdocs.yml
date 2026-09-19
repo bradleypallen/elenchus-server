@@ -21,7 +21,9 @@ nav:
   - Motivation: motivation.md
   - User Guide: guide.md
   - Administration: administration.md
-  - Running a Study: study.md
+  - Running a Study:
+      - How the study works: study.md
+      - Study Runbook: study-runbook.md
   - Deployment:
       - Overview: deployment.md
       - Operations Runbook: OPERATIONS.md

@@ -108,8 +108,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   include the participant's token; the export's `session.json` omits it
   too.
 
+### Documentation
+
+- **Running a Study** rewritten for the design as built (topics, enrolment
+  and counterbalancing, the writing pane, what is captured, blinded text
+  rating, the export's contents), and a new click-by-click **Study
+  Runbook** for the person running sessions, with a troubleshooting table
+  and a practice run. The operations guide now says to run the server in
+  UTC, and why.
+
 ### Fixed
 
+- **A participant opening their second link early was told the wrong
+  time** on any server not running in UTC. DuckDB fills plain `TIMESTAMP`
+  columns in the server's local zone, and the opening time was labelled
+  "UTC" as if it weren't. It is now computed as a true instant (exact
+  across DST changes too) and shown to the participant — and in the roster
+  — in the viewer's own time zone. An early second link also no longer
+  falls back to the browser's leftover first-session cookie, which landed
+  the participant on a bare "finished" screen with no explanation. The
+  export's manifest records the server's zone (`server_timezone`).
 - The Judging tab listed judges through the admin-only user list, so it
   failed for researcher accounts. It now uses a researcher-accessible
   `GET /api/admin/study/judges`.

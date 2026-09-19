@@ -1425,20 +1425,28 @@ def second_session_gate(con, token_row: dict) -> dict | None:
 
     config = find_study_config(con, token_row["study_id"]) or {}
     gap = int(config.get("min_gap_hours", 0) or 0)
+    # `closed_at` is a naive TIMESTAMP, and DuckDB fills such columns
+    # from CURRENT_TIMESTAMP in the *server's local* time zone — not UTC.
+    # So the opening time is computed as a true instant (TIMESTAMPTZ,
+    # which also keeps the gap exact across a DST change) and handed back
+    # as an aware UTC datetime: what a participant is told must be right
+    # whatever zone the server happens to run in.
+    from datetime import UTC, datetime
+
     row = con.execute(
         "SELECT state, closed_at, "
-        "closed_at + to_hours(?) AS opens_at, "
-        "closed_at + to_hours(?) <= CAST(CURRENT_TIMESTAMP AS TIMESTAMP) AS open_now "
+        "epoch(timezone(current_setting('TimeZone'), closed_at) + to_hours(?)), "
+        "timezone(current_setting('TimeZone'), closed_at) + to_hours(?) <= CURRENT_TIMESTAMP "
         "FROM sessions WHERE id = ?",
         [gap, gap, first["session_id"]],
     ).fetchone()
     if row is None:
         return None
-    state, closed_at, opens_at, open_now = row
+    state, closed_at, opens_epoch, open_now = row
     if closed_at is None:
         return {"reason": "first_still_open", "opens_at": None, "first_state": state}
     if not open_now:
-        return {"reason": "too_soon", "opens_at": opens_at}
+        return {"reason": "too_soon", "opens_at": datetime.fromtimestamp(opens_epoch, UTC)}
     return None
 
 
