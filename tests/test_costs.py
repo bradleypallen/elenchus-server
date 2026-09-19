@@ -501,6 +501,12 @@ class TestRoute:
             _report()
         assert any("Cost report" in r.message for r in caplog.records)
 
+    def test_text_rendering_does_not_repeat_the_all_time_line(self):
+        _seed(prompt=1_000_000)
+        assert costs.format_report(_report(days=0)).count("All time  ") == 1
+        windowed = costs.format_report(_report(days=30))
+        assert "Last 30 days" in windowed and windowed.count("All time  ") == 1
+
     def test_text_rendering_flags_unpriced_models(self):
         _seed(model="mystery-model", prompt=5000)
         _seed(prompt=1_000_000)

@@ -516,9 +516,15 @@ def format_report(report: dict) -> str:
         "",
         f"  Month to date   {_usd(t['month_to_date']['cost_usd']):>12}   "
         f"{t['month_to_date']['calls']} calls",
-        f"  {span.capitalize():<15} {_usd(t['window']['cost_usd']):>12}   {t['window']['calls']} calls",
-        f"  All time        {_usd(t['all_time']['cost_usd']):>12}   {t['all_time']['calls']} calls",
     ]
+    if window["days"]:  # an all-time window would only repeat the line below
+        lines.append(
+            f"  {span.capitalize():<15} {_usd(t['window']['cost_usd']):>12}   "
+            f"{t['window']['calls']} calls"
+        )
+    lines.append(
+        f"  All time        {_usd(t['all_time']['cost_usd']):>12}   {t['all_time']['calls']} calls"
+    )
     budget = report.get("budget")
     if budget:
         lines += [
