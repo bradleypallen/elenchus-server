@@ -1,7 +1,8 @@
 # Cloud deployment plan — DuckDB pilot (single-instance)
 
-This plans a managed cloud deployment of an Elenchus server for the planned study
-pilot, on the **DuckDB / single-instance** approach (decision: stay on
+This plans a managed cloud deployment of an Elenchus server for the
+Sloan Foundation-funded study pilot (grant G-2026-79650), on the
+**DuckDB / single-instance** approach (decision: stay on
 DuckDB for the pilot; migrate to Postgres only when a concrete scale/HA
 trigger fires — see "Scaling trigger"). It is **cloud-agnostic first**,
 then mapped to **SURF** (the national research-IT route, and the likely

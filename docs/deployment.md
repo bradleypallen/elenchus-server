@@ -66,7 +66,7 @@ runbook):
 | `SESSION_COOKIE_SECURE` | `true` behind HTTPS |
 | `BCRYPT_ROUNDS` | password cost (12 in production) |
 | `ELENCHUS_SECRET_KEY` | master key to encrypt the admin-set API key at rest (so a UI-set key survives restarts) |
-| `ELENCHUS_ENABLE_PHASE_B` | **leave unset** for the planned study |
+| `ELENCHUS_ENABLE_PHASE_B` | **leave unset** for the Sloan Foundation-funded study |
 
 ## Managed cloud
 
