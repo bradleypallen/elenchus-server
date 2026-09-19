@@ -9,14 +9,21 @@ Schema management is handled by `migrations/runner.py`. The per-base
 schema is defined in `migrations/base/*.sql`; calling
 `apply_migrations(con, "base")` brings a connection up to the current
 schema version idempotently.
+
+Atoms are natural-language propositions ("Whales are mammals"). DuckDB
+stores them verbatim; pyNMMS (>= 0.6.2) only accepts identifiers or
+quoted atoms `<...>`, so every atom is quoted on its way into pyNMMS and
+unquoted on its way out — see the "pyNMMS boundary" section below.
 """
 
 import json
 import logging
+import re
+from dataclasses import dataclass
 
 import duckdb
 from pynmms import MaterialBase as NMMSBase
-from pynmms import NMMSReasoner
+from pynmms import NMMSReasoner, parse_sentence
 
 from .migrations import apply_migrations
 
@@ -45,6 +52,172 @@ def fmt_set(s):
     if not s:
         return "∅"
     return "{" + ", ".join(sorted(s)) + "}"
+
+
+# ── pyNMMS boundary: atom quoting ──
+#
+# pyNMMS >= 0.6.2 has a strict atom grammar: an atom is an identifier, an
+# applied identifier `C(a)`, or a quoted atom `<...>` whose content is
+# taken verbatim but may not itself contain `<` or `>`. Elenchus atoms are
+# arbitrary natural-language sentences, so *every* atom crosses the
+# boundary quoted (uniformly — identifier-style atoms too, which keeps the
+# mapping one rule and injective), with `<`, `>` and the escape character
+# `%` percent-encoded. Nothing quoted is ever written to DuckDB.
+
+_NMMS_ESCAPES = {"%": "%25", "<": "%3C", ">": "%3E"}
+_NMMS_UNESCAPES = {v: k for k, v in _NMMS_ESCAPES.items()}
+_NMMS_ESCAPE_RE = re.compile(r"[%<>]")
+_NMMS_UNESCAPE_RE = re.compile(r"%(?:25|3C|3E)")
+_NMMS_QUOTED_RE = re.compile(r"<([^<>]*)>")
+
+# Characters that are syntax, not text, in an unquoted query sentence.
+_QUERY_SYNTAX_RE = re.compile(r"[()&|~<]|->")
+_QUERY_SYNTAX_HELP = (
+    "Join propositions with ~ (not), & (and), | (or), -> (implies) and group "
+    "with parentheses; quote a proposition that itself contains any of those "
+    "characters as <...>."
+)
+
+
+def quote_atom(sentence):
+    """Elenchus proposition → the pyNMMS quoted atom that stands for it."""
+    escaped = _NMMS_ESCAPE_RE.sub(lambda m: _NMMS_ESCAPES[m.group()], sentence)
+    if escaped != sentence:
+        logger.debug("quote_atom: escaped %r → <%s>", sentence, escaped)
+    return f"<{escaped}>"
+
+
+def unquote_atoms(text):
+    """Replace every quoted atom in pyNMMS output (e.g. a proof-trace
+    line) with the Elenchus proposition it stands for."""
+    return _NMMS_QUOTED_RE.sub(
+        lambda m: _NMMS_UNESCAPE_RE.sub(lambda e: _NMMS_UNESCAPES[e.group()], m.group(1)),
+        text,
+    )
+
+
+def _closing_quote(sentence, start, known_atoms):
+    """Index of the `>` closing the quoted proposition opened at `start`,
+    or -1. Normally the first `>`; a later one is preferred when it makes
+    the content a known atom, so stored propositions that contain `>`
+    ("x > 5") stay addressable."""
+    first = sentence.find(">", start + 1)
+    pos = first
+    while pos != -1:
+        if sentence[start + 1 : pos] in known_atoms:
+            if pos != first:
+                logger.debug(
+                    "to_nmms_sentence: quote in %r closed at known atom %r",
+                    sentence,
+                    sentence[start + 1 : pos],
+                )
+            return pos
+        pos = sentence.find(">", pos + 1)
+    return first
+
+
+def to_nmms_sentence(sentence, known_atoms=frozenset()):
+    """Translate one derivability-query sentence into pyNMMS syntax.
+
+    A sentence that is verbatim a known atom is that atom, whatever
+    characters it contains. Anything else is read as pyNMMS syntax over
+    propositions: `<...>` quotes a proposition verbatim, and each
+    remaining run of text between connectives / parentheses is a
+    proposition (so identifier-style queries like `A -> B` keep working).
+
+    Raises ValueError, phrased in terms of the original sentence, if the
+    result is not a well-formed pyNMMS sentence — or if a known atom that
+    contains syntax characters ("R&D is up") appears unquoted inside a
+    larger sentence, where reading it as syntax would silently answer a
+    different question.
+    """
+    for candidate in (sentence, sentence.strip()):
+        if candidate in known_atoms:
+            if _QUERY_SYNTAX_RE.search(candidate):
+                logger.debug("to_nmms_sentence: %r matched a known atom verbatim", candidate)
+            return quote_atom(candidate)
+    syntax_atoms = [a for a in known_atoms if _QUERY_SYNTAX_RE.search(a)]
+
+    def malformed(reason):
+        return ValueError(f"Malformed query sentence {sentence!r}: {reason}. {_QUERY_SYNTAX_HELP}")
+
+    out = []
+    run = []  # characters of the current unquoted proposition
+    after_operand = False  # last token emitted was a proposition or ")"
+
+    def emit(token, starts_operand, ends_operand):
+        nonlocal after_operand
+        if starts_operand and after_operand:
+            raise malformed(f"no connective before {unquote_atoms(token)!r}")
+        out.append(token)
+        after_operand = ends_operand
+
+    def flush_run():
+        text = "".join(run).strip()
+        run.clear()
+        if text:
+            emit(quote_atom(text), True, True)
+
+    i = 0
+    while i < len(sentence):
+        c = sentence[i]
+        if not run and not c.isspace():  # a proposition may start here
+            for atom in syntax_atoms:
+                if sentence.startswith(atom, i):
+                    raise malformed(
+                        f"the proposition {atom!r} contains syntax characters, so inside "
+                        f"a larger sentence it must be quoted as <{atom}>"
+                    )
+        if c == "<":
+            flush_run()
+            end = _closing_quote(sentence, i, known_atoms)
+            if end == -1:
+                raise malformed("'<' opens a quoted proposition that is never closed with '>'")
+            emit(quote_atom(sentence[i + 1 : end]), True, True)
+            i = end + 1
+        elif sentence.startswith("->", i):
+            flush_run()
+            emit(" -> ", False, False)
+            i += 2
+        elif c in "&|":
+            flush_run()
+            emit(f" {c} ", False, False)
+            i += 1
+        elif c in "(~":
+            flush_run()
+            emit(c, True, False)
+            i += 1
+        elif c == ")":
+            flush_run()
+            emit(c, False, True)
+            i += 1
+        else:
+            if run or not c.isspace():
+                run.append(c)
+            i += 1
+    flush_run()
+
+    translated = "".join(out)
+    try:
+        parsed = parse_sentence(translated)
+    except ValueError as e:
+        logger.debug("to_nmms_sentence: pyNMMS rejected %r (from %r): %s", translated, sentence, e)
+        raise malformed("connectives and parentheses do not form a sentence") from None
+    if parsed.type != "atom":
+        logger.debug("to_nmms_sentence: %r read as complex sentence %s", sentence, translated)
+    return translated
+
+
+@dataclass(frozen=True)
+class DerivationResult:
+    """Outcome of a derivability query, in Elenchus vocabulary: the
+    fields of pyNMMS's `ProofResult` that consumers use, with quoted
+    atoms in the trace turned back into plain propositions."""
+
+    derivable: bool
+    trace: list[str]
+    depth_reached: int
+    cache_hits: int
 
 
 class MaterialBase:
@@ -113,7 +286,7 @@ class MaterialBase:
                 [a, contributor, description],
             )
             if self._nmms_base is not None:
-                self._nmms_base.add_atom(a)
+                self._nmms_base.add_atom(quote_atom(a))
 
     def accept(self, premises, conclusions, contributor, reason="", domain="", provenance=None):
         """Insert a 'holds' assessment for `{premises} |~ {conclusions}`.
@@ -139,7 +312,10 @@ class MaterialBase:
             ],
         )
         if self._nmms_base is not None:
-            self._nmms_base.add_consequence(frozenset(premises), frozenset(conclusions))
+            self._nmms_base.add_consequence(
+                frozenset(quote_atom(p) for p in premises),
+                frozenset(quote_atom(c) for c in conclusions),
+            )
             self._reasoner = None  # rebuild reasoner with updated base
 
     def reject(self, premises, conclusions, contributor, reason="", domain="", provenance=None):
@@ -188,15 +364,21 @@ class MaterialBase:
         if self._reasoner is not None:
             return
         base = NMMSBase()
+        escaped = 0
         for (atom,) in self.con.execute("SELECT sentence FROM atoms").fetchall():
-            base.add_atom(atom)
+            base.add_atom(quote_atom(atom))
+            escaped += bool(_NMMS_ESCAPE_RE.search(atom))
         for p, c in self.con.execute("SELECT premises, conclusions FROM base_sequents").fetchall():
-            base.add_consequence(str_to_set(p), str_to_set(c))
+            base.add_consequence(
+                frozenset(quote_atom(a) for a in str_to_set(p)),
+                frozenset(quote_atom(a) for a in str_to_set(c)),
+            )
         self._nmms_base = base
         self._reasoner = NMMSReasoner(base)
         logger.info(
-            "Built pyNMMS reasoner: %d atoms, %d consequences",
+            "Built pyNMMS reasoner: %d atoms (%d needed escaping), %d consequences",
             len(base.language),
+            escaped,
             len(base.consequences),
         )
 
@@ -206,21 +388,36 @@ class MaterialBase:
         self._reasoner = None
 
     def derives(self, premises, conclusions):
-        self._ensure_reasoner()
-        result = self._reasoner.derives(frozenset(premises), frozenset(conclusions))
-        logger.info(
-            "derives %s |~ %s → %s (depth=%d)",
-            fmt_set(premises),
-            fmt_set(conclusions),
-            result.derivable,
-            result.depth_reached,
-        )
-        return result.derivable
+        return self.derive_with_trace(premises, conclusions).derivable
 
     def derive_with_trace(self, premises, conclusions):
-        """Return full ProofResult including trace."""
+        """Check `{premises} |~ {conclusions}` and return a `DerivationResult`.
+
+        Each premise / conclusion is a known atom verbatim or a logically
+        complex query sentence (see `to_nmms_sentence`). Raises ValueError
+        if one is malformed.
+        """
+        known = self.atoms
+        gamma = frozenset(to_nmms_sentence(s, known) for s in premises)
+        delta = frozenset(to_nmms_sentence(s, known) for s in conclusions)
         self._ensure_reasoner()
-        return self._reasoner.derives(frozenset(premises), frozenset(conclusions))
+        proof = self._reasoner.derives(gamma, delta)
+        trace = [unquote_atoms(line) for line in proof.trace]
+        logger.info(
+            "derives %s |~ %s → %s (depth=%d, cache_hits=%d, trace_lines=%d)",
+            fmt_set(premises),
+            fmt_set(conclusions),
+            proof.derivable,
+            proof.depth_reached,
+            proof.cache_hits,
+            len(trace),
+        )
+        return DerivationResult(
+            derivable=proof.derivable,
+            trace=trace,
+            depth_reached=proof.depth_reached,
+            cache_hits=proof.cache_hits,
+        )
 
     def gaps_for(self, premises, conclusions):
         """Unassessed weakenings of a sequent."""

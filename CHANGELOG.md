@@ -5,6 +5,37 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Derivability checks work again with pyNMMS ≥ 0.6.2. That release made
+  the atom grammar strict (identifiers, `C(a)`, or quoted `<...>` only),
+  so building the reasoner raised `ValueError` for every real dialectic —
+  whose atoms are natural-language sentences — and `POST …/derive` and the
+  CLI `/derive` failed (HTTP 500). Only on-demand derivability was
+  affected; the dialectic flow never builds the reasoner. `material_base.py`
+  now quotes every atom as `<...>` at the pyNMMS boundary (percent-escaping
+  `<`, `>` and `%`, so propositions like "PaO2/FiO2 < 300 mmHg" are safe)
+  and unquotes proof traces on the way back. DuckDB still stores the plain
+  sentence: no schema or data change.
+- `/derive` query sentences may mix pyNMMS connectives (`~ & | ->`,
+  parentheses) with natural-language propositions: a sentence that is
+  verbatim a known atom is that atom, `<...>` quotes a proposition
+  verbatim, and any other run of text between connectives is a
+  proposition — so identifier-style queries (`A -> B`) behave as before. A
+  stored proposition that itself contains syntax characters must be quoted
+  inside a larger sentence; leaving it bare is reported as an error rather
+  than silently parsed as syntax.
+- A malformed `/derive` query now returns HTTP 422 with an explanatory
+  message (and the CLI prints it) instead of a 500 / REPL crash.
+
+### Changed
+
+- Minimum pyNMMS is now 0.6.2 (the first release with quoted atoms).
+- `MaterialBase.derive_with_trace` returns an Elenchus `DerivationResult`
+  (`derivable`, `trace`, `depth_reached`, `cache_hits`) rather than
+  pyNMMS's `ProofResult`, whose `trace` changed from a field to a
+  read-only property across the supported pyNMMS range.
+
 ## [0.3.3] — 2026-06-21
 
 ### Fixed

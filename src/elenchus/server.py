@@ -1971,7 +1971,22 @@ def retract(name: str, req: RetractRequest, actor: dict = Depends(auth.current_a
 def derive(name: str, req: DeriveRequest, actor: dict = Depends(auth.current_actor)):
     """Check derivability in the material base."""
     state = _authorize_and_get_state(name, actor)
-    result = state.derive_with_trace(req.gamma, req.delta)
+    try:
+        result = state.derive_with_trace(req.gamma, req.delta)
+    except ValueError as e:
+        # A malformed query sentence (dangling connective, unclosed
+        # `<...>` quote, ...) is the caller's error, not a 500.
+        logger.warning(
+            "Derive rejected: dialectic=%s, gamma=%r, delta=%r: %s", name, req.gamma, req.delta, e
+        )
+        raise HTTPException(422, str(e)) from None
+    logger.info(
+        "Derive: dialectic=%s, gamma=%r, delta=%r → %s",
+        name,
+        req.gamma,
+        req.delta,
+        result.derivable,
+    )
     return {
         "gamma": req.gamma,
         "delta": req.delta,

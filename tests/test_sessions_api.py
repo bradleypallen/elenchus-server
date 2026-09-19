@@ -123,6 +123,24 @@ class TestVerbsViaSession:
             == 200
         )
 
+    def test_derive_natural_language_atoms_via_session(self):
+        created = _create()
+        state = get_registry().get(created["name"])
+        state.commit("Whales are mammals")
+        state.deny("Whales breathe water")
+        state.accept_tension(state.add_tension(["Whales are mammals"], ["Whales breathe water"]))
+        sid = created["session_id"]
+        r = client.post(
+            f"/api/sessions/{sid}/derive",
+            json={"gamma": ["Whales are mammals"], "delta": ["Whales breathe water"]},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["derives"] is True
+        r = client.post(
+            f"/api/sessions/{sid}/derive", json={"gamma": ["Whales are mammals ->"], "delta": []}
+        )
+        assert r.status_code == 422
+
     def test_unknown_tension_404_through_session(self):
         sid = _create()["session_id"]
         r = client.post(f"/api/sessions/{sid}/tensions/999", json={"action": "accept"})

@@ -2,7 +2,18 @@
 
 import logging
 
-from elenchus.material_base import MaterialBase, fmt_set, set_to_str, str_to_set
+import pytest
+from pynmms import MaterialBase as NMMSBase
+
+from elenchus.material_base import (
+    MaterialBase,
+    fmt_set,
+    quote_atom,
+    set_to_str,
+    str_to_set,
+    to_nmms_sentence,
+    unquote_atoms,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +151,219 @@ class TestDerivability:
         base.accept({"p"}, {"q"}, "tester")
         base.reject({"p"}, {"q"}, "tester")
         assert base.derives({"p"}, {"q"}) is False
+
+
+# ── pyNMMS boundary: natural-language atoms ──
+#
+# pyNMMS >= 0.6.2 rejects any atom that is not an identifier or quoted as
+# `<...>`. Real dialectics use natural-language propositions, so these
+# tests deliberately avoid identifier-style atoms ("p", "q"), which mask
+# boundary bugs.
+
+WHALES = "Whales are mammals"
+AIR = "Whales breathe air"
+LUNGS = "Whales have lungs"
+
+# Propositions built to collide with pyNMMS syntax or the quoting scheme.
+AWKWARD = [
+    "PaO2/FiO2 < 300 mmHg",
+    "x > 5",
+    "<b>bold</b> claim",
+    "50% of whales sing",
+    "%3C is not an escape here",
+    "R&D spending is up",
+    "Either it rains | it pours",
+    "~5 mg is a safe dose",
+    "Heat -> expansion",
+    "Whales (cetaceans) are mammals",
+    "C(a)",
+    "If it rains, the ground is wet",
+    "Line one\nline two",
+    "  padded  ",
+]
+
+
+class TestAtomQuoting:
+    @pytest.mark.parametrize("prop", AWKWARD + [WHALES, "p", ""])
+    def test_quote_roundtrips_and_pynmms_accepts_it(self, prop):
+        quoted = quote_atom(prop)
+        assert unquote_atoms(quoted) == prop
+        nmms = NMMSBase()
+        nmms.add_atom(quoted)  # must not raise, whatever the proposition
+        assert quoted in nmms.language
+
+    def test_quoting_is_injective(self):
+        props = AWKWARD + [WHALES, "p", "<p>", "%3Cp%3E", "%253Cp%253E"]
+        assert len({quote_atom(p) for p in props}) == len(set(props))
+
+    def test_unquote_leaves_sequent_arrow_alone(self):
+        line = f"  AXIOM: {quote_atom('x > 5')}, {quote_atom(WHALES)} => {quote_atom('a < b')}"
+        assert unquote_atoms(line) == f"  AXIOM: x > 5, {WHALES} => a < b"
+
+
+class TestQueryTranslation:
+    KNOWN = frozenset({WHALES, AIR, "A", "B", "R&D spending is up", "x > 5", "a < b"})
+
+    def test_known_atom_is_taken_verbatim(self):
+        assert to_nmms_sentence(WHALES, self.KNOWN) == f"<{WHALES}>"
+        # Even when it contains connective characters.
+        assert to_nmms_sentence("R&D spending is up", self.KNOWN) == "<R&D spending is up>"
+        assert to_nmms_sentence(f"  {WHALES} ", self.KNOWN) == f"<{WHALES}>"
+
+    def test_unknown_plain_sentence_is_one_atom(self):
+        assert to_nmms_sentence("Whales are fish", self.KNOWN) == "<Whales are fish>"
+
+    def test_identifier_style_complex_query(self):
+        assert to_nmms_sentence("A -> B", self.KNOWN) == "<A> -> <B>"
+        assert to_nmms_sentence("~(A & B) | A", self.KNOWN) == "~(<A> & <B>) | <A>"
+
+    def test_natural_language_complex_query(self):
+        assert to_nmms_sentence(f"{WHALES} -> {AIR}", self.KNOWN) == f"<{WHALES}> -> <{AIR}>"
+        assert to_nmms_sentence(f"~{WHALES}", self.KNOWN) == f"~<{WHALES}>"
+
+    def test_explicit_quotes_are_verbatim(self):
+        got = to_nmms_sentence("<R&D spending is up> -> <A>", self.KNOWN)
+        assert got == "<R&D spending is up> -> <A>"
+
+    def test_quoted_known_atom_may_contain_angle_brackets(self):
+        assert to_nmms_sentence("~<x > 5>", self.KNOWN) == "~<x %3E 5>"
+        assert to_nmms_sentence("<a < b> & <x > 5>", self.KNOWN) == "<a %3C b> & <x %3E 5>"
+
+    def test_unquoted_known_atom_with_syntax_chars_is_an_error(self):
+        """Reading a stored proposition as syntax would silently answer a
+        different question — demand quotes instead."""
+        with pytest.raises(ValueError, match="must be quoted as <R&D spending is up>"):
+            to_nmms_sentence("~R&D spending is up", self.KNOWN)
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["", "   ", "A &", "-> B", "A -> ", "~", "()", "(A & B", "A & B)", "A B <C>", "<unclosed"],
+    )
+    def test_malformed_query_raises_value_error(self, bad):
+        with pytest.raises(ValueError, match="Malformed query sentence"):
+            to_nmms_sentence(bad, self.KNOWN)
+
+
+class TestNaturalLanguageDerivability:
+    def test_derives_with_natural_language_atoms(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, AIR, LUNGS})
+        base.accept({WHALES}, {AIR}, "tester")
+        assert base.derives({WHALES}, {AIR}) is True
+        assert base.derives({WHALES}, {WHALES}) is True  # Containment
+        assert base.derives({WHALES}, {LUNGS}) is False
+        assert base.derives({WHALES, LUNGS}, {AIR}) is False  # no Weakening
+
+    def test_incremental_sync_after_reasoner_built(self):
+        """add_atoms / accept after the reasoner exists go through the
+        incremental mirror path, which must quote too."""
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, AIR})
+        assert base.derives({WHALES}, {AIR}) is False  # builds the reasoner
+        assert base._nmms_base is not None
+
+        base.add_atoms({LUNGS})
+        assert quote_atom(LUNGS) in base._nmms_base.language
+        base.accept({WHALES}, {AIR}, "tester")
+        assert (
+            frozenset({quote_atom(WHALES)}),
+            frozenset({quote_atom(AIR)}),
+        ) in base._nmms_base.consequences
+
+        assert base.derives({WHALES}, {AIR}) is True
+        assert base.derives({WHALES}, {LUNGS}) is False
+
+    def test_rebuild_after_reject(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, AIR, LUNGS})
+        base.accept({WHALES}, {AIR}, "tester")
+        base.accept({WHALES}, {LUNGS}, "tester")
+        assert base.derives({WHALES}, {AIR}) is True
+        base.reject({WHALES}, {AIR}, "tester")
+        assert base._nmms_base is None  # full rebuild pending
+        assert base.derives({WHALES}, {AIR}) is False
+        assert base.derives({WHALES}, {LUNGS}) is True
+
+    def test_rebuild_after_retract_assessment(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, AIR})
+        base.accept({WHALES}, {AIR}, "tester")
+        assert base.derives({WHALES}, {AIR}) is True
+        (aid,) = base.con.execute("SELECT id FROM assessments").fetchone()
+        assert base.retract_assessment(aid) is True
+        assert base.derives({WHALES}, {AIR}) is False
+
+    def test_awkward_propositions_build_and_derive(self):
+        """One proposition containing `<` must not break the whole base."""
+        base = MaterialBase.in_memory("test")
+        base.add_atoms(set(AWKWARD))
+        for premise, conclusion in zip(AWKWARD, AWKWARD[1:], strict=False):
+            base.accept({premise}, {conclusion}, "tester")
+        for premise, conclusion in zip(AWKWARD, AWKWARD[1:], strict=False):
+            assert base.derives({premise}, {conclusion}) is True
+        assert base.derives({AWKWARD[0]}, {AWKWARD[2]}) is False  # no Cut
+
+    def test_trace_shows_plain_propositions(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({"PaO2/FiO2 < 300 mmHg", "50% of whales sing"})
+        base.accept({"PaO2/FiO2 < 300 mmHg"}, {"50% of whales sing"}, "tester")
+        result = base.derive_with_trace({"PaO2/FiO2 < 300 mmHg"}, {"50% of whales sing"})
+        assert result.derivable is True
+        assert result.depth_reached == 0
+        assert len(result.trace) == 1
+        line = result.trace[0]
+        assert "PaO2/FiO2 < 300 mmHg" in line and "50% of whales sing" in line
+        assert "%3C" not in line and "%25" not in line and "<PaO2" not in line
+
+    def test_complex_query_over_natural_language_atoms(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, AIR})
+        base.accept({WHALES}, {AIR}, "tester")
+        result = base.derive_with_trace(set(), {f"{WHALES} -> {AIR}"})
+        assert result.derivable is True
+        assert any(f"{WHALES} -> {AIR}" in line for line in result.trace)
+        assert not any("<" in line for line in result.trace)
+        # Contraposition via the Ketonen rules, and excluded middle.
+        assert base.derives({f"~{AIR}"}, {f"~{WHALES}"}) is True
+        assert base.derives(set(), {f"<{LUNGS}> | ~<{LUNGS}>"}) is True
+        assert base.derives(set(), {f"{AIR} -> {WHALES}"}) is False
+
+    def test_identifier_style_queries_still_work(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({"A", "B"})
+        base.accept({"A"}, {"B"}, "tester")
+        assert base.derives({"A"}, {"B"}) is True
+        assert base.derives(set(), {"A -> B"}) is True
+        assert base.derives({"~B"}, {"~A"}) is True
+        assert base.derives(set(), {"B -> A"}) is False
+
+    def test_malformed_query_raises_value_error(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES})
+        with pytest.raises(ValueError, match="Malformed query sentence"):
+            base.derive_with_trace({f"{WHALES} &"}, {WHALES})
+
+    def test_duckdb_never_sees_quoted_atoms(self):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({WHALES, "x > 5"})
+        base.accept({WHALES}, {"x > 5"}, "tester")
+        base.derives({WHALES}, {"x > 5"})
+        assert base.atoms == frozenset({WHALES, "x > 5"})
+        premises, conclusions = base.con.execute(
+            "SELECT premises, conclusions FROM base_sequents"
+        ).fetchone()
+        assert str_to_set(premises) == frozenset({WHALES})
+        assert str_to_set(conclusions) == frozenset({"x > 5"})
+
+    def test_quoting_is_logged_for_post_run_analysis(self, caplog):
+        base = MaterialBase.in_memory("test")
+        base.add_atoms({"x > 5", WHALES})
+        with caplog.at_level(logging.DEBUG, logger="elenchus.material_base"):
+            base.derives({"x > 5"}, {WHALES})
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("quote_atom: escaped 'x > 5'" in m for m in messages)
+        assert any("2 atoms (1 needed escaping)" in m for m in messages)
+        assert any(m.startswith("derives {x > 5} |~ {Whales are mammals}") for m in messages)
 
 
 class TestCompleteness:

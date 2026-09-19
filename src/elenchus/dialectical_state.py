@@ -340,7 +340,8 @@ class DialecticalState:
         return self.base.derives(set(gamma), set(delta))
 
     def derive_with_trace(self, gamma: list, delta: list):
-        """Return full ProofResult including trace."""
+        """Return a `DerivationResult` (derivable, trace, depth). Raises
+        ValueError if a query sentence is malformed."""
         return self.base.derive_with_trace(set(gamma), set(delta))
 
     # ── Atom IDs (sequential by creation order) ──

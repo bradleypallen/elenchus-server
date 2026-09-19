@@ -91,7 +91,7 @@ src/elenchus/
 
 **Layered bottom-up:**
 
-1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Derivability is delegated to pyNMMS (`NMMSReasoner`), which implements correct nonmonotonic proof search (no Weakening, no Cut) per Hlobil & Brandom 2025. An in-memory pyNMMS `MaterialBase` mirrors the DuckDB state, synced incrementally on `accept()`/`add_atoms()` and rebuilt from `base_sequents` after `reject()`. Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to DuckDB strings.
+1. **material_base.py** — Definition 5: `B = ⟨L_B, |∼_B⟩`. DuckDB-backed atomic language and base consequence relation. Derivability is delegated to pyNMMS (`NMMSReasoner`), which implements correct nonmonotonic proof search (no Weakening, no Cut) per Hlobil & Brandom 2025. An in-memory pyNMMS `MaterialBase` mirrors the DuckDB state, synced incrementally on `accept()`/`add_atoms()` and rebuilt from `base_sequents` after `reject()`. pyNMMS ≥0.6.2 only accepts identifiers or quoted atoms `<...>`, so natural-language atoms are quoted at that boundary only (`quote_atom` / `to_nmms_sentence` / `unquote_atoms`; `<`, `>`, `%` percent-escaped) — DuckDB always stores the plain sentence, and `derive_with_trace` returns an Elenchus `DerivationResult` with unquoted trace lines. Utility functions `set_to_str`/`str_to_set`/`fmt_set` for serializing frozensets to DuckDB strings.
 
 2. **dialectical_state.py** — Definition 4: `S = ⟨[C : D], T, I⟩`. Wraps `MaterialBase` and adds DuckDB tables for positions (commitments/denials), tensions, and conversation history. The mapping: `L_B = C ∪ D`, `|∼_B = I ∪ Cont`.
 
