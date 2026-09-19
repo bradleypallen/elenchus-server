@@ -7,6 +7,27 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Blinded rating of the participants' texts.** The expert panel now
+  rates what participants actually wrote, with **absolute** ratings per
+  text on four dimensions — coverage, correctness, concision, and whether
+  the reasoning holds together (1–7) — plus an optional note and the
+  blinding check (which way of working does the judge think produced the
+  text, and how confident are they). The rubric is versioned in
+  `text_judging.py` and stamped on every rating. A researcher assigns
+  "every submitted text" to a judge (`POST
+  /api/admin/study/{id}/text-assignments`) — idempotent, so it can be
+  pressed again as sessions finish — and each judge meets the texts in
+  their own random order. The judge's view (`GET /api/judge/texts/{id}`)
+  carries the topic, the brief, the text and the rubric, and nothing about
+  the condition, the participant, the session, or even the text's id.
+  Ratings are validated strictly and rejected whole; a judge may revise,
+  and every submission is kept (the newest counts), with the time the
+  form was open. The export gains `text_judging.json` — unblinded, the
+  analysis set. New judge screen and a researcher panel (assign, panel
+  progress, submitted texts); the paired-structured-report flow remains
+  as a labelled legacy section. Platform migration `0011`. The pilot
+  simulation now rates texts instead of generating and pairing reports
+  (one fewer LLM call per session in `--driver llm` rehearsals).
 - **Participant enrolment for the crossover design.** A researcher sets a
   study up once — its two topics and the minimum gap between a
   participant's sessions (`PUT /api/admin/study/{id}/config`) — then
@@ -89,6 +110,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The Judging tab listed judges through the admin-only user list, so it
+  failed for researcher accounts. It now uses a researcher-accessible
+  `GET /api/admin/study/judges`.
 - **Researcher accounts could not reach the Study or Judging tabs.** The
   dashboard button and view were gated on `admin`, although the study
   routes themselves have always allowed researchers. Researchers now get

@@ -7,6 +7,11 @@ analyze downstream. Layout inside the archive:
 
     study-{study_id}-{timestamp}/
       manifest.json                  — export metadata + content listing
+      text_judging.json              — the panel's ratings of the submitted
+                                       texts, UNBLINDED for analysis: each
+                                       text's condition / participant /
+                                       period beside every judge's ratings
+                                       (full revision history, newest last)
       participants.json              — enrolled participants: code, cell
                                        (first condition × first topic),
                                        allocation method — no names
@@ -54,7 +59,7 @@ import os
 import shutil
 import tarfile
 
-from . import study_text, turn_log
+from . import study_text, text_judging, turn_log
 from .db import get_registry
 from .db import platform as pdb
 from .integrity import compute_base_integrity
@@ -108,6 +113,9 @@ def _build_pseudonyms(con, study_id: str) -> dict[int, str]:
     config = pdb.find_study_config(con, study_id)
     if config is not None:
         staff_ids.add(config["created_by"])
+    for assignment in pdb.list_text_assignments_for_study(con, study_id):
+        judge_ids.add(assignment["judge_actor_id"])
+        staff_ids.add(assignment["assigned_by"])
 
     for i, actor_id in enumerate(sorted(judge_ids - set(pseudonyms)), 1):
         pseudonyms[actor_id] = f"J-{i:03d}"
@@ -217,6 +225,62 @@ def export_study(
             ),
         }
         _write_json(os.path.join(staging, "manifest.json"), manifest)
+
+        # The panel's ratings of the submitted texts. Unblinded — this
+        # is the analysis set: condition, participant and period sit
+        # beside each judge's ratings. Every submission is included
+        # (a judge may revise); the last in `ratings` is the one that
+        # counts. `rubric` records the wording the panel rated against.
+        text_assignments = pdb.list_text_assignments_for_study(con, study_id)
+        text_judging_rows = []
+        for text in pdb.list_study_texts(con, study_id=study_id):
+            session = pdb.find_study_session(con, text["session_id"]) or {}
+            token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+            person = (
+                pdb.find_study_participant(con, token["participant_id"])
+                if token.get("participant_id") is not None
+                else None
+            )
+            text_judging_rows.append(
+                {
+                    "text_id": text["id"],
+                    "session_id": text["session_id"],
+                    "actor_id": text["actor_id"],
+                    "participant_code": person["participant_code"] if person else None,
+                    "period": token.get("period"),
+                    "condition": text["condition"],
+                    "topic_title": text["topic_title"],
+                    "word_count": text["word_count"],
+                    "active_elapsed_seconds": text["active_elapsed_seconds"],
+                    "assignments": [
+                        {
+                            "assignment_id": a["id"],
+                            "judge_actor_id": a["judge_actor_id"],
+                            "assigned_by": a["assigned_by"],
+                            "assigned_at": a["assigned_at"],
+                            "queue_position": a["position"],
+                            "status": a["status"],
+                            "completed_at": a["completed_at"],
+                            "ratings": pdb.list_text_ratings(con, a["id"]),
+                        }
+                        for a in text_assignments
+                        if a["text_id"] == text["id"]
+                    ],
+                }
+            )
+        _write_json(
+            os.path.join(staging, "text_judging.json"),
+            _pseudonymize(
+                {"rubric": text_judging.rubric(), "texts": text_judging_rows}, pseudonyms
+            ),
+        )
+        logger.info(
+            "Exported text judging for %s: %d texts, %d assignments, %d completed",
+            study_id,
+            len(text_judging_rows),
+            len(text_assignments),
+            sum(1 for a in text_assignments if a["status"] == "completed"),
+        )
 
         # The roster, minus anything identifying: the code is the
         # researcher-assigned sequence number, the name stays out.

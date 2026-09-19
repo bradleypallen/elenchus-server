@@ -2993,6 +2993,126 @@ function AdminStudyTab({ fs }) {
   );
 }
 
+// Text judging: the pilot's panel gives each submitted text absolute
+// ratings. The researcher's job here is only to hand texts to judges and
+// watch progress — assignment is "everything submitted so far", safe to
+// press again as more sessions finish. Reading the texts is the panel's
+// job; ratings reach the researcher through the export.
+function AdminTextJudgingPanel({ fs }) {
+  const [studies, setStudies] = useState([]);
+  const [studyId, setStudyId] = useState('');
+  const [judges, setJudges] = useState([]);
+  const [judgeId, setJudgeId] = useState('');
+  const [listing, setListing] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const [error, setError] = useState(null);
+
+  const loadListing = async (sid) => {
+    if (!sid) { setListing(null); return; }
+    try { setListing(await api(`/api/admin/study/${encodeURIComponent(sid)}/texts`)); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const [c, j] = await Promise.all([api('/api/admin/study/configs'), api('/api/admin/study/judges')]);
+        setStudies(c.studies || []); setJudges(j.judges || []);
+        if (c.studies?.length) setStudyId(c.studies[0].study_id);
+        if (j.judges?.length) setJudgeId(String(j.judges[0].id));
+      } catch (e) { setError(e.message); }
+    })();
+  }, []);
+  useEffect(() => { loadListing(studyId); }, [studyId]);
+
+  const assignAll = async () => {
+    if (busy || !studyId || !judgeId) return;
+    setBusy(true); setError(null); setNote(null);
+    try {
+      const r = await api(`/api/admin/study/${encodeURIComponent(studyId)}/text-assignments`, {
+        method: 'POST', body: JSON.stringify({ judge_actor_id: parseInt(judgeId, 10) }),
+      });
+      setNote(`${r.created} text${r.created === 1 ? '' : 's'} assigned` +
+              (r.already_assigned ? ` (${r.already_assigned} already in this judge's queue)` : ''));
+      await loadListing(studyId);
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const input = { padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' };
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const th = { padding: '6px 8px', fontWeight: 400, textAlign: 'left', color: 'var(--text-muted)' };
+  const td = { padding: '7px 8px', fontFamily: 'var(--sans)' };
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 16, padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={heading}>RATE SUBMITTED TEXTS — blinded, absolute ratings on four dimensions</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={studyId} onChange={e => setStudyId(e.target.value)} style={input}>
+            {studies.length === 0 && <option value="">no study set up yet</option>}
+            {studies.map(st => <option key={st.study_id} value={st.study_id}>{st.study_id}</option>)}
+          </select>
+          <select value={judgeId} onChange={e => setJudgeId(e.target.value)} style={{ ...input, flex: '1 1 220px' }}>
+            {judges.length === 0 && <option value="">no judge accounts yet</option>}
+            {judges.map(j => <option key={j.id} value={j.id}>{j.display_name} ({j.email})</option>)}
+          </select>
+          <button onClick={assignAll} disabled={busy || !studyId || !judgeId} style={{
+            padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+            fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer',
+            opacity: busy || !studyId || !judgeId ? 0.5 : 1 }}>ASSIGN ALL SUBMITTED TEXTS</button>
+        </div>
+        <div style={{ marginTop: 8, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          Each judge gets the texts in their own random order, and sees only the topic and the text — never
+          the condition or the participant. Press again after more sessions finish: only new texts are added.
+          {judges.length === 0 && ' Judge accounts are created by an admin (Invites tab, kind “judge”).'}
+        </div>
+        {note && <div style={{ marginTop: 8, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--commit)' }}>{note}</div>}
+        {error && <div style={{ marginTop: 8, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--deny)' }}>{error}</div>}
+      </div>
+
+      {listing && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: 24, alignItems: 'start' }}>
+          <div>
+            <div style={heading}>PANEL PROGRESS</div>
+            {listing.judges.length === 0
+              ? <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>Nothing assigned yet.</div>
+              : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+                  <thead><tr><th style={th}>judge</th><th style={th}>rated</th></tr></thead>
+                  <tbody>{listing.judges.map(j => (
+                    <tr key={j.judge_actor_id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={td}>{j.display_name}</td>
+                      <td style={{ ...td, color: j.rated === j.assigned ? 'var(--commit)' : 'var(--text-dim)' }}>{j.rated} / {j.assigned}</td>
+                    </tr>))}</tbody>
+                </table>}
+          </div>
+          <div>
+            <div style={heading}>SUBMITTED TEXTS ({listing.texts.length})</div>
+            {listing.texts.length === 0
+              ? <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>No participant has submitted a text yet.</div>
+              : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+                  <thead><tr>
+                    <th style={th}>participant</th><th style={th}>session</th><th style={th}>condition</th>
+                    <th style={th}>topic</th><th style={th}>words</th><th style={th}>rated</th>
+                  </tr></thead>
+                  <tbody>{listing.texts.map(t => (
+                    <tr key={t.text_id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ ...td, fontFamily: 'var(--mono)' }}>{t.participant_code || '—'}</td>
+                      <td style={td}>{t.period || '—'}</td>
+                      <td style={td}>{t.condition}</td>
+                      <td style={{ ...td, color: 'var(--text-dim)' }}>{t.topic_title}</td>
+                      <td style={td}>{t.word_count}</td>
+                      <td style={{ ...td, color: t.assigned && t.rated === t.assigned ? 'var(--commit)' : 'var(--text-dim)' }}>{t.rated} / {t.assigned}</td>
+                    </tr>))}</tbody>
+                </table>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminJudgingTab({ fs }) {
   // Assemble judge packages from generated reports, assign to judges.
   const [reports, setReports] = useState([]);
@@ -3008,11 +3128,11 @@ function AdminJudgingTab({ fs }) {
       const [r, p, u] = await Promise.all([
         api('/api/admin/study/reports'),
         api('/api/admin/study/judge-packages'),
-        api('/api/admin/users'),
+        api('/api/admin/study/judges'),
       ]);
       setReports(r.reports || []);
       setPackages(p.packages || []);
-      setJudges((u.users || []).filter(x => x.kind === 'judge'));
+      setJudges(u.judges || []);
     } catch (e) { setError(e.message); }
   };
   useEffect(() => { load(); }, []);
@@ -3058,6 +3178,13 @@ function AdminJudgingTab({ fs }) {
 
   return (
     <div>
+      <AdminTextJudgingPanel fs={fs} />
+
+      {/* Legacy: paired structured reports. Not part of the pilot, which
+          rates the participants' own texts (above). */}
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', margin: '8px 0 10px' }}>
+        LEGACY — PAIRED STRUCTURED REPORTS (not used in the pilot)
+      </div>
       <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
                     background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
@@ -3601,7 +3728,9 @@ const JUDGE_DIMENSIONS = [
 ];
 
 function JudgeInterface({ fs, logout }) {
-  const [view, setView] = useState('queue'); // 'queue' | 'rate'
+  // 'queue' | 'rate-text' (the pilot: one text, absolute ratings)
+  //         | 'rate' (legacy: a pair of structured reports)
+  const [view, setView] = useState('queue');
   const [activeId, setActiveId] = useState(null);
 
   return (
@@ -3623,31 +3752,230 @@ function JudgeInterface({ fs, logout }) {
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {view === 'queue'
-          ? <JudgeQueue fs={fs} onOpen={(id) => { setActiveId(id); setView('rate'); }} />
-          : <JudgeRate fs={fs} assignmentId={activeId} onDone={() => { setView('queue'); setActiveId(null); }} />}
+          ? <JudgeQueue fs={fs}
+              onOpen={(id) => { setActiveId(id); setView('rate'); }}
+              onOpenText={(id) => { setActiveId(id); setView('rate-text'); }} />
+          : view === 'rate-text'
+            ? <JudgeRateText fs={fs} assignmentId={activeId} onDone={() => { setView('queue'); setActiveId(null); }} />
+            : <JudgeRate fs={fs} assignmentId={activeId} onDone={() => { setView('queue'); setActiveId(null); }} />}
       </div>
     </div>
   );
 }
 
-function JudgeQueue({ fs, onOpen }) {
+function JudgeTextQueue({ fs, texts, onOpenText }) {
+  const pending = texts.filter(t => t.status === 'pending');
+  const done = texts.filter(t => t.status !== 'pending');
+  const row = (t, isDone) => (
+    <div key={t.assignment_id} onClick={() => onOpenText(t.assignment_id)} style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      padding: isDone ? '10px 14px' : '12px 14px', marginBottom: isDone ? 4 : 6, borderRadius: 6,
+      background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer',
+      opacity: isDone ? 0.7 : 1 }}>
+      <span style={{ fontFamily: 'var(--sans)', fontSize: fs(13) }}>{t.topic_title || 'Text'}</span>
+      <span style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
+        <span style={{ fontSize: fs(10), fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{t.word_count} words</span>
+        {isDone
+          ? <span style={{ fontSize: fs(10), color: 'var(--commit)' }}>✓ rated — open to revise</span>
+          : <span style={{ fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)', color: 'var(--accent)' }}>OPEN →</span>}
+      </span>
+    </div>
+  );
+  return (
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>
+      <h1 style={{ fontSize: fs(22), fontWeight: 300, marginBottom: 6 }}>Texts to rate</h1>
+      <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.7, marginBottom: 24 }}>
+        Each item is a short introduction to a topic, written by a researcher in the field.
+        Rate each text on its own merits against the four dimensions — not against the other
+        texts. You can reopen a text and revise your rating. Your judgements are confidential.
+      </p>
+      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
+        TO DO ({pending.length}) · RATED ({done.length})
+      </div>
+      {pending.length === 0 && (
+        <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontFamily: 'var(--sans)', marginBottom: 20 }}>
+          Nothing waiting — thank you.
+        </div>
+      )}
+      {pending.map(t => row(t, false))}
+      {done.length > 0 && <div style={{ height: 14 }} />}
+      {done.map(t => row(t, true))}
+    </div>
+  );
+}
+
+function JudgeRateText({ fs, assignmentId, onDone }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [ratings, setRatings] = useState({});
+  const [justification, setJustification] = useState('');
+  const [guess, setGuess] = useState(null);
+  const [confidence, setConfidence] = useState(null);
+  const openedAt = useRef(Date.now());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api(`/api/judge/texts/${assignmentId}`);
+        setData(d);
+        if (d.rating) {
+          setRatings(d.rating.ratings || {});
+          setJustification(d.rating.justification || '');
+          setGuess(d.rating.condition_guess || null);
+          setConfidence(d.rating.confidence || null);
+        }
+        openedAt.current = Date.now();
+      } catch (e) { setError(e.message); }
+    })();
+  }, [assignmentId]);
+
+  if (error && !data) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
+  if (!data) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+
+  const { rubric } = data;
+  const scale = [];
+  for (let v = rubric.scale.min; v <= rubric.scale.max; v++) scale.push(v);
+  const complete = rubric.dimensions.every(d => Number.isInteger(ratings[d.key]));
+
+  const submit = async () => {
+    if (busy || !complete) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/judge/texts/${assignmentId}/rate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ratings, justification, condition_guess: guess, confidence,
+          seconds_spent: Math.round((Date.now() - openedAt.current) / 1000),
+        }),
+      });
+      onDone();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const pill = (active) => ({
+    minWidth: 34, padding: '6px 0', borderRadius: 4, cursor: 'pointer', fontSize: fs(12),
+    fontFamily: 'var(--mono)', border: '1px solid', textAlign: 'center',
+    borderColor: active ? 'var(--accent)' : 'var(--border)',
+    background: active ? 'var(--accent)' : 'var(--surface)', color: active ? '#111' : 'var(--text-dim)',
+  });
+  const label = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' };
+
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 32, display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)', gap: 32, alignItems: 'start' }}>
+      {/* The text */}
+      <div>
+        <div style={label}>Topic the writer was given</div>
+        <div style={{ fontFamily: 'var(--sans)', fontSize: fs(15), fontWeight: 600, marginBottom: 4 }}>{data.topic_title}</div>
+        {data.topic_brief && (
+          <div style={{ fontFamily: 'var(--sans)', fontSize: fs(12), color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6 }}>{data.topic_brief}</div>
+        )}
+        <div style={{ fontFamily: 'var(--sans)', fontSize: fs(12), color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 16 }}>
+          They were asked for the kind of introduction a well-informed colleague would want to read before
+          working in this area — two or three paragraphs, in their own words.
+        </div>
+        <div style={label}>The text · {data.word_count} words</div>
+        <div style={{ padding: '18px 20px', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)',
+                      fontFamily: 'var(--sans)', fontSize: fs(14), lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+          {data.content}
+        </div>
+      </div>
+
+      {/* The rating */}
+      <div>
+        <div style={label}>Your rating — {rubric.scale.min} = {rubric.scale.anchors[rubric.scale.min]}, {rubric.scale.max} = {rubric.scale.anchors[rubric.scale.max]}</div>
+        {rubric.dimensions.map(d => (
+          <div key={d.key} style={{ marginBottom: 18 }}>
+            <div style={{ fontFamily: 'var(--sans)', fontSize: fs(13), fontWeight: 600 }}>{d.label}</div>
+            <div style={{ fontFamily: 'var(--sans)', fontSize: fs(12), color: 'var(--text-dim)', lineHeight: 1.6, margin: '2px 0 8px' }}>{d.help}</div>
+            <div role="radiogroup" aria-label={d.label} style={{ display: 'flex', gap: 6 }}>
+              {scale.map(v => (
+                <div key={v} role="radio" aria-checked={ratings[d.key] === v} aria-label={`${d.label}: ${v}`}
+                     onClick={() => setRatings(r => ({ ...r, [d.key]: v }))} style={pill(ratings[d.key] === v)}>{v}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <div style={{ ...label, marginTop: 8 }}>What most shaped your ratings? (optional)</div>
+        <textarea value={justification} onChange={e => setJustification(e.target.value)} rows={4} style={{
+          width: '100%', padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 6, color: 'var(--text)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.6,
+          outline: 'none', resize: 'vertical', marginBottom: 18 }} />
+
+        <div style={label}>One last question (optional)</div>
+        <div style={{ fontFamily: 'var(--sans)', fontSize: fs(12), color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 8 }}>
+          Writers worked with an AI in one of two ways. Which do you think this writer used?
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {rubric.condition_guess.map(o => (
+            <div key={o.value} onClick={() => setGuess(g => g === o.value ? null : o.value)}
+                 style={{ ...pill(guess === o.value), padding: '6px 10px', fontFamily: 'var(--sans)' }}>{o.label}</div>
+          ))}
+        </div>
+        {guess && guess !== 'unsure' && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontFamily: 'var(--sans)', fontSize: fs(12), color: 'var(--text-dim)', marginBottom: 6 }}>
+              How confident are you? (1 = a guess, 7 = certain)
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[1, 2, 3, 4, 5, 6, 7].map(v => (
+                <div key={v} onClick={() => setConfidence(v)} style={pill(confidence === v)}>{v}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {error && <StudyError fs={fs} message={error} />}
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+          <button onClick={submit} disabled={busy || !complete} style={{
+            flex: 1, padding: '12px 16px', background: 'var(--accent)', border: 'none', borderRadius: 6,
+            color: '#111', fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
+            cursor: busy || !complete ? 'default' : 'pointer', opacity: busy || !complete ? 0.5 : 1 }}>
+            {busy ? '…' : data.rating ? 'SAVE REVISED RATING' : 'SUBMIT RATING'}</button>
+          <button onClick={onDone} style={{
+            padding: '12px 16px', background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+            color: 'var(--text-muted)', fontSize: fs(12), letterSpacing: 1, cursor: 'pointer' }}>BACK</button>
+        </div>
+        {!complete && (
+          <div style={{ marginTop: 8, fontFamily: 'var(--sans)', fontSize: fs(11), color: 'var(--text-muted)' }}>
+            Rate all four dimensions to submit.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JudgeQueue({ fs, onOpen, onOpenText }) {
   const [assignments, setAssignments] = useState(null);
+  const [texts, setTexts] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     (async () => {
-      try { setAssignments((await api('/api/judge/queue')).assignments || []); }
-      catch (e) { setError(e.message); }
+      try {
+        const [t, a] = await Promise.all([api('/api/judge/texts'), api('/api/judge/queue')]);
+        setTexts(t.assignments || []);
+        setAssignments(a.assignments || []);
+      } catch (e) { setError(e.message); }
     })();
   }, []);
 
   if (error) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
-  if (!assignments) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+  if (!assignments || !texts) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+  // The pilot's judges rate texts. The paired-report queue below is the
+  // legacy flow; it only shows for a judge who actually has such items.
+  if (assignments.length === 0) return <JudgeTextQueue fs={fs} texts={texts} onOpenText={onOpenText} />;
 
   const pending = assignments.filter(a => a.status === 'pending');
   const done = assignments.filter(a => a.status !== 'pending');
 
   return (
+    <div>
+    {texts.length > 0 && <JudgeTextQueue fs={fs} texts={texts} onOpenText={onOpenText} />}
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>
       <h1 style={{ fontSize: fs(22), fontWeight: 300, marginBottom: 6 }}>Your evaluation queue</h1>
       <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(12), marginBottom: 24 }}>
@@ -3685,6 +4013,7 @@ function JudgeQueue({ fs, onOpen }) {
           ))}
         </>
       )}
+    </div>
     </div>
   );
 }
