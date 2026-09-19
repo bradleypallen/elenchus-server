@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Partner institutions on the landing pages.** A footer band on the
+  sign-in page and the participant welcome / thank-you screens, and a
+  strip at the foot of the home page — never inside the working
+  interface, which stays identical in both study conditions. (A footer
+  rather than part of the sign-in card: that column is ~320 px wide, where
+  four logos wrapped into a cramped 2 × 2.) It is driven by `static/partners.json`: a partner
+  with a `logo` file shows the logo (on a white plate, so it reads in the
+  dark theme too); one without shows its name as a link, so the strip is
+  presentable before any logo has been supplied. Adding a logo is a file
+  drop in `static/logos/` plus a one-line edit — see
+  `static/logos/README.md`. The service worker leaves both to the
+  browser's revalidating cache, so an edit shows on the next load.
+  Ships with ADSA, INDElab, VU L&R and Old Dominion University as names;
+  **logos to be supplied by the organisations**.
+
 ## [0.4.0] — 2026-09-19
 
 The pilot redesign. The study now compares **what participants write** —

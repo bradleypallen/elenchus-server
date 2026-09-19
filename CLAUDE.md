@@ -163,6 +163,10 @@ The study's formal analysis (NMMS, RDF translation) is done **offline from captu
 
 Events are written **inside the `DialecticalState` mutators**, not by their callers, so no code path can bypass capture. A new mutator must call `self._log_event(...)`; a new caller should pass `event=EventContext(...)` to say who is behind the change (the UI action routes pass `source="ui"`; the opponent passes `source="opponent"` with the turn id). A speech act that `_apply` drops (Phase B firewall, malformed) is logged there as `dropped`. Turn rows and their events are written inside the turn's transaction — a rolled-back turn leaves no log. Both tables are in the study export (`turn_log.json`, `state_events.json`, pseudonymized) and summarized under `capture` in the integrity report, where `uncaptured_assistant_turns` should be 0 for any session run after the migration.
 
+## Partner Strip
+
+`<PartnerStrip>` (sign-in `AuthShell`, home, participant `StudyShell` — never the working interface) renders `static/partners.json`: per partner `name`, `title`, `url` (https), `logo` (a file in `static/logos/`, or `null` → shown as a text link). Logos come **from the organisations, with permission** — never redraw or fetch one; `static/logos/README.md` has the rules. `tests/test_partners.py` fails on a named-but-missing logo, an orphan logo file, or a non-https link. `sw.js` deliberately skips `/static/partners.json` and `/static/logos/` so edits aren't pinned by the cache-first rule.
+
 ## Study Text (the judged artifact)
 
 Each study participant writes a short prose introduction to a topic, in their own words, while working with the LLM; an expert panel rates **that text** (absolute ratings on coverage, correctness, concision, and whether the reasoning holds together). The LLM-generated structured report (`study_reports.py`) is no longer what judges see. Formal analysis (NMMS, RDF) is offline, from the capture log.

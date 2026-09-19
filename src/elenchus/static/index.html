@@ -300,9 +300,80 @@ const AuthContext = React.createContext(null);
 // outer chrome (centered card with the ELENCHUS wordmark on top) so
 // the user never feels like they've left the app.
 
+// ─── Partner institutions ────────────────────────────────────────────
+// A quiet strip of the project's partner institutions, shown where people
+// arrive (sign-in, home, the participant welcome / thank-you screens) and
+// never inside the working interface — that stays identical and
+// uncluttered in both study conditions.
+//
+// It is driven entirely by /static/partners.json: a partner with a `logo`
+// file shows the logo; one without shows its name as a plain link. So the
+// strip is presentable before any logo has been supplied, and adding one
+// is a file drop plus a one-line edit (see static/logos/README.md).
+let _partnersPromise = null;
+function loadPartners() {
+  if (!_partnersPromise) {
+    _partnersPromise = fetch('/static/partners.json', { cache: 'no-cache' })
+      .then(r => (r.ok ? r.json() : { partners: [] }))
+      .catch(() => ({ partners: [] }));
+  }
+  return _partnersPromise;
+}
+
+function PartnerLogo({ partner }) {
+  const [broken, setBroken] = useState(false);
+  const link = { textDecoration: 'none', display: 'inline-flex', alignItems: 'center' };
+  if (!partner.logo || broken) {
+    return (
+      <a href={partner.url} target="_blank" rel="noopener noreferrer" title={partner.title || partner.name}
+         style={{ ...link, color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: 12 }}>
+        {partner.name}
+      </a>
+    );
+  }
+  // Logos sit on a white plate: most are drawn for light backgrounds and
+  // would vanish, or look wrong, against the dark theme.
+  return (
+    <a href={partner.url} target="_blank" rel="noopener noreferrer" title={partner.title || partner.name}
+       style={{ ...link, background: '#fff', borderRadius: 8, padding: '8px 14px' }}>
+      <img src={`/static/logos/${partner.logo}`} alt={partner.title || partner.name}
+           onError={() => setBroken(true)}
+           style={{ height: 36, maxWidth: 190, width: 'auto', display: 'block', objectFit: 'contain' }} />
+    </a>
+  );
+}
+
+// The strip as a page footer: the content above stays vertically centred
+// in the space that's left, and the logos get the width of the page.
+function PartnerFooter() {
+  return (
+    <PartnerStrip style={{ flexShrink: 0, width: '100%', maxWidth: 900, margin: '0 auto',
+                           padding: '12px 24px 22px', boxSizing: 'border-box' }} />
+  );
+}
+
+function PartnerStrip({ style }) {
+  const [config, setConfig] = useState(null);
+  useEffect(() => { let live = true; loadPartners().then(c => { if (live) setConfig(c); }); return () => { live = false; }; }, []);
+  const partners = (config && config.partners) || [];
+  if (partners.length === 0) return null;
+  return (
+    <nav aria-label="Partner institutions" style={{ textAlign: 'center', ...style }}>
+      {config.label && (
+        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase',
+                      color: 'var(--text-muted)', marginBottom: 12 }}>{config.label}</div>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '14px 28px' }}>
+        {partners.map(pt => <PartnerLogo key={pt.name} partner={pt} />)}
+      </div>
+    </nav>
+  );
+}
+
 function AuthShell({ children, footer, error, title }) {
   return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 420, width: '100%', padding: 48 }}>
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -331,6 +402,8 @@ function AuthShell({ children, footer, error, title }) {
           </div>
         )}
       </div>
+    </div>
+    <PartnerFooter />
     </div>
   );
 }
@@ -1724,6 +1797,7 @@ function App() {
               {error}
             </div>
           )}
+          <PartnerStrip style={{ marginTop: 56 }} />
         </div>
         </div>
       </div>
@@ -3583,8 +3657,9 @@ function WritingPane({ fs, studySession, text, setText }) {
 
 function StudyShell({ fs, title, children }) {
   return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ maxWidth: 560, width: '100%', padding: 48 }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ maxWidth: 560, width: '100%', padding: '32px 48px 20px' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: fs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 14 }}>
             ἜΛΕΓΧΟΣ
@@ -3593,6 +3668,8 @@ function StudyShell({ fs, title, children }) {
         </div>
         {children}
       </div>
+    </div>
+    <PartnerFooter />
     </div>
   );
 }
