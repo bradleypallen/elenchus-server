@@ -63,8 +63,8 @@ class TestTransactionalApply:
         # written earlier in _record_and_apply should be rolled back.
         original_apply = opp._apply
 
-        def _boom(parsed, st):
-            original_apply(parsed, st)
+        def _boom(parsed, st, **kwargs):
+            original_apply(parsed, st, **kwargs)
             raise RuntimeError("simulated post-apply failure")
 
         with (

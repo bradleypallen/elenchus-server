@@ -34,6 +34,7 @@ from .llm_client import ChatCategory
 from .material_base import QuerySyntaxError
 from .opponent import LLMCallError, Opponent
 from .pdf_report import generate_pdf_report
+from .turn_log import EventContext
 
 logger = logging.getLogger(__name__)
 
@@ -1944,14 +1945,18 @@ def resolve_tension(
     """Accept or contest a tension directly (bypassing the oracle)."""
     state = _authorize_and_get_state(name, actor)
     logger.info("Tension action: dialectic=%s, tension=#%d, action=%s", name, tid, req.action)
+    # Phase 1 of the two-phase UI flow mutates state without the LLM;
+    # the event context is what marks the change as a button press in
+    # the capture log (the follow-up message is a separate turn).
+    event = EventContext(source="ui", actor_id=actor["id"])
     if req.action == "accept":
-        result = state.accept_tension(tid)
+        result = state.accept_tension(tid, event=event)
         if not result:
             raise HTTPException(404, f"Tension #{tid} not found or not open")
         logger.info("Tension #%d accepted in '%s' → material implication", tid, name)
         return {"accepted": result, "state": state.to_dict()}
     elif req.action == "contest":
-        if not state.contest_tension(tid):
+        if not state.contest_tension(tid, event=event):
             raise HTTPException(404, f"Tension #{tid} not found or not open")
         logger.info("Tension #%d contested in '%s'", tid, name)
         return {"contested": tid, "state": state.to_dict()}
@@ -1964,7 +1969,7 @@ def retract(name: str, req: RetractRequest, actor: dict = Depends(auth.current_a
     """Retract a proposition directly."""
     state = _authorize_and_get_state(name, actor)
     logger.info("Retract: dialectic=%s, proposition=%r", name, req.proposition)
-    state.retract_prop(req.proposition)
+    state.retract_prop(req.proposition, event=EventContext(source="ui", actor_id=actor["id"]))
     return {"retracted": req.proposition, "state": state.to_dict()}
 
 

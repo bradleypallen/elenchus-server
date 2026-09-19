@@ -65,15 +65,28 @@ def parse_llm_response(text: str) -> dict | None:
     Returns a dict on success, or None if no candidate JSON object can
     be recovered. Callers decide how to react to None (the opponent
     treats it as a plain-text response; the PDF / frontend just show
-    the raw text).
+    the raw text). See `parse_llm_response_with_strategy` for the
+    recovery strategies.
+    """
+    return parse_llm_response_with_strategy(text)[0]
+
+
+def parse_llm_response_with_strategy(text: str) -> tuple[dict | None, str]:
+    """`parse_llm_response`, plus the name of the strategy that produced
+    the result — recorded in the turn log so a run's parse-recovery rate
+    (a prompt-adherence signal) can be read off the captured data.
 
     Strategies, in order:
-      1. Direct `json.loads` after stripping a leading code fence.
-      2. Locate the first `{` and walk braces (string-aware) to find
-         the matching `}`; parse that slice.
+      'direct'       — `json.loads` after stripping a leading code fence.
+      'brace_walk'   — locate the first `{` and walk braces
+                       (string-aware) to the matching `}`; parse that.
+      'json_repair'  — json-repair on LLM-malformed JSON; suffixed
+                       '+salvaged_response' when the `response` prose
+                       had to be recovered separately.
+      'unparseable'  — nothing recoverable; the dict is None.
     """
     if not text:
-        return None
+        return None, "unparseable"
 
     clean = text.strip()
 
@@ -90,7 +103,7 @@ def parse_llm_response(text: str) -> dict | None:
     # which strict JSON rejects and which was the main cause of raw JSON
     # leaking into the transcript.
     try:
-        return json.loads(clean, strict=False)
+        return json.loads(clean, strict=False), "direct"
     except json.JSONDecodeError:
         pass
 
@@ -98,7 +111,7 @@ def parse_llm_response(text: str) -> dict | None:
     # parse that slice. On a parse error, fall through to Strategy 3.
     start = clean.find("{")
     if start < 0:
-        return None
+        return None, "unparseable"
 
     depth = 0
     in_str = False
@@ -126,7 +139,7 @@ def parse_llm_response(text: str) -> dict | None:
                     parsed = json.loads(candidate, strict=False)
                     if clean[:start].strip():
                         logger.warning("Recovered JSON from a mixed-content response")
-                    return parsed
+                    return parsed, "brace_walk"
                 except json.JSONDecodeError:
                     break  # malformed slice — try repair below
 
@@ -146,17 +159,19 @@ def parse_llm_response(text: str) -> dict | None:
             # json-repair tends to drop the trailing `response` when the
             # malformation is inside an earlier field (e.g. new_tensions).
             # Salvage the prose directly so the live turn still shows a reply.
+            strategy = "json_repair"
             resp = repaired.get("response")
             if not (isinstance(resp, str) and resp.strip()):
                 salvaged = _salvage_response_field(clean[start:])
                 if salvaged:
                     repaired["response"] = salvaged
+                    strategy = "json_repair+salvaged_response"
             logger.warning("Recovered opponent payload via json-repair (len=%d)", len(text))
-            return repaired
+            return repaired, strategy
     except Exception:
         logger.debug("json-repair recovery failed", exc_info=True)
 
-    return None
+    return None, "unparseable"
 
 
 def extract_response_text(content: str) -> str:

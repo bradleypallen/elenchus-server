@@ -350,6 +350,28 @@ class TestTensionEndpoints:
         assert r.status_code == 200
         assert r.json()["contested"] == tid
 
+    def test_ui_actions_are_attributed_in_the_capture_log(self, _clean_states):
+        """Accept / contest / retract from the UI bypass the LLM; the
+        capture log must show them as button presses by this actor, not
+        as opponent speech acts (and not as anonymous 'direct' calls)."""
+        from elenchus import turn_log
+
+        tid = self._setup_dialectic_with_tension()
+        state = get_registry().get("tens")
+        tid2 = state.add_tension(["P"], ["R"], reason="another")
+        client.post(f"/api/dialectics/tens/tensions/{tid}", json={"action": "accept"})
+        client.post(f"/api/dialectics/tens/tensions/{tid2}", json={"action": "contest"})
+        client.post("/api/dialectics/tens/retract", json={"proposition": "P"})
+
+        ui = [e for e in turn_log.list_state_events(state.base.con) if e["source"] == "ui"]
+        assert [(e["event_type"], e["outcome"]) for e in ui] == [
+            ("ACCEPT_TENSION", "applied"),
+            ("CONTEST_TENSION", "applied"),
+            ("RETRACT", "applied"),
+        ]
+        assert {e["actor_id"] for e in ui} == {_clean_states["actor_id"]}
+        assert all(e["turn_id"] is None for e in ui)
+
     def test_invalid_tension_action(self):
         tid = self._setup_dialectic_with_tension()
         r = client.post(f"/api/dialectics/tens/tensions/{tid}", json={"action": "invalid"})
