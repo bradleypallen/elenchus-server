@@ -4,6 +4,9 @@ For the person **running the study day to day**: setting it up, enrolling
 participants, sending links, handling what goes wrong, assigning texts to
 the panel, exporting. Click by click.
 
+This is the runbook for the Sloan Foundation-funded study (grant
+G-2026-79650).
+
 For *why* the study is built this way — the design, counterbalancing,
 what is captured, blinding — read [Running a Study](study.md). For
 consent, recruitment, scheduling and what to say to participants, follow

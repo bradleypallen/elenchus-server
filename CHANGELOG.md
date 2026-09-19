@@ -7,6 +7,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- The public docs name the funder again. In July the wording was made
+  conditional ("the planned study") while the award was pending; with the
+  grant made (Alfred P. Sloan Foundation, G-2026-79650, to the Alliance for
+  Data Science and AI) it now reads "the Sloan Foundation-funded study"
+  throughout, and the grant number is given where a document formally
+  introduces the study (the study guide, the runbook, the operations and
+  cloud-deployment guides) and in the acknowledgements. The docs home page's
+  description of the study guide also catches up with the design as built.
 - `deploy/account-migration.md` — a checklist for moving a running PoC
   (box, data, DNS zone, domain registration, SES identity) into a
   dedicated project AWS account: one short downtime window, a rehearsal

@@ -1,6 +1,8 @@
 # Running a Study
 
-Elenchus ships a complete harness for the planned human-subjects study:
+Elenchus ships a complete harness for the Sloan Foundation-funded
+human-subjects study (Alfred P. Sloan Foundation grant G-2026-79650 to the
+Alliance for Data Science and AI):
 setting a study up, enrolling participants, running their sessions under
 one of two conditions, capturing everything needed for later analysis,
 collecting questionnaires, having a blinded expert panel rate what
