@@ -1,8 +1,13 @@
 // Bump on any change to this file or its caching strategy so existing
 // clients pick up the new behavior. v2 stops intercepting /api/*
 // because the SW-rewrapped fetch was dropping the session cookie on
-// some browsers, producing spurious 401s right after login.
-const CACHE_NAME = "elenchus-v2";
+// some browsers, producing spurious 401s right after login. v3 makes
+// the HTML shell network-first: v2 served "/" cache-first, so a browser
+// that had visited before kept running the *old* single-file frontend
+// after a server upgrade (the server's no-cache headers never got a
+// say). For a study that is a correctness problem, not a nicety — a
+// returning participant must get the current interface.
+const CACHE_NAME = "elenchus-v3";
 
 const SHELL_URLS = [
   "/",
@@ -52,7 +57,31 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Shell resources: try cache first, then network, then offline fallback.
+  // The HTML shell: network first, so a deploy reaches every browser on
+  // its next load. The cached copy is only an offline fallback.
+  if (event.request.mode === "navigate" || url.pathname === "/") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then(
+            (cached) =>
+              cached ||
+              new Response(OFFLINE_HTML, { status: 503, headers: { "Content-Type": "text/html" } })
+          )
+        )
+    );
+    return;
+  }
+
+  // Other shell resources (icons, versioned CDN libraries) don't change
+  // under a given URL: cache first, then network, then offline fallback.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

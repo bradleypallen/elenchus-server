@@ -144,7 +144,9 @@ When the study is done, export it (dashboard **Study → Export**, or `POST
 /api/admin/study/{study_id}/export`). This writes two things:
 
 - **The archive** — `$ELENCHUS_DATA/exports/study-{id}-{ts}.tar.gz`: a
-  per-session tree (lifecycle, dialectic state, transcript, the capture
+  per-session tree (lifecycle and topic, the participant's submitted
+  text — `text.json` — with its draft history and editor events,
+  dialectic state, transcript, the capture
   log — `turn_log.json` with every LLM exchange verbatim and
   `state_events.json` with every state transition — reports, surveys,
   integrity, and a DuckDB dump) plus pseudonymized judging data.

@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import audit as audit_mod
-from . import auth, invites, secretbox
+from . import auth, invites, secretbox, study_text
 from . import backup as backup_mod
 from . import integrity as integrity_mod
 from .db import get_registry, init_registry
@@ -399,6 +399,27 @@ class ParticipantTokenRequest(BaseModel):
     scheduled_start: str | None = None  # ISO timestamp
     scheduled_end: str | None = None
     notes: str | None = ""
+    # The writing task for this session: a short title (also names the
+    # task base, so the opponent sees it as the dialectic's topic) and
+    # the longer framing shown in the writing pane.
+    topic_title: str | None = ""
+    topic_brief: str | None = ""
+
+
+class StudyTextRequest(BaseModel):
+    """Body for `PUT /api/study/session/text` (autosave) and
+    `POST /api/study/session/finish` (submit)."""
+
+    content: str
+    trigger: str = "autosave"  # 'autosave' | 'blur' | 'paste'
+
+
+class EditorEventsRequest(BaseModel):
+    """Body for `POST /api/study/session/text/events`. Each event is
+    `{type, ...}`; see `study_text.EDITOR_EVENT_PAYLOAD_KEYS` for the
+    types and the payload keys kept."""
+
+    events: list[dict]
 
 
 # ── API Routes ──
@@ -887,11 +908,14 @@ def admin_issue_participant_token(
             scheduled_start=req.scheduled_start,
             scheduled_end=req.scheduled_end,
             notes=(req.notes or "").strip(),
+            topic_title=(req.topic_title or "").strip(),
+            topic_brief=(req.topic_brief or "").strip(),
         )
     logger.info(
-        "Issued participant token: study=%s condition=%s actor=%d (by %d)",
+        "Issued participant token: study=%s condition=%s topic=%r actor=%d (by %d)",
         req.study_id,
         req.condition,
+        (req.topic_title or "").strip(),
         participant_id,
         actor["id"],
     )
@@ -901,6 +925,7 @@ def admin_issue_participant_token(
         "study_id": req.study_id,
         "condition": req.condition,
         "display_name": req.display_name,
+        "topic_title": (req.topic_title or "").strip(),
     }
 
 
@@ -1571,7 +1596,184 @@ def study_session_current(actor: dict = Depends(auth.current_actor)):
     session = pdb.find_live_session_for_actor(get_registry().platform_con(), actor["id"])
     if session is None:
         raise HTTPException(404, "No active study session for this participant")
+    return _study_session_payload(session)
+
+
+# How long the main task is meant to take. Guidance, not a cutoff: the
+# participant sees an elapsed timer and a soft warning as the time runs
+# down and again when it is up, and ends the task themselves. Override
+# for training runs and demos (e.g. ELENCHUS_TASK_MINUTES=10).
+def _task_minutes() -> int:
+    try:
+        return max(1, int(os.environ.get("ELENCHUS_TASK_MINUTES", "60")))
+    except ValueError:
+        return 60
+
+
+PRACTICE_TOPIC_TITLE = "Practice: kinds of pets"
+PRACTICE_TOPIC_BRIEF = (
+    "A warm-up to try the interface. Write two or three sentences introducing the "
+    "kinds of pets people keep and how you would group them. This text is not part "
+    "of the study."
+)
+
+
+def _study_session_payload(session: dict) -> dict:
+    """The participant-facing view of a study session: the lifecycle
+    row plus what the working screen needs — the writing task, the
+    timer, and whether the text is already in. Every route that hands
+    the frontend a session goes through here, because the frontend
+    replaces its session object with whatever a route returns."""
+    con = get_registry().platform_con()
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    task_minutes = _task_minutes()
+    payload = {
+        **session,
+        "topic_title": token.get("topic_title", ""),
+        "topic_brief": token.get("topic_brief", ""),
+        "practice_topic_title": PRACTICE_TOPIC_TITLE,
+        "practice_topic_brief": PRACTICE_TOPIC_BRIEF,
+        "task_minutes": task_minutes,
+        "soft_warning_minutes": sorted({max(1, task_minutes - 10), task_minutes}),
+        "state_elapsed_seconds": pdb.session_state_elapsed_seconds(con, session["id"]),
+        "text_submitted": pdb.find_study_text_for_session(con, session["id"]) is not None,
+    }
+    # The token is the participant's credential; the page doesn't need it back.
+    payload.pop("study_token", None)
+    return payload
+
+
+def _study_working_base(session: dict) -> str:
+    """The base a participant's writing belongs to right now: the
+    practice base during the tutorial, the task base during the task."""
+    if session["state"] == "tutorial":
+        return f"practice-{session['id']}"
+    if session["state"] == "active" and session.get("base_id"):
+        return session["base_id"]
+    raise HTTPException(
+        409,
+        {
+            "current_state": session["state"],
+            "user_message": "There is no text to work on at this point in the session.",
+        },
+    )
+
+
+def _live_study_session(actor: dict) -> dict:
+    session = pdb.find_live_session_for_actor(get_registry().platform_con(), actor["id"])
+    if session is None:
+        raise HTTPException(404, "No active study session for this participant")
     return session
+
+
+@app.get("/api/study/session/text")
+async def study_text_get(actor: dict = Depends(auth.current_actor)):
+    """The participant's latest saved draft for the base they are
+    working in (empty if they haven't written anything yet)."""
+    session = _live_study_session(actor)
+    handle = get_registry().get_handle(_study_working_base(session))
+    async with handle.lock:
+        latest = study_text.latest_snapshot(handle.state.base.con)
+    return {
+        "content": latest["content"] if latest else "",
+        "word_count": latest["word_count"] if latest else 0,
+        "saved_at": latest["at_utc"] if latest else None,
+    }
+
+
+@app.put("/api/study/session/text")
+async def study_text_save(req: StudyTextRequest, actor: dict = Depends(auth.current_actor)):
+    """Autosave. Appends a snapshot to the working base's draft history
+    (identical consecutive content is not re-stored).
+
+    Async + the per-base lock so a save can never land inside an
+    opponent turn's transaction on the same DuckDB connection — a
+    rolled-back turn would otherwise take the snapshot with it."""
+    if req.trigger not in ("autosave", "blur", "paste"):
+        raise HTTPException(400, "trigger must be 'autosave', 'blur' or 'paste'")
+    session = _live_study_session(actor)
+    handle = get_registry().get_handle(_study_working_base(session))
+    try:
+        async with handle.lock:
+            snapshot = study_text.save_snapshot(
+                handle.state.base.con, req.content, trigger=req.trigger, actor_id=actor["id"]
+            )
+    except ValueError as e:
+        raise HTTPException(413, {"user_message": str(e)}) from None
+    return snapshot
+
+
+@app.post("/api/study/session/text/events")
+async def study_text_events(req: EditorEventsRequest, actor: dict = Depends(auth.current_actor)):
+    """Editor events the snapshots can't show — a paste (length only),
+    a soft timer warning being displayed."""
+    session = _live_study_session(actor)
+    handle = get_registry().get_handle(_study_working_base(session))
+    async with handle.lock:
+        stored = study_text.record_editor_events(
+            handle.state.base.con, req.events, actor_id=actor["id"]
+        )
+    return {"stored": stored}
+
+
+@app.post("/api/study/session/finish")
+async def study_finish(req: StudyTextRequest, actor: dict = Depends(auth.current_actor)):
+    """End the main task: submit the text and move `active →
+    post_session`. The text is the study's judged artifact, so the task
+    can't be finished without one."""
+    reg = get_registry()
+    con = reg.platform_con()
+    session = _live_study_session(actor)
+    if session["state"] != "active" or not session.get("base_id"):
+        raise HTTPException(
+            400,
+            {
+                "current_state": session["state"],
+                "user_message": "The task can only be finished while it is in progress.",
+            },
+        )
+    content = req.content.strip()
+    if not content:
+        raise HTTPException(
+            400,
+            {"user_message": "Your text is empty — please write your introduction first."},
+        )
+
+    handle = reg.get_handle(session["base_id"])
+    try:
+        async with handle.lock:
+            snapshot = study_text.save_snapshot(
+                handle.state.base.con, content, trigger="submit", actor_id=actor["id"]
+            )
+    except ValueError as e:
+        raise HTTPException(413, {"user_message": str(e)}) from None
+
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    elapsed = pdb.session_state_elapsed_seconds(con, session["id"])
+    with reg.platform_lock:
+        text_id = pdb.create_study_text(
+            con,
+            session_id=session["id"],
+            actor_id=actor["id"],
+            condition=session["condition"],
+            topic_title=token.get("topic_title", ""),
+            content=content,
+            word_count=snapshot["word_count"],
+            active_elapsed_seconds=elapsed,
+        )
+        updated = pdb.advance_session_state(con, session["id"], "post_session")
+    if updated is None:
+        raise HTTPException(409, "Session state changed concurrently — reload and retry")
+    logger.info(
+        "Study text submitted: session=%d condition=%s topic=%r words=%d elapsed_s=%s text_id=%s",
+        session["id"],
+        session["condition"],
+        token.get("topic_title", ""),
+        snapshot["word_count"],
+        elapsed,
+        text_id,
+    )
+    return _study_session_payload(updated)
 
 
 @app.post("/api/study/session/advance")
@@ -1586,6 +1788,21 @@ def study_session_advance(
     session = pdb.find_live_session_for_actor(reg.platform_con(), actor["id"])
     if session is None:
         raise HTTPException(404, "No active study session for this participant")
+    # Leaving the task goes through `finish`, which takes the text with
+    # it. Without this guard a client could skip to the questionnaires
+    # and leave the session with nothing for the judges to rate.
+    if (
+        req.to_state == "post_session"
+        and pdb.find_study_text_for_session(reg.platform_con(), session["id"]) is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "current_state": session["state"],
+                "requested_state": req.to_state,
+                "user_message": "Please submit your text to finish the task.",
+            },
+        )
 
     with reg.platform_lock:
         updated = pdb.advance_session_state(reg.platform_con(), session["id"], req.to_state)
@@ -1602,7 +1819,7 @@ def study_session_advance(
                 ),
             },
         )
-    return updated
+    return _study_session_payload(updated)
 
 
 def _create_study_base(reg, actor_id: int, base_name: str, topic: str) -> str:
@@ -1642,13 +1859,13 @@ def study_begin_tutorial(actor: dict = Depends(auth.current_actor)):
             },
         )
     base_name = _create_study_base(
-        reg, actor["id"], f"practice-{session['id']}", "Practice: kinds of pets"
+        reg, actor["id"], f"practice-{session['id']}", PRACTICE_TOPIC_TITLE
     )
     with reg.platform_lock:
         updated = pdb.advance_session_state(reg.platform_con(), session["id"], "tutorial")
     if updated is None:
         raise HTTPException(409, "Session state changed concurrently — reload and retry")
-    return {**updated, "practice_base_id": base_name}
+    return {**_study_session_payload(updated), "practice_base_id": base_name}
 
 
 @app.post("/api/study/session/begin-task")
@@ -1669,13 +1886,19 @@ def study_begin_task(actor: dict = Depends(auth.current_actor)):
                 "user_message": "The task can only start from the tutorial screen.",
             },
         )
-    base_name = _create_study_base(reg, actor["id"], f"task-{session['id']}", "Study task")
+    # The base is named after the participant's topic, which is how the
+    # Elenchus opponent learns it ("Topic: ..." heads the state it is
+    # shown) and what the baseline assistant is told.
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    base_name = _create_study_base(
+        reg, actor["id"], f"task-{session['id']}", token.get("topic_title") or "Study task"
+    )
     with reg.platform_lock:
         pdb.attach_base_to_session(con, session["id"], base_name)
         updated = pdb.advance_session_state(con, session["id"], "active")
     if updated is None:
         raise HTTPException(409, "Session state changed concurrently — reload and retry")
-    return {**updated, "task_base_id": base_name}
+    return {**_study_session_payload(updated), "task_base_id": base_name}
 
 
 def _participant_token_message(existing: dict) -> str:

@@ -355,7 +355,9 @@ class TestTokenConsumptionOpensBriefingSession:
         assert s["id"] == body["session_id"]
         assert s["state"] == "briefing"
         assert s["condition"] == "baseline"
-        assert s["study_token"] is not None
+        # The token is the participant's credential — the page doesn't
+        # get it back.
+        assert "study_token" not in s
 
     def test_token_row_links_back_to_session(self):
         """The token's session_id column is set on consumption so the
@@ -414,7 +416,13 @@ class TestStudySessionRoutes:
 
     def test_full_happy_path(self):
         pclient, _ = _issue_and_consume_token()
-        for to_state in ("tutorial", "active", "post_session", "surveyed", "complete"):
+        assert pclient.post("/api/study/session/begin-tutorial").json()["state"] == "tutorial"
+        assert pclient.post("/api/study/session/begin-task").json()["state"] == "active"
+        # Leaving the task goes through `finish`, which submits the text.
+        r = pclient.post("/api/study/session/finish", json={"content": "My introduction."})
+        assert r.status_code == 200, r.text
+        assert r.json()["state"] == "post_session"
+        for to_state in ("surveyed", "complete"):
             r = pclient.post("/api/study/session/advance", json={"to_state": to_state})
             assert r.status_code == 200, f"failed at {to_state}: {r.text}"
             assert r.json()["state"] == to_state

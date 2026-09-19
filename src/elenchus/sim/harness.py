@@ -20,6 +20,7 @@ from .. import auth
 from ..db import get_registry
 from ..db import platform as pdb
 from .client import Recorder, SimClient
+from .driver import _topic_for
 from .personas import JudgePersona, ParticipantPersona
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,13 @@ class StudyHarness:
         # 1. Researcher issues the token.
         st, body = researcher.post(
             "/api/admin/study/tokens",
-            json={"study_id": self.study_id, "condition": cond, "display_name": label},
+            json={
+                "study_id": self.study_id,
+                "condition": cond,
+                "display_name": label,
+                "topic_title": _topic_for(persona, cond),
+                "topic_brief": f"Introduce {_topic_for(persona, cond)} to a colleague new to it.",
+            },
             action="issue_token",
             note=f"{label}/{cond}",
         )
@@ -179,11 +186,33 @@ class StudyHarness:
             note="turn 2",
         )
 
-        # 7. active → post_session → surveyed.
+        # 7. The writing pane: an autosaved draft, a paste event, then
+        # the submitted text. The text is the judged artifact, so the
+        # task can't be left without one — probe that first.
+        text = self.driver.participant_text(persona, cond, state)
+        participant.put(
+            "/api/study/session/text",
+            json={"content": text[: len(text) // 2], "trigger": "autosave"},
+            action="autosave_text",
+        )
         participant.post(
+            "/api/study/session/text/events",
+            json={"events": [{"type": "paste", "length": 42}]},
+            action="editor_events",
+        )
+        participant.probe(
+            "POST",
             "/api/study/session/advance",
             json={"to_state": "post_session"},
-            action="advance",
+            action="skip_text_probe",
+            expect=400,
+            note="can't leave the task without submitting a text",
+        )
+        # active → post_session (via finish) → surveyed.
+        participant.post(
+            "/api/study/session/finish",
+            json={"content": text},
+            action="finish",
             note="post_session",
         )
         participant.post(
