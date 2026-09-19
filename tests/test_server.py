@@ -393,6 +393,97 @@ class TestDeriveEndpoint:
         assert r.status_code == 200
         assert r.json()["derives"] is False
 
+    def _whales(self, name):
+        """A dialectic whose atoms are natural-language sentences, as in
+        every real dialectic (pyNMMS >= 0.6.2 rejects these unquoted)."""
+        client.post("/api/dialectics", json={"name": name})
+        state = get_registry().get(name)
+        state.commit("Whales are mammals")
+        state.deny("Whales breathe water (not air)")
+        state.commit("PaO2/FiO2 < 300 mmHg")
+        tid = state.add_tension(["Whales are mammals"], ["Whales breathe water (not air)"])
+        state.accept_tension(tid)
+        return state
+
+    def test_derive_natural_language_atoms(self):
+        self._whales("der3")
+        r = client.post(
+            "/api/dialectics/der3/derive",
+            json={"gamma": ["Whales are mammals"], "delta": ["Whales breathe water (not air)"]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["derives"] is True
+        assert body["gamma"] == ["Whales are mammals"]
+        # The trace speaks the user's language: no pyNMMS `<...>` quoting.
+        assert body["trace"] and "Whales are mammals" in body["trace"][0]
+        assert not any("<" in line for line in body["trace"])
+
+        r = client.post(
+            "/api/dialectics/der3/derive",
+            json={"gamma": ["PaO2/FiO2 < 300 mmHg"], "delta": ["Whales are mammals"]},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["derives"] is False
+        assert "PaO2/FiO2 < 300 mmHg" in r.json()["trace"][-1]
+
+    def test_derive_complex_query_over_natural_language_atoms(self):
+        self._whales("der4")
+        r = client.post(
+            "/api/dialectics/der4/derive",
+            json={
+                "gamma": [],
+                "delta": ["Whales are mammals -> <Whales breathe water (not air)>"],
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["derives"] is True
+
+    def test_derive_internal_value_error_is_not_blamed_on_the_query(self):
+        """If pyNMMS rejects something *this server* built (as it did when
+        0.6.2 tightened the atom grammar), that is a server fault. It must
+        not come back as a 422 "malformed query": that would blame the
+        user and hide the outage from 5xx alerting."""
+        from unittest.mock import patch
+
+        from elenchus.material_base import MaterialBase
+
+        self._whales("der6")
+        with (
+            patch.object(
+                MaterialBase, "_ensure_reasoner", side_effect=ValueError("add_atom: bad atom")
+            ),
+            pytest.raises(ValueError, match="add_atom"),
+        ):
+            # TestClient re-raises unhandled server exceptions — i.e. a 500.
+            client.post(
+                "/api/dialectics/der6/derive",
+                json={"gamma": ["Whales are mammals"], "delta": ["Whales are mammals"]},
+            )
+
+    def test_derive_malformed_query_is_422_not_500(self):
+        self._whales("der5")
+        for bad in ["Whales are mammals &", "<unclosed", "", "~Whales breathe water (not air)"]:
+            r = client.post(
+                "/api/dialectics/der5/derive",
+                json={"gamma": [bad], "delta": ["Whales are mammals"]},
+            )
+            assert r.status_code == 422, (bad, r.text)
+            assert "Malformed query sentence" in r.json()["detail"]
+        # Deep nesting used to raise RecursionError past the handler → 500.
+        r = client.post(
+            "/api/dialectics/der5/derive",
+            json={"gamma": ["~" * 3000 + "Whales are mammals"], "delta": ["Whales are mammals"]},
+        )
+        assert r.status_code == 422, r.text
+        # The dialectic is still usable afterwards.
+        r = client.post(
+            "/api/dialectics/der5/derive",
+            json={"gamma": ["Whales are mammals"], "delta": ["Whales are mammals"]},
+        )
+        assert r.status_code == 200
+        assert r.json()["derives"] is True
+
 
 # ── Message (mocked LLM) ──
 

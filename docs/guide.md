@@ -147,6 +147,8 @@ Type a derivability query in the chat using the format:
 
 The system checks whether the conclusion follows from the premises given your current material implications, and shows a step-by-step proof trace if derivable.
 
+Each premise or conclusion is normally one of your propositions, written exactly as it appears in your position. You can also build logically complex sentences with `~` (not), `&` (and), `|` (or), `->` (implies) and parentheses — for example `Whales are mammals -> Whales breathe air`. If a proposition itself contains one of those characters (say, "Whales (cetaceans) are mammals"), wrap it in angle brackets inside a larger sentence: `~<Whales (cetaceans) are mammals>`. A malformed query is reported as an error rather than answered.
+
 ### PDF Export
 
 Click the **PDF** button (top bar) to generate and download a report of the current dialectic. The report includes:
