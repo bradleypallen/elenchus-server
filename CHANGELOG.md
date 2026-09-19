@@ -5,6 +5,35 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Research capture log.** Two append-only per-base tables (migration
+  `base/0003`) record what the live tables don't keep, so formal analysis
+  can be done offline from captured data alone. `turn_log` has one row per
+  LLM exchange in either study condition — the respondent's message,
+  exactly what the LLM was shown, its **verbatim output** (the transcript
+  only keeps the cleaned prose), which parse-recovery path was used, the
+  parsed payload, the dialectical state before and after, the system
+  prompt's name and SHA-256, and model / latency / tokens — and also
+  records exchanges whose LLM call **failed**, which previously left no
+  trace. `state_events` has one row per state transition (commit, deny,
+  retract, refine, tension proposed / accepted / contested, Phase B acts)
+  with its source (`opponent`, `ui` button, or `direct`), the turn that
+  caused it, the prior position it overwrote, and whether it was applied,
+  a no-op, or dropped (e.g. by the Phase B firewall). Events are written
+  inside the `DialecticalState` mutators, so the opponent, the UI action
+  routes, the CLI and the scripts are all captured. Both tables are in the
+  study export (`turn_log.json`, `state_events.json`, actor ids
+  pseudonymized) and summarized under `capture` in the integrity report.
+
+### Changed
+
+- Minimum pyNMMS is now 0.6.2 (the first release with quoted atoms).
+- `MaterialBase.derive_with_trace` returns an Elenchus `DerivationResult`
+  (`derivable`, `trace`, `depth_reached`, `cache_hits`) rather than
+  pyNMMS's `ProofResult`, whose `trace` changed from a field to a
+  read-only property across the supported pyNMMS range.
+
 ### Fixed
 
 - Derivability checks work again with pyNMMS ≥ 0.6.2. That release made
@@ -38,14 +67,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`(A) |~ A`) answered False there while answering True on later releases.
 - A padded quote (`< A >`) resolves to the known atom `A` instead of
   silently becoming a different, unknown atom.
+- An opponent reply that was valid JSON but not an object (a bare string
+  or list) no longer crashes the turn; it is treated as prose like any
+  other unparseable reply.
 
-### Changed
-
-- Minimum pyNMMS is now 0.6.2 (the first release with quoted atoms).
-- `MaterialBase.derive_with_trace` returns an Elenchus `DerivationResult`
-  (`derivable`, `trace`, `depth_reached`, `cache_hits`) rather than
-  pyNMMS's `ProofResult`, whose `trace` changed from a field to a
-  read-only property across the supported pyNMMS range.
 
 ## [0.3.3] — 2026-06-21
 

@@ -144,8 +144,10 @@ When the study is done, export it (dashboard **Study → Export**, or `POST
 /api/admin/study/{study_id}/export`). This writes two things:
 
 - **The archive** — `$ELENCHUS_DATA/exports/study-{id}-{ts}.tar.gz`: a
-  per-session tree (lifecycle, dialectic state, transcript, reports,
-  surveys, integrity, and a DuckDB dump) plus pseudonymized judging data.
+  per-session tree (lifecycle, dialectic state, transcript, the capture
+  log — `turn_log.json` with every LLM exchange verbatim and
+  `state_events.json` with every state transition — reports, surveys,
+  integrity, and a DuckDB dump) plus pseudonymized judging data.
   Participants and judges appear only as opaque IDs (`P-001`, `J-001`,
   `R-001`); **no emails or names**.
 - **The pseudonym map** — `…​.pseudonyms.json`, written *next to* the

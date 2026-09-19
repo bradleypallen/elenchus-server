@@ -15,8 +15,10 @@ from collections.abc import Callable
 from anthropic import Anthropic, AsyncAnthropic
 from openai import AsyncOpenAI, OpenAI
 
+from . import turn_log
 from .dialectical_state import DialecticalState
 from .llm_client import ChatResult, LLMClient
+from .turn_log import EventContext
 
 logger = logging.getLogger(__name__)
 
@@ -601,6 +603,18 @@ class Opponent:
         `respond` and async `async_respond` paths so the actual LLM call
         is the only thing that differs between them.
         """
+        return self._build_request(user_message, state, context_turns, action_context)[0]
+
+    def _build_request(
+        self,
+        user_message: str,
+        state: DialecticalState,
+        context_turns: int,
+        action_context: dict | None,
+    ) -> tuple[list[dict], dict]:
+        """`_build_request_messages`, plus what the turn log records
+        about the request: the state as the LLM saw it, the exact final
+        user message, and how much history rode along."""
         s = state.to_dict()
         row = state.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()
         tid = row[0]
@@ -663,9 +677,11 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         history = state.get_conversation()
 
         messages: list[dict] = []
+        summary_included = False
         if len(history) > context_turns * 2:
             summary = state.get_summary()
             if summary:
+                summary_included = True
                 messages.append(
                     {"role": "user", "content": f"[SUMMARY OF EARLIER DISCUSSION]\n{summary}"}
                 )
@@ -677,7 +693,14 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
 
         messages.extend(history)
         messages.append({"role": "user", "content": user_content})
-        return messages
+        capture = {
+            "action_context": action_context,
+            "request_content": user_content,
+            "history_window": len(history),
+            "summary_included": summary_included,
+            "state_before": s,
+        }
+        return messages, capture
 
     def respond(
         self,
@@ -699,15 +722,19 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         recorder so this call is attributed correctly. Both default to
         None for CLI use (no platform DB).
         """
-        messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
-        raw_text = self._chat(
-            messages,
-            system=self._system_prompt(),
-            max_tokens=2000,
-            on_result=recorder,
-        )
-        return self._record_and_apply(user_message, raw_text, state)
+        messages, turn = self._build_request(user_message, state, context_turns, action_context)
+        turn["actor_id"] = actor_id
+        try:
+            raw_text = self._chat(
+                messages,
+                system=self._system_prompt(),
+                max_tokens=2000,
+                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+            )
+        except LLMCallError:
+            self._record_failed_turn("elenchus", user_message, state, turn)
+            raise
+        return self._record_and_apply(user_message, raw_text, state, turn=turn)
 
     async def async_respond(
         self,
@@ -738,18 +765,26 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         serialization. Route handlers pass `handle.lock` from the
         DBRegistry.
         """
-        messages = self._build_request_messages(user_message, state, context_turns, action_context)
-        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
-        raw_text = await self._async_chat(
-            messages,
-            system=self._system_prompt(),
-            max_tokens=2000,
-            on_result=recorder,
-        )
+        messages, turn = self._build_request(user_message, state, context_turns, action_context)
+        turn["actor_id"] = actor_id
+        try:
+            raw_text = await self._async_chat(
+                messages,
+                system=self._system_prompt(),
+                max_tokens=2000,
+                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+            )
+        except LLMCallError:
+            if lock is None:
+                self._record_failed_turn("elenchus", user_message, state, turn)
+            else:
+                async with lock:
+                    self._record_failed_turn("elenchus", user_message, state, turn)
+            raise
         if lock is None:
-            return self._record_and_apply(user_message, raw_text, state)
+            return self._record_and_apply(user_message, raw_text, state, turn=turn)
         async with lock:
-            return self._record_and_apply(user_message, raw_text, state)
+            return self._record_and_apply(user_message, raw_text, state, turn=turn)
 
     async def async_baseline_respond(
         self,
@@ -780,22 +815,35 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         messages = list(history)
         messages.append({"role": "user", "content": user_message})
 
-        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
-        raw_text = await self._async_chat(
-            messages,
-            system=BASELINE_SYSTEM_PROMPT,
-            max_tokens=2000,
-            on_result=recorder,
-        )
+        turn = {
+            "actor_id": actor_id,
+            "request_content": user_message,
+            "history_window": len(history),
+            "summary_included": False,
+        }
+        try:
+            raw_text = await self._async_chat(
+                messages,
+                system=BASELINE_SYSTEM_PROMPT,
+                max_tokens=2000,
+                on_result=self._capturing(turn, actor_id=actor_id, base_id=base_id),
+            )
+        except LLMCallError:
+            if lock is None:
+                self._record_failed_turn("baseline", user_message, state, turn)
+            else:
+                async with lock:
+                    self._record_failed_turn("baseline", user_message, state, turn)
+            raise
 
         # Persist the transcript turn (no speech-act dispatch). The
         # per-base lock serializes concurrent baseline turns on the
         # same session so the transcript stays ordered.
         if lock is None:
-            self._record_baseline_turn(user_message, raw_text, state)
+            self._record_baseline_turn(user_message, raw_text, state, turn=turn)
         else:
             async with lock:
-                self._record_baseline_turn(user_message, raw_text, state)
+                self._record_baseline_turn(user_message, raw_text, state, turn=turn)
 
         # Match the dialectic path's response shape so frontend code
         # doesn't have to branch.
@@ -805,18 +853,91 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
             "new_tensions": [],
         }
 
-    def _record_baseline_turn(
-        self, user_message: str, response: str, state: DialecticalState
-    ) -> None:
-        """Append both messages to the conversation log.
+    # ── Research capture (turn_log.py) ──
 
-        Runs inside an explicit transaction so a crash between the two
+    def _prompt_identity(self, mode: str) -> tuple[str, str]:
+        """(name, sha256) of the system prompt a turn in `mode` ran under."""
+        if mode == "baseline":
+            return "baseline", turn_log.prompt_fingerprint(BASELINE_SYSTEM_PROMPT)
+        name = "phase_b" if self.enable_phase_b else "sloan"
+        return name, turn_log.prompt_fingerprint(self._system_prompt())
+
+    def _capturing(self, turn: dict, *, actor_id: int | None, base_id: str | None):
+        """An `on_result` callback that keeps the call's `ChatResult` in
+        `turn` for the turn log, then hands it to the usage recorder.
+        It runs for failed calls too, which is how a failed turn's
+        category / attempts / latency reach the log."""
+        recorder = _make_usage_recorder(actor_id=actor_id, base_id=base_id)
+
+        def _on_result(result: ChatResult) -> None:
+            turn["chat_result"] = result
+            if recorder is not None:
+                recorder(result)
+
+        return _on_result
+
+    def _turn_fields(self, mode: str, turn: dict | None) -> dict:
+        """The `record_turn` keyword arguments carried by `turn`."""
+        turn = turn or {}
+        name, sha = self._prompt_identity(mode)
+        return {
+            "mode": mode,
+            "actor_id": turn.get("actor_id"),
+            "action_context": turn.get("action_context"),
+            "request_content": turn.get("request_content"),
+            "history_window": turn.get("history_window"),
+            "summary_included": turn.get("summary_included"),
+            "system_prompt_name": name,
+            "system_prompt_sha256": sha,
+            "state_before": turn.get("state_before"),
+            "chat_result": turn.get("chat_result"),
+        }
+
+    def _record_failed_turn(
+        self, mode: str, user_message: str, state: DialecticalState, turn: dict | None
+    ) -> None:
+        """Log an exchange whose LLM call failed. Nothing else is stored
+        for such a turn (no conversation rows, no state change), so this
+        row is the only trace that the respondent said something and got
+        no answer. Never raises: the caller is already propagating the
+        LLM failure and that is the error the route must report."""
+        try:
+            turn_log.record_turn(
+                state.base.con,
+                outcome="llm_error",
+                user_message=user_message,
+                **self._turn_fields(mode, turn),
+            )
+        except Exception:
+            logger.exception("Could not record failed %s turn in turn_log", mode)
+
+    def _record_baseline_turn(
+        self,
+        user_message: str,
+        response: str,
+        state: DialecticalState,
+        *,
+        turn: dict | None = None,
+    ) -> None:
+        """Append both messages to the conversation log, and the
+        exchange to the turn log.
+
+        Runs inside an explicit transaction so a crash between the
         writes leaves the transcript in a consistent state — never one
         turn ahead of the other."""
         state.base.con.execute("BEGIN")
         try:
-            state.add_conversation("user", user_message)
-            state.add_conversation("assistant", response)
+            user_cid = state.add_conversation("user", user_message)
+            assistant_cid = state.add_conversation("assistant", response)
+            turn_log.record_turn(
+                state.base.con,
+                user_message=user_message,
+                raw_text=response,
+                parse_strategy="plain",
+                user_conversation_id=user_cid,
+                assistant_conversation_id=assistant_cid,
+                **self._turn_fields("baseline", turn),
+            )
             state.base.con.execute("COMMIT")
         except Exception:
             try:
@@ -825,9 +946,21 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
                 logger.exception("Rollback failed in _record_baseline_turn")
             raise
 
-    def _record_and_apply(self, user_message: str, raw_text: str, state: DialecticalState) -> dict:
+    def _record_and_apply(
+        self,
+        user_message: str,
+        raw_text: str,
+        state: DialecticalState,
+        *,
+        turn: dict | None = None,
+    ) -> dict:
         """Common post-LLM bookkeeping: store conversation, parse, apply
-        state transitions, periodically update the rolling summary.
+        state transitions, write the turn log, periodically update the
+        rolling summary.
+
+        `turn` carries what the request side knows for the turn log (see
+        `_build_request` / `_capturing`); without it the row is still
+        written, with those columns NULL.
 
         The apply phase runs inside an explicit DuckDB transaction so a
         crash or exception leaves the base either fully pre-message or
@@ -838,8 +971,8 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         con = state.base.con
         con.execute("BEGIN")
         try:
-            parsed = self._parse_response(raw_text)
-            state.add_conversation("user", user_message)
+            parsed, parse_strategy = self._parse_response_with_strategy(raw_text)
+            user_cid = state.add_conversation("user", user_message)
             # Store the natural-language `response`, not the raw JSON
             # envelope — so the transcript, reload, PDF, and summary all
             # read clean prose without re-parsing (and a parse glitch can't
@@ -847,8 +980,33 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
             # parsed payload. Fall back to raw_text only if there's no
             # usable response string.
             assistant_text = parsed.get("response") or raw_text
-            state.add_conversation("assistant", assistant_text)
-            self._apply(parsed, state)
+            assistant_cid = state.add_conversation("assistant", assistant_text)
+            # The turn id is reserved before `_apply` so every state
+            # event it causes can point back at this turn; the row goes
+            # in afterwards, once `state_after` exists. All inside the
+            # transaction: a rolled-back turn leaves no phantom log.
+            turn_id = turn_log.next_turn_id(con)
+            self._apply(
+                parsed,
+                state,
+                event=EventContext(
+                    source="opponent",
+                    turn_id=turn_id,
+                    actor_id=(turn or {}).get("actor_id"),
+                ),
+            )
+            turn_log.record_turn(
+                con,
+                turn_id=turn_id,
+                user_message=user_message,
+                raw_text=raw_text,
+                parse_strategy=parse_strategy,
+                parsed=parsed,
+                state_after=state.to_dict(),
+                user_conversation_id=user_cid,
+                assistant_conversation_id=assistant_cid,
+                **self._turn_fields("elenchus", turn),
+            )
             con.execute("COMMIT")
         except Exception:
             try:
@@ -988,11 +1146,19 @@ Recent exchanges:
         chatter via `response_parsing.parse_llm_response`. Falls back
         to wrapping the raw text as a plain conversational response so
         the dialogue never breaks on a malformed turn."""
-        from .response_parsing import parse_llm_response
+        return self._parse_response_with_strategy(text)[0]
 
-        parsed = parse_llm_response(text)
-        if parsed is not None:
-            return parsed
+    def _parse_response_with_strategy(self, text: str) -> tuple[dict, str]:
+        """`_parse_response`, plus which recovery path produced the
+        payload (recorded in the turn log)."""
+        from .response_parsing import parse_llm_response_with_strategy
+
+        parsed, strategy = parse_llm_response_with_strategy(text)
+        # A JSON value that isn't an object (a bare string or list) is
+        # not the opponent's envelope — treat it as prose, like any
+        # other unparseable turn, rather than crash on `.get`.
+        if isinstance(parsed, dict):
+            return parsed, strategy
 
         # Final fallback: treat entire text as conversational response.
         # Log so we can spot prompt-adherence regressions during runs.
@@ -1002,38 +1168,68 @@ Recent exchanges:
             len(text),
             text[:80],
         )
-        return {"speech_acts": [], "new_tensions": [], "response": text}
+        return {"speech_acts": [], "new_tensions": [], "response": text}, "plain_text_fallback"
 
-    def _apply(self, parsed: dict, state: DialecticalState):
-        """Apply speech acts and tensions to state."""
+    def _apply(self, parsed: dict, state: DialecticalState, event: EventContext | None = None):
+        """Apply speech acts and tensions to state.
+
+        `event` attributes the resulting `state_events` rows to this
+        turn. The state methods log what they change; this method logs
+        what *doesn't* reach them — a speech act it drops — so the
+        export accounts for every act the LLM emitted."""
+
+        def dropped(act: dict, note: str) -> None:
+            turn_log.record_state_event(
+                state.base.con,
+                str(act.get("type") or "UNKNOWN"),
+                {"speech_act": act},
+                event=event,
+                outcome="dropped",
+                note=note,
+            )
+
         for act in parsed.get("speech_acts", []):
             atype = act.get("type", "")
             prop = act.get("proposition", "")
 
             if atype == "COMMIT" and prop:
-                state.commit(prop)
+                state.commit(prop, event=event)
             elif atype == "DENY" and prop:
-                state.deny(prop)
+                state.deny(prop, event=event)
             elif atype == "RETRACT" and prop:
-                state.retract_prop(prop)
+                state.retract_prop(prop, event=event)
             elif atype == "REFINE":
                 old = act.get("old_proposition", "")
+                # REFINE is applied as retract-old + commit-new; this
+                # event is what ties the two halves together.
+                turn_log.record_state_event(
+                    state.base.con,
+                    "REFINE",
+                    {"old_proposition": old, "proposition": prop},
+                    event=event,
+                    outcome="applied" if (old or prop) else "dropped",
+                    note="" if (old or prop) else "no old or new proposition",
+                )
                 if old:
-                    state.retract_prop(old)
+                    state.retract_prop(old, event=event)
                 if prop:
-                    state.commit(prop)
+                    state.commit(prop, event=event)
             elif atype == "ACCEPT_TENSION":
                 tid = act.get("target_tension_id")
-                if tid is not None:
-                    result = state.accept_tension(_parse_tension_id(tid))
+                if tid is None:
+                    dropped(act, "no target_tension_id")
+                else:
+                    result = state.accept_tension(_parse_tension_id(tid), event=event)
                     if not result:
                         logger.info(
                             "Skipped ACCEPT_TENSION #%s (already resolved or not found)", tid
                         )
             elif atype == "CONTEST_TENSION":
                 tid = act.get("target_tension_id")
-                if tid is not None:
-                    result = state.contest_tension(_parse_tension_id(tid))
+                if tid is None:
+                    dropped(act, "no target_tension_id")
+                else:
+                    result = state.contest_tension(_parse_tension_id(tid), event=event)
                     if not result:
                         logger.info(
                             "Skipped CONTEST_TENSION #%s (already resolved or not found)", tid
@@ -1053,13 +1249,14 @@ Recent exchanges:
                         "Firewall: dropped Phase B speech act %r (ELENCHUS_ENABLE_PHASE_B is off)",
                         atype,
                     )
+                    dropped(act, "Phase B firewall (ELENCHUS_ENABLE_PHASE_B is off)")
                     continue
                 if atype == "ASSERT_IMPLICATION":
                     gamma = act.get("gamma", [])
                     delta = act.get("delta", [])
                     reason = act.get("reason", "")
                     if gamma or delta:
-                        iid = state.assert_implication(gamma, delta, reason=reason)
+                        iid = state.assert_implication(gamma, delta, reason=reason, event=event)
                         logger.info(
                             "Applied ASSERT_IMPLICATION → assessments.id=%d (γ=%d, δ=%d)",
                             iid,
@@ -1068,13 +1265,15 @@ Recent exchanges:
                         )
                     else:
                         logger.warning("Skipped ASSERT_IMPLICATION with empty γ and δ")
+                        dropped(act, "empty gamma and delta")
                 elif atype == "INTRODUCE_BEARER":
                     if prop:
                         description = act.get("description", "")
-                        state.introduce_bearer(prop, description=description)
+                        state.introduce_bearer(prop, description=description, event=event)
                         logger.info("Applied INTRODUCE_BEARER %r", prop)
                     else:
                         logger.warning("Skipped INTRODUCE_BEARER with no proposition")
+                        dropped(act, "no proposition")
                 else:  # RETRACT_IMPLICATION
                     iid_raw = act.get("implication_id")
                     try:
@@ -1082,7 +1281,7 @@ Recent exchanges:
                     except (TypeError, ValueError):
                         iid = None
                     if iid is not None:
-                        ok = state.retract_implication(iid)
+                        ok = state.retract_implication(iid, event=event)
                         if not ok:
                             logger.info(
                                 "Skipped RETRACT_IMPLICATION #%s (already retracted or not found)",
@@ -1094,6 +1293,12 @@ Recent exchanges:
                             "implication_id (%r)",
                             iid_raw,
                         )
+                        dropped(act, "missing or non-integer implication_id")
+            else:
+                # Unknown type, or a COMMIT / DENY / RETRACT with no
+                # proposition: nothing to apply.
+                logger.info("Dropped speech act with nothing to apply: %r", act)
+                dropped(act, "unknown type or missing proposition")
 
         for t in parsed.get("new_tensions", []):
             gamma = t.get("gamma", [])
@@ -1103,7 +1308,16 @@ Recent exchanges:
                 # Ensure atoms exist
                 for a in gamma + delta:
                     state.base.add_atoms({a}, contributor="oracle")
-                state.add_tension(gamma, delta, reason)
+                state.add_tension(gamma, delta, reason, event=event)
+            else:
+                turn_log.record_state_event(
+                    state.base.con,
+                    "PROPOSE_TENSION",
+                    {"tension": t},
+                    event=event,
+                    outcome="dropped",
+                    note="empty gamma and delta",
+                )
 
     def _fmt_list(self, items, atom_ids=None):
         if not items:

@@ -12,6 +12,10 @@ analyze downstream. Layout inside the archive:
         session.json                 — lifecycle row (pseudonymized)
         state.json                   — dialectic state (position, T, I, atoms)
         transcript.json              — conversation turns
+        turn_log.json                — per-exchange capture: raw LLM output,
+                                       parse path, state before/after, timing
+        state_events.json            — every state transition, with its
+                                       source (opponent / ui / direct) and turn
         reports.json                 — generated structured report(s)
         surveys.json                 — questionnaire submissions
         integrity.json               — usage stats + content metrics
@@ -42,6 +46,7 @@ import os
 import shutil
 import tarfile
 
+from . import turn_log
 from .db import get_registry
 from .db import platform as pdb
 from .integrity import compute_base_integrity
@@ -255,6 +260,19 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
     state = reg.get(base_id)  # raises FileNotFoundError / ValueError on broken bases
     _write_json(os.path.join(dest, "state.json"), state.to_dict())
     _write_json(os.path.join(dest, "transcript.json"), state.get_conversation())
+    # The capture log — the input to offline formal analysis. Also
+    # present in the DuckDB dump below; written as JSON too so analysis
+    # scripts don't need DuckDB, and so `actor_id` is pseudonymized.
+    turns = turn_log.list_turns(state.base.con)
+    events = turn_log.list_state_events(state.base.con)
+    _write_json(os.path.join(dest, "turn_log.json"), _pseudonymize(turns, pseudonyms))
+    _write_json(os.path.join(dest, "state_events.json"), _pseudonymize(events, pseudonyms))
+    logger.info(
+        "Exported capture log for session %s: %d turns, %d state events",
+        sid,
+        len(turns),
+        len(events),
+    )
 
     # Consistent MVCC snapshot of the per-base DB (same mechanism as
     # backup.py). Numeric ids inside are unlinkable without

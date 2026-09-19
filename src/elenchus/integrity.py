@@ -146,6 +146,27 @@ def _content_metrics(reg, base_id: str) -> dict:
             "FROM conversation"
         ).fetchone() or (0, 0)
         user_turns, assistant_turns = int(conv_row[0]), int(conv_row[1])
+
+        # Research capture (turn_log.py). `uncaptured_assistant_turns`
+        # is the number to watch: an assistant message with no turn_log
+        # row pointing at it is an exchange whose raw LLM output and
+        # state transitions can't be recovered offline. Non-zero is
+        # expected only for conversation that predates migration
+        # base/0003.
+        ok_turns, failed_turns, uncaptured = con.execute(
+            "SELECT "
+            "(SELECT COUNT(*) FROM turn_log WHERE outcome='ok'), "
+            "(SELECT COUNT(*) FROM turn_log WHERE outcome='llm_error'), "
+            "(SELECT COUNT(*) FROM conversation c WHERE c.role='assistant' AND NOT EXISTS "
+            " (SELECT 1 FROM turn_log t WHERE t.assistant_conversation_id = c.id))"
+        ).fetchone() or (0, 0, 0)
+        recovered_parses = con.execute(
+            "SELECT COUNT(*) FROM turn_log WHERE outcome='ok' "
+            "AND parse_strategy NOT IN ('direct', 'plain')"
+        ).fetchone()[0]
+        events_by_source = dict(
+            con.execute("SELECT source, COUNT(*) FROM state_events GROUP BY source").fetchall()
+        )
     except Exception as e:
         logger.exception("integrity: failed reading content metrics for %r", base_id)
         return {"error": f"content read failed: {e}"}
@@ -169,5 +190,12 @@ def _content_metrics(reg, base_id: str) -> dict:
         "conversation": {
             "user_turns": user_turns,
             "assistant_turns": assistant_turns,
+        },
+        "capture": {
+            "turns": int(ok_turns),
+            "failed_turns": int(failed_turns),
+            "uncaptured_assistant_turns": int(uncaptured),
+            "recovered_parses": int(recovered_parses),
+            "state_events": {k: int(v) for k, v in sorted(events_by_source.items())},
         },
     }

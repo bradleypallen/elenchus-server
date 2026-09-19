@@ -83,6 +83,7 @@ src/elenchus/
 │       ↓
 │   migrations/{platform,base}/*.sql
 ├── audit.py · backup.py · legacy.py           (operational tools)
+├── turn_log.py                                 (append-only research capture)
 ├── email_service.py                            (invites + magic links)
 ├── static/index.html                           (React 18 + Babel, single file)
 ├── cli.py                                      (CLI REPL, bypasses platform DB)
@@ -144,10 +145,19 @@ The opponent system prompt in `opponent.py` includes:
 The data directory (`$ELENCHUS_DATA`, default `./dialectics/`) holds:
 
 - `platform.duckdb` — `actors`, `auth_sessions`, `magic_links`, `invites`, `bases`, `sessions`, `platform_settings`, `meta` (schema version). Held open by the registry for the server's lifetime.
-- `bases/{actor_id}/{name}.duckdb` — one per dialectic, owned by `actor_id`. Tables: `meta`, `atoms`, `assessments`, `positions`, `tensions`, `conversation`, `cases`. Sets are serialized as sorted comma-separated strings (with `\x1e` for new entries). The `base_sequents` view computes the active consequence relation from `current_assessments` (which filters on `status='active'`).
+- `bases/{actor_id}/{name}.duckdb` — one per dialectic, owned by `actor_id`. Tables: `meta`, `atoms`, `assessments`, `positions`, `tensions`, `conversation`, `cases`, plus the append-only capture tables `turn_log` and `state_events` (see Research Capture). Sets are serialized as sorted comma-separated strings (with `\x1e` for new entries). The `base_sequents` view computes the active consequence relation from `current_assessments` (which filters on `status='active'`).
 - `backups/elenchus-*.tar.gz` — `EXPORT DATABASE` snapshots, one tar per run.
 
 Cross-DB integrity (per-base `contributor_id` / `actor_id` referencing `platform.actors`) is enforced at the application layer; DuckDB does not honor FKs across files. `elenchus audit` reports drift.
+
+## Research Capture
+
+The study's formal analysis (NMMS, RDF translation) is done **offline from captured data**, so anything not recorded during a session is unrecoverable. `turn_log.py` owns two append-only per-base tables (migration `base/0003`):
+
+- **`turn_log`** — one row per LLM exchange in either condition, *including failed calls* (`outcome='llm_error'`): the respondent's message, exactly what the LLM was shown (`request_content`, `state_before`), its verbatim output (`raw_text` — `conversation` only keeps the cleaned prose), which recovery path parsed it (`parse_strategy`), the parsed payload, `state_after`, the system prompt's name + SHA-256, and model / latency / tokens / attempts.
+- **`state_events`** — one row per state transition or attempted transition, with `source` (`opponent` / `ui` / `direct`), `turn_id`, `actor_id`, and `outcome` (`applied` / `noop` / `dropped`). `positions` is an upsert and retractions carry no timestamp, so this is the only history of the position.
+
+Events are written **inside the `DialecticalState` mutators**, not by their callers, so no code path can bypass capture. A new mutator must call `self._log_event(...)`; a new caller should pass `event=EventContext(...)` to say who is behind the change (the UI action routes pass `source="ui"`; the opponent passes `source="opponent"` with the turn id). A speech act that `_apply` drops (Phase B firewall, malformed) is logged there as `dropped`. Turn rows and their events are written inside the turn's transaction — a rolled-back turn leaves no log. Both tables are in the study export (`turn_log.json`, `state_events.json`, pseudonymized) and summarized under `capture` in the integrity report, where `uncaptured_assistant_turns` should be 0 for any session run after the migration.
 
 ## Settings
 

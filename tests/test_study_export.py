@@ -22,12 +22,13 @@ import tarfile
 import pytest
 from fastapi.testclient import TestClient
 
-from elenchus import auth
+from elenchus import auth, turn_log
 from elenchus.db import get_registry
 from elenchus.db import platform as pdb
 from elenchus.dialectical_state import DialecticalState
 from elenchus.server import app
 from elenchus.study_export import export_study
+from elenchus.turn_log import EventContext
 
 client = TestClient(app)
 _test_data_dir = os.environ["ELENCHUS_DATA"]
@@ -125,8 +126,23 @@ def _seed_study(study_id: str = "PILOT") -> dict:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     state = DialecticalState.create(path, base_id)
     state.commit("Biomes are climate-based.")
-    state.add_conversation("user", "Let me lay out my view of biomes.")
-    state.add_conversation("assistant", "Go ahead.")
+    user_cid = state.add_conversation("user", "Let me lay out my view of biomes.")
+    assistant_cid = state.add_conversation("assistant", "Go ahead.")
+    # Capture-log rows carrying the participant's real actor id, so the
+    # export tests can check it comes out pseudonymized.
+    turn_log.record_turn(
+        state.base.con,
+        mode="elenchus",
+        user_message="Let me lay out my view of biomes.",
+        actor_id=participant,
+        raw_text='{"speech_acts":[],"new_tensions":[],"response":"Go ahead."}',
+        parse_strategy="direct",
+        user_conversation_id=user_cid,
+        assistant_conversation_id=assistant_cid,
+    )
+    state.deny(
+        "Biomes are purely taxonomic.", event=EventContext(source="ui", actor_id=participant)
+    )
     state.base.con.close()
 
     report_id = pdb.record_study_report(
@@ -271,6 +287,8 @@ class TestExportStudy:
         assert has("session.json")
         assert has("state.json")
         assert has("transcript.json")
+        assert has("turn_log.json")
+        assert has("state_events.json")
         assert has("reports.json")
         assert has("surveys.json")
         assert has("integrity.json")
@@ -349,6 +367,23 @@ class TestExportStudy:
             next(v for k, v in members.items() if k.endswith("transcript.json"))
         )
         assert transcript[0]["content"] == "Let me lay out my view of biomes."
+
+    def test_capture_log_exported_and_pseudonymized(self, tmp_path):
+        """The capture log is the input to offline analysis: it must be
+        in the archive, and its actor ids must not be the real ones."""
+        ids = _seed_study()
+        result = export_study("PILOT", output_dir=str(tmp_path))
+        members = _archive_members(result["archive"])
+        events = json.loads(next(v for k, v in members.items() if k.endswith("state_events.json")))
+        turns = json.loads(next(v for k, v in members.items() if k.endswith("turn_log.json")))
+
+        assert [e["event_type"] for e in events] == ["COMMIT", "DENY"]
+        assert events[0]["payload"]["proposition"] == "Biomes are climate-based."
+        assert events[1]["source"] == "ui"
+        assert isinstance(events[1]["actor_id"], str) and events[1]["actor_id"].startswith("P-")
+        assert events[1]["actor_id"] != ids["participant"]
+        assert [t["user_message"] for t in turns] == ["Let me lay out my view of biomes."]
+        assert turns[0]["actor_id"] == events[1]["actor_id"]
 
     def test_broken_base_reported_not_fatal(self, tmp_path):
         ids = _seed_study()

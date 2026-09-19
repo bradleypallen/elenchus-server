@@ -248,6 +248,15 @@ class TestComputeBaseIntegrity:
         assert c["implications"]["retracted"] == 0
         assert c["conversation"]["user_turns"] == 2
         assert c["conversation"]["assistant_turns"] == 1
+        # Capture log: the seed wrote its one assistant message straight
+        # into `conversation` with no turn_log row — exactly what
+        # `uncaptured_assistant_turns` exists to flag.
+        assert c["capture"]["turns"] == 0
+        assert c["capture"]["failed_turns"] == 0
+        assert c["capture"]["uncaptured_assistant_turns"] == 1
+        assert c["capture"]["recovered_parses"] == 0
+        # commit×4 + deny + retract + 3 proposals + accept + contest
+        assert c["capture"]["state_events"] == {"direct": 11}
         # Atoms include all propositions plus delta atoms from tensions
         assert c["atoms"] > 0
 

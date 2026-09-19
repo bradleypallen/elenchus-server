@@ -6,9 +6,17 @@ S = ⟨[C : D], T, I⟩ backed by a DuckDB material base.
 The mapping to material base (Definition 7):
     L_B = C ∪ D
     |∼_B = I ∪ Cont
+
+Every method that changes the state also appends a `state_events` row
+(see turn_log.py) — here rather than in the callers, so the opponent,
+the UI action routes, the CLI and the scripts are all captured and no
+new code path can forget to. Callers pass an `EventContext` to say who
+is behind the change; without one the event is recorded as 'direct'.
 """
 
+from . import turn_log
 from .material_base import MaterialBase, set_to_str, str_to_set
+from .turn_log import EventContext
 
 
 class DialecticalState:
@@ -48,6 +56,36 @@ class DialecticalState:
             "SELECT COALESCE(MAX(id), 0) FROM conversation"
         ).fetchone()[0]
         self.base.con.execute(f"CREATE SEQUENCE conv_seq START {max_cid + 1}")
+        # turn_log_seq / state_event_seq track the capture tables.
+        for seq, table in (
+            (turn_log.TURN_SEQ, "turn_log"),
+            (turn_log.EVENT_SEQ, "state_events"),
+        ):
+            self.base.con.execute(f"DROP SEQUENCE IF EXISTS {seq}")
+            max_id = self.base.con.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table}").fetchone()[
+                0
+            ]
+            self.base.con.execute(f"CREATE SEQUENCE {seq} START {max_id + 1}")
+
+    def _log_event(
+        self,
+        event_type: str,
+        payload: dict,
+        event: EventContext | None,
+        outcome: str = "applied",
+        note: str = "",
+    ) -> None:
+        turn_log.record_state_event(
+            self.base.con, event_type, payload, event=event, outcome=outcome, note=note
+        )
+
+    def _prior_positions(self, prop: str) -> list:
+        """Where `prop` stood before a change — `positions` is an upsert,
+        so this is the only record of what a commit/deny overwrote."""
+        rows = self.base.con.execute(
+            "SELECT side, status FROM positions WHERE atom=? ORDER BY side", [prop]
+        ).fetchall()
+        return [{"side": r[0], "status": r[1]} for r in rows]
 
     # ── Position [C : D] ──
 
@@ -72,11 +110,12 @@ class DialecticalState:
         ).fetchall()
         return [r[0] for r in rows]
 
-    def commit(self, prop: str):
+    def commit(self, prop: str, *, event: EventContext | None = None):
         # INSERT OR REPLACE keeps the upsert semantics of the original
         # try/except pattern (a re-committed atom refreshes its row) while
         # remaining transaction-safe — a ConstraintException inside an
         # outer transaction would abort the transaction.
+        prior = self._prior_positions(prop)
         self.base.add_atoms({prop}, contributor="respondent")
         self.base.con.execute(
             "INSERT OR REPLACE INTO positions "
@@ -84,9 +123,11 @@ class DialecticalState:
             "VALUES (?, 'C', 'open', CURRENT_TIMESTAMP)",
             [prop],
         )
+        self._log_event("COMMIT", {"proposition": prop, "prior": prior}, event)
 
-    def deny(self, prop: str):
+    def deny(self, prop: str, *, event: EventContext | None = None):
         # See `commit()` for the rationale on INSERT OR REPLACE.
+        prior = self._prior_positions(prop)
         self.base.add_atoms({prop}, contributor="respondent")
         self.base.con.execute(
             "INSERT OR REPLACE INTO positions "
@@ -94,13 +135,21 @@ class DialecticalState:
             "VALUES (?, 'D', 'open', CURRENT_TIMESTAMP)",
             [prop],
         )
+        self._log_event("DENY", {"proposition": prop, "prior": prior}, event)
 
-    def retract_prop(self, prop: str) -> bool:
+    def retract_prop(self, prop: str, *, event: EventContext | None = None) -> bool:
         n = self.base.con.execute(
             "UPDATE positions SET status='retracted' "
-            "WHERE atom=? AND status='open' RETURNING atom",
+            "WHERE atom=? AND status='open' RETURNING side",
             [prop],
         ).fetchall()
+        self._log_event(
+            "RETRACT",
+            {"proposition": prop, "sides": sorted(r[0] for r in n)},
+            event,
+            outcome="applied" if n else "noop",
+            note="" if n else "proposition not held",
+        )
         return len(n) > 0
 
     # ── Tensions T ──
@@ -149,7 +198,9 @@ class DialecticalState:
             for r in rows
         ]
 
-    def add_tension(self, gamma: list, delta: list, reason: str = "") -> int:
+    def add_tension(
+        self, gamma: list, delta: list, reason: str = "", *, event: EventContext | None = None
+    ) -> int:
         tid = self.base.con.execute("SELECT nextval('tension_seq')").fetchone()[0]
         self.base.con.execute(
             "INSERT INTO tensions "
@@ -157,13 +208,30 @@ class DialecticalState:
             "VALUES (?,?,?,?,'open',CURRENT_TIMESTAMP,NULL)",
             [tid, set_to_str(set(gamma)), set_to_str(set(delta)), reason],
         )
+        self._log_event(
+            "PROPOSE_TENSION",
+            {
+                "tension_id": tid,
+                "gamma": sorted(set(gamma)),
+                "delta": sorted(set(delta)),
+                "reason": reason,
+            },
+            event,
+        )
         return tid
 
-    def accept_tension(self, tid: int) -> dict:
+    def accept_tension(self, tid: int, *, event: EventContext | None = None) -> dict:
         row = self.base.con.execute(
             "SELECT gamma, delta, reason FROM tensions WHERE id=? AND status='open'", [tid]
         ).fetchone()
         if not row:
+            self._log_event(
+                "ACCEPT_TENSION",
+                {"tension_id": tid},
+                event,
+                outcome="noop",
+                note="tension not found or not open",
+            )
             return None
         gamma = list(str_to_set(row[0]))
         delta = list(str_to_set(row[1]))
@@ -188,15 +256,27 @@ class DialecticalState:
             "UPDATE tensions SET status='accepted', resolved_at=CURRENT_TIMESTAMP WHERE id=?",
             [tid],
         )
+        self._log_event(
+            "ACCEPT_TENSION",
+            {"tension_id": tid, "gamma": sorted(gamma), "delta": sorted(delta), "reason": reason},
+            event,
+        )
         return {"gamma": gamma, "delta": delta, "reason": reason}
 
-    def contest_tension(self, tid: int) -> bool:
+    def contest_tension(self, tid: int, *, event: EventContext | None = None) -> bool:
         n = self.base.con.execute(
             "UPDATE tensions SET status='contested', "
             "resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='open' "
             "RETURNING id",
             [tid],
         ).fetchall()
+        self._log_event(
+            "CONTEST_TENSION",
+            {"tension_id": tid},
+            event,
+            outcome="applied" if n else "noop",
+            note="" if n else "tension not found or not open",
+        )
         return len(n) > 0
 
     # ── Phase B: direct theory articulation ──
@@ -215,6 +295,8 @@ class DialecticalState:
         delta: list,
         reason: str = "",
         provenance: dict | None = None,
+        *,
+        event: EventContext | None = None,
     ) -> int:
         """Directly assert `{gamma} |~ {delta}` as a holding sequent.
 
@@ -251,9 +333,22 @@ class DialecticalState:
             "ORDER BY assessed_at DESC, id DESC LIMIT 1",
             [set_to_str(gamma_set), set_to_str(delta_set)],
         ).fetchone()
-        return int(row[0]) if row else -1
+        implication_id = int(row[0]) if row else -1
+        self._log_event(
+            "ASSERT_IMPLICATION",
+            {
+                "implication_id": implication_id,
+                "gamma": sorted(gamma_set),
+                "delta": sorted(delta_set),
+                "reason": reason,
+            },
+            event,
+        )
+        return implication_id
 
-    def introduce_bearer(self, prop: str, description: str = "") -> None:
+    def introduce_bearer(
+        self, prop: str, description: str = "", *, event: EventContext | None = None
+    ) -> None:
         """Add `prop` to L_B without committing or denying it.
 
         Vocabulary-only contribution: the atom becomes part of the
@@ -265,8 +360,13 @@ class DialecticalState:
         if not prop:
             return
         self.base.add_atoms({prop}, contributor="respondent", description=description)
+        self._log_event(
+            "INTRODUCE_BEARER", {"proposition": prop, "description": description}, event
+        )
 
-    def retract_implication(self, implication_id: int) -> bool:
+    def retract_implication(
+        self, implication_id: int, *, event: EventContext | None = None
+    ) -> bool:
         """Retract a previously-asserted (or tension-derived) implication.
 
         Marks the underlying assessments row `status='retracted'`. The
@@ -274,7 +374,15 @@ class DialecticalState:
         rule stops contributing to derivability immediately. Returns
         True if a row was retracted, False otherwise.
         """
-        return self.base.retract_assessment(implication_id)
+        ok = self.base.retract_assessment(implication_id)
+        self._log_event(
+            "RETRACT_IMPLICATION",
+            {"implication_id": implication_id},
+            event,
+            outcome="applied" if ok else "noop",
+            note="" if ok else "implication not found or already retracted",
+        )
+        return ok
 
     # ── Material implications I ──
 
@@ -314,14 +422,17 @@ class DialecticalState:
         ).fetchall()
         return [{"role": r[0], "content": r[1]} for r in rows]
 
-    def add_conversation(self, role: str, content: str):
+    def add_conversation(self, role: str, content: str) -> int:
         """Store a conversation turn. Only the natural language, not the
         full state context — the formal state is reconstructed from
-        the DuckDB tables on each turn."""
-        self.base.con.execute(
-            "INSERT INTO conversation (id, role, content) VALUES (nextval('conv_seq'), ?, ?)",
+        the DuckDB tables on each turn. Returns the new row's id (the
+        turn log links to it)."""
+        row = self.base.con.execute(
+            "INSERT INTO conversation (id, role, content) "
+            "VALUES (nextval('conv_seq'), ?, ?) RETURNING id",
             [role, content],
-        )
+        ).fetchone()
+        return row[0]
 
     def get_summary(self) -> str:
         """Get the running summary of the dialectic."""
