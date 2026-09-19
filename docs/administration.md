@@ -15,9 +15,9 @@ lower study roles it supervises.
 | Kind | Can do | Gating |
 |---|---|---|
 | `admin` | Everything: issue invites, manage users, back up, audit, plus all researcher powers | `require_admin` |
-| `researcher` | Run studies: issue participant tokens, assemble judge packages, export study data | `require_researcher` (admin or researcher) |
+| `researcher` | Run studies: set a study up, enrol participants, assign texts to judges, export study data | `require_researcher` (admin or researcher) |
 | `user` | Create and work in their own dialectics | authenticated |
-| `judge` | See assigned, blinded report pairs and rate them | `require_judge` (admin or judge) |
+| `judge` | See the blinded texts assigned to them and rate each one | `require_judge` (admin or judge) |
 | `participant` | Passwordless study participant; the study token is the only credential | token only |
 | `opponent_llm`, `system` | Internal actors used for attribution | — |
 
@@ -51,13 +51,19 @@ with four tabs:
   ones.
 - **Users** — list every actor with id, kind, email, display name, and
   active/deactivated status (admins marked ★).
-- **Study** — issue participant tokens and watch a cohort: tokens by
-  study, their status, session links, report generation, and per-study
-  export. (See [Running a Study](study.md).)
-- **Judging** — assemble blinded report pairs and assign them to judges.
+- **Study** — set a study up (its two topics), enrol participants (one
+  step issues both of a person's session links, with a balanced random
+  allocation), watch the roster, close an abandoned session, and export.
+  (See [Running a Study](study.md) and the [Study Runbook](study-runbook.md).)
+- **Judging** — assign submitted texts to judges and watch the panel's
+  progress.
 
-The Study and Judging tabs drive researcher-gated routes; they live in the
-admin dashboard so a sole admin can run a pilot end to end.
+The Study and Judging tabs drive researcher-gated routes. A `researcher`
+account sees a **STUDY** button instead of ADMIN, opening the same
+dashboard with just those two tabs; an admin sees all four, so a sole
+admin can run a pilot end to end. **Judge accounts are created by an
+admin** (invite with role `judge`) — researchers can assign work to judges
+but not create them.
 
 ## Accounts and invites
 
@@ -219,9 +225,14 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `GET /api/admin/integrity` · `/{base_id}` | Per-base integrity summary / detail |
 | `GET /api/admin/audit` | Platform ↔ filesystem drift |
 | `POST /api/admin/backup` · `GET` | Run a backup / list archives |
-| `POST /api/admin/study/tokens` *(researcher)* | Issue a participant token |
+| `PUT`/`GET /api/admin/study/{study_id}/config` *(researcher)* | Set up / read a study (topics, session gap) |
+| `POST`/`GET /api/admin/study/{study_id}/participants` *(researcher)* | Enrol a participant (both links) / roster |
+| `POST /api/admin/study/sessions/{id}/interrupt` *(researcher)* | Close an abandoned session |
+| `GET /api/admin/study/judges` *(researcher)* | Judge accounts |
+| `GET /api/admin/study/{study_id}/texts` · `POST …/text-assignments` *(researcher)* | Submitted texts + panel progress / assign texts to a judge |
+| `POST /api/admin/study/tokens` *(researcher)* | Issue a single participant link (test links, one-offs) |
 | `GET`/`DELETE /api/admin/study/tokens[/{token}]` *(researcher)* | List / void tokens |
 | `POST /api/admin/study/{study_id}/export` *(researcher)* | Export a study |
-| `POST`/`GET /api/admin/study/judge-packages` *(researcher)* | Create / list judge packages |
-| `POST /api/admin/study/judge-assignments` *(researcher)* | Assign a package to a judge |
+| `POST`/`GET /api/admin/study/judge-packages` *(researcher)* | Legacy: create / list paired-report packages |
+| `POST /api/admin/study/judge-assignments` *(researcher)* | Legacy: assign a package to a judge |
 | `GET /api/admin/study/surveys` · `reports` *(researcher)* | Cohort questionnaire / report views |

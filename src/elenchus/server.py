@@ -1235,8 +1235,10 @@ def _second_session_message(gate: dict) -> str:
             "Your first session is still open. Please finish it (use your first link), "
             "or contact the researcher."
         )
-    opens = gate["opens_at"]
-    when = opens.strftime("%A %d %B at %H:%M UTC") if hasattr(opens, "strftime") else str(opens)
+    # `opens_at` is an aware UTC datetime. The page re-renders this in
+    # the participant's own time zone (it gets the ISO instant alongside);
+    # this wording is the fallback, and it says UTC because it is.
+    when = gate["opens_at"].strftime("%A %d %B at %H:%M UTC")
     return (
         f"Your second session isn't open yet — the two sessions are kept apart. "
         f"This link will work from {when}."
@@ -1284,7 +1286,7 @@ def consume_participant_token(token: str, response: Response):
                 detail={
                     "status": "not_yet",
                     "reason": gate["reason"],
-                    "opens_at": str(gate["opens_at"]) if gate.get("opens_at") else None,
+                    "opens_at": gate["opens_at"].isoformat() if gate.get("opens_at") else None,
                     "user_message": _second_session_message(gate),
                 },
             )

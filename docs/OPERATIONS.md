@@ -131,6 +131,13 @@ Type=simple
 User=elenchus
 Group=elenchus
 EnvironmentFile=/etc/elenchus/elenchus.env
+# Run in UTC. DuckDB fills plain TIMESTAMP columns (opened_at, closed_at,
+# submitted_at, …) in the process's *local* zone, so a server in UTC makes
+# every stored time unambiguous. (What participants are told — e.g. when a
+# second session opens — is computed as a true instant and is right in any
+# zone; the capture log's `at_utc` fields are always UTC; and the study
+# export records this setting as `server_timezone`.)
+Environment=TZ=UTC
 ExecStart=/home/elenchus/venv/bin/elenchus
 Restart=on-failure
 RestartSec=5
