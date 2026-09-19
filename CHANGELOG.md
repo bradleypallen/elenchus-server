@@ -19,8 +19,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   drop in `static/logos/` plus a one-line edit — see
   `static/logos/README.md`. The service worker leaves both to the
   browser's revalidating cache, so an edit shows on the next load.
-  Ships with ADSA, INDElab, VU L&R and Old Dominion University as names;
-  **logos to be supplied by the organisations**.
+  Ships with ADSA, INDElab (University of Amsterdam), the Learning &
+  Reasoning Group (Vrije Universiteit Amsterdam) and Old Dominion
+  University as names — universities written out in full, and named in a
+  caption under a lab's logo; **logos to be supplied by the
+  organisations**.
+- **Funder acknowledgement** under the strip: "Funded by the Alfred P.
+  Sloan Foundation.", with the foundation's name linked. The sentence
+  lives in `partners.json` (`funding`), so required wording or a grant
+  number can be added without a code change.
 
 ## [0.4.0] — 2026-09-19
 

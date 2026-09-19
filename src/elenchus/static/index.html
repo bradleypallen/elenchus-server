@@ -332,14 +332,40 @@ function PartnerLogo({ partner }) {
     );
   }
   // Logos sit on a white plate: most are drawn for light backgrounds and
-  // would vanish, or look wrong, against the dark theme.
+  // would vanish, or look wrong, against the dark theme. A `caption`
+  // names in full what the logo alone may not — a lab's logo doesn't say
+  // which university it belongs to.
   return (
     <a href={partner.url} target="_blank" rel="noopener noreferrer" title={partner.title || partner.name}
-       style={{ ...link, background: '#fff', borderRadius: 8, padding: '8px 14px' }}>
-      <img src={`/static/logos/${partner.logo}`} alt={partner.title || partner.name}
-           onError={() => setBroken(true)}
-           style={{ height: 36, maxWidth: 190, width: 'auto', display: 'block', objectFit: 'contain' }} />
+       style={{ ...link, flexDirection: 'column', gap: 6 }}>
+      <span style={{ background: '#fff', borderRadius: 8, padding: '8px 14px', display: 'block' }}>
+        <img src={`/static/logos/${partner.logo}`} alt={partner.title || partner.name}
+             onError={() => setBroken(true)}
+             style={{ height: 36, maxWidth: 190, width: 'auto', display: 'block', objectFit: 'contain' }} />
+      </span>
+      {partner.caption && (
+        <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: 11 }}>{partner.caption}</span>
+      )}
     </a>
+  );
+}
+
+// The funder acknowledgement: one plain sentence, with the funder's name
+// linked. The wording (and any grant number) lives in partners.json.
+function FundingLine({ funding }) {
+  if (!funding || !funding.text) return null;
+  const { text, link_text: linkText, url } = funding;
+  const at = linkText && url ? text.indexOf(linkText) : -1;
+  return (
+    <div style={{ marginTop: 16, color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: 11, lineHeight: 1.6 }}>
+      {at < 0 ? text : (
+        <>
+          {text.slice(0, at)}
+          <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{linkText}</a>
+          {text.slice(at + linkText.length)}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -356,16 +382,17 @@ function PartnerStrip({ style }) {
   const [config, setConfig] = useState(null);
   useEffect(() => { let live = true; loadPartners().then(c => { if (live) setConfig(c); }); return () => { live = false; }; }, []);
   const partners = (config && config.partners) || [];
-  if (partners.length === 0) return null;
+  if (partners.length === 0 && !(config && config.funding)) return null;
   return (
-    <nav aria-label="Partner institutions" style={{ textAlign: 'center', ...style }}>
+    <nav aria-label="Partner institutions and funding" style={{ textAlign: 'center', ...style }}>
       {config.label && (
         <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase',
                       color: 'var(--text-muted)', marginBottom: 12 }}>{config.label}</div>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '14px 28px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start', gap: '14px 28px' }}>
         {partners.map(pt => <PartnerLogo key={pt.name} partner={pt} />)}
       </div>
+      <FundingLine funding={config.funding} />
     </nav>
   );
 }

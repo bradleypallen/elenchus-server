@@ -25,8 +25,31 @@ def test_shape():
     names = [p["name"] for p in partners]
     assert len(names) == len(set(names)), "partner names are used as React keys"
     for p in partners:
-        assert set(p) <= {"name", "title", "url", "logo"}, p
+        assert set(p) <= {"name", "title", "caption", "url", "logo"}, p
         assert p["name"].strip() and p["url"].startswith("https://"), p
+
+
+def test_universities_are_named_in_full():
+    """Not "UvA" / "VU": a visitor from outside the Netherlands shouldn't
+    have to decode an abbreviation to know who is behind the project."""
+    shown = " | ".join(f"{p['name']} {p.get('caption', '')}" for p in CONFIG["partners"])
+    assert "University of Amsterdam" in shown
+    assert "Vrije Universiteit Amsterdam" in shown
+    for p in CONFIG["partners"]:
+        for abbreviation in ("UvA", "VU "):
+            assert abbreviation not in f"{p['name']} ", p["name"]
+        # When a lab's logo is used, the caption is what names the university.
+        if "Amsterdam" in p["name"]:
+            assert "Amsterdam" in p.get("caption", ""), p
+
+
+def test_funding_acknowledgement():
+    funding = CONFIG["funding"]
+    assert set(funding) <= {"text", "link_text", "url"}
+    assert "Alfred P. Sloan Foundation" in funding["text"]
+    assert funding["url"].startswith("https://")
+    # The linked words must actually occur in the sentence, or no link renders.
+    assert funding["link_text"] in funding["text"]
 
 
 def test_every_named_logo_exists_and_is_an_image():
