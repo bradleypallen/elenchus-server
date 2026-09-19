@@ -373,7 +373,7 @@ function FundingLine({ funding }) {
 // in the space that's left, and the logos get the width of the page.
 function PartnerFooter() {
   return (
-    <PartnerStrip style={{ flexShrink: 0, width: '100%', maxWidth: 900, margin: '0 auto',
+    <PartnerStrip style={{ flexShrink: 0, width: '100%', maxWidth: 1000, margin: '0 auto',
                            padding: '12px 24px 22px', boxSizing: 'border-box' }} />
   );
 }
@@ -389,9 +389,29 @@ function PartnerStrip({ style }) {
         <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase',
                       color: 'var(--text-muted)', marginBottom: 12 }}>{config.label}</div>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start', gap: '14px 28px' }}>
-        {partners.map(pt => <PartnerLogo key={pt.name} partner={pt} />)}
-      </div>
+      {partners.some(pt => pt.logo) ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start', gap: '14px 28px' }}>
+          {partners.map(pt => <PartnerLogo key={pt.name} partner={pt} />)}
+        </div>
+      ) : (
+        // Names only: full institution names are long, and a flex row
+        // breaks wherever it runs out of room — typically orphaning the
+        // last name. As running text the browser can balance the lines.
+        <div style={{ textWrap: 'balance', lineHeight: 2.1, fontFamily: 'var(--sans)', fontSize: 12 }}>
+          {partners.map((pt, i) => (
+            <React.Fragment key={pt.name}>
+              {/* A real space between items: adjacent inline elements give
+                  the browser nowhere to break the line otherwise. Spacing,
+                  not a separator character — a dot would strand itself at
+                  the start or end of a wrapped line. */}
+              {i > 0 && ' '}
+              <a href={pt.url} target="_blank" rel="noopener noreferrer" title={pt.title || pt.name}
+                 style={{ color: 'var(--text-muted)', textDecoration: 'none', whiteSpace: 'nowrap',
+                          display: 'inline-block', margin: '0 14px' }}>{pt.name}</a>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
       <FundingLine funding={config.funding} />
     </nav>
   );

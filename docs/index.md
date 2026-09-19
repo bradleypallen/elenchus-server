@@ -23,6 +23,13 @@ Then open `http://localhost:8741` in your browser.
 - [Deployment](deployment.md) — running the server locally, on a production VM, or in the cloud (with the [Operations Runbook](OPERATIONS.md) and [Cloud Deployment plan](cloud-deployment.md))
 - [Architecture](architecture.md) — internal design, module descriptions, DuckDB schema, and API protocol
 
+## Acknowledgements
+
+This work was supported by a grant from the Alfred P. Sloan Foundation to the
+Alliance for Data Science and AI (G-2026-79650).
+
+([Alfred P. Sloan Foundation](https://sloan.org/) · [Alliance for Data Science and AI](https://alliance4datascience.ai/))
+
 ## Links
 
 - [GitHub Repository](https://github.com/bradleypallen/elenchus-server)

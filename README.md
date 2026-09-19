@@ -284,6 +284,13 @@ elenchus
 
 Any OpenAI-compatible endpoint works the same way (Together, Groq, etc.).
 
+## Acknowledgements
+
+This work was supported by a grant from the Alfred P. Sloan Foundation to the
+Alliance for Data Science and AI (G-2026-79650).
+
+([Alfred P. Sloan Foundation](https://sloan.org/) · [Alliance for Data Science and AI](https://alliance4datascience.ai/))
+
 ## License
 
 [MIT](https://github.com/bradleypallen/elenchus-server/blob/main/LICENSE) — Copyright © 2026 University of Amsterdam. Author: Bradley P. Allen.

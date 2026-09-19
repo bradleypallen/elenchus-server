@@ -43,13 +43,36 @@ def test_universities_are_named_in_full():
             assert "Amsterdam" in p.get("caption", ""), p
 
 
+# The funder's acknowledgement, as supplied by the PI. It names the grantee
+# and the grant number, so it is pinned word for word: an edit to it should
+# be a deliberate change here too, not a slip in a JSON file.
+SLOAN_ACKNOWLEDGEMENT = (
+    "This work was supported by a grant from the Alfred P. Sloan Foundation to the "
+    "Alliance for Data Science and AI (G-2026-79650)."
+)
+
+
 def test_funding_acknowledgement():
     funding = CONFIG["funding"]
     assert set(funding) <= {"text", "link_text", "url"}
-    assert "Alfred P. Sloan Foundation" in funding["text"]
+    assert funding["text"] == SLOAN_ACKNOWLEDGEMENT
     assert funding["url"].startswith("https://")
     # The linked words must actually occur in the sentence, or no link renders.
     assert funding["link_text"] in funding["text"]
+
+
+def test_acknowledgement_is_the_same_everywhere():
+    """The README (GitHub, PyPI) and the docs home carry the same sentence."""
+    root = STATIC.parents[2]
+    for doc in ("README.md", "docs/index.md"):
+        text = " ".join((root / doc).read_text(encoding="utf-8").split())
+        assert SLOAN_ACKNOWLEDGEMENT in text, f"{doc} is missing the funding acknowledgement"
+
+
+def test_adsa_uses_its_current_name_and_site():
+    adsa = next(p for p in CONFIG["partners"] if "ADSA" in p["name"])
+    assert "Alliance for Data Science and AI" in adsa["name"]
+    assert adsa["url"] == "https://alliance4datascience.ai/"  # the old domain redirects here
 
 
 def test_every_named_logo_exists_and_is_an_image():

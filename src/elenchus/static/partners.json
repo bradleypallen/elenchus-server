@@ -2,10 +2,10 @@
   "label": "",
   "partners": [
     {
-      "name": "ADSA",
-      "title": "ADSA",
+      "name": "Alliance for Data Science and AI (ADSA)",
+      "title": "Alliance for Data Science and AI (ADSA)",
       "caption": "",
-      "url": "https://academicdatascience.org/",
+      "url": "https://alliance4datascience.ai/",
       "logo": null
     },
     {
@@ -31,7 +31,7 @@
     }
   ],
   "funding": {
-    "text": "Funded by the Alfred P. Sloan Foundation.",
+    "text": "This work was supported by a grant from the Alfred P. Sloan Foundation to the Alliance for Data Science and AI (G-2026-79650).",
     "link_text": "Alfred P. Sloan Foundation",
     "url": "https://sloan.org/"
   }
