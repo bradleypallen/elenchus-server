@@ -212,3 +212,116 @@ class TestReactivateActor:
         _create_admin()
         r = client.put("/api/admin/users/99999/reactivate")
         assert r.status_code == 404
+
+
+class TestChangeRole:
+    """`PUT /api/admin/users/{id}/role` — the only way to promote an
+    existing account (an invite can only create a new one)."""
+
+    def _set(self, user_id: int, role: str):
+        return client.put(f"/api/admin/users/{user_id}/role", json={"role": role})
+
+    def test_admin_only(self):
+        target = _create_user("r@example.com", kind="researcher")
+        assert self._set(target, "admin").status_code == 401
+        researcher = _create_user("r2@example.com", kind="researcher")
+        client.cookies.set(auth.SESSION_COOKIE, auth.create_session(researcher))
+        assert self._set(target, "admin").status_code == 403
+
+    def test_promote_researcher_to_admin_keeps_the_account(self):
+        _create_admin()
+        target = _create_user("steve@example.com", kind="researcher")
+        r = self._set(target, "admin")
+        assert r.status_code == 200, r.text
+        assert r.json() == {
+            "status": "changed",
+            "id": target,
+            "role": "admin",
+            "previous_role": "researcher",
+        }
+        row = pdb.find_actor_by_id(get_registry().platform_con(), target)
+        assert row["kind"] == "admin"
+        assert row["email"] == "steve@example.com"
+
+    def test_applies_to_a_session_already_open(self):
+        """No re-login: the person's existing cookie gains (or loses)
+        access from their next request."""
+        _create_admin()
+        target = _create_user("steve@example.com", kind="researcher")
+        theirs = TestClient(app)
+        theirs.cookies.set(auth.SESSION_COOKIE, auth.create_session(target))
+        assert theirs.get("/api/admin/costs").status_code == 403
+        assert self._set(target, "admin").status_code == 200
+        assert theirs.get("/api/admin/costs").status_code == 200
+        # …and an admin keeps everything a researcher could do.
+        assert theirs.get("/api/admin/study/configs").status_code == 200
+
+    def test_unchanged_is_a_no_op(self):
+        _create_admin()
+        target = _create_user("u@example.com", kind="user")
+        assert self._set(target, "user").json()["status"] == "unchanged"
+
+    def test_rejects_an_unknown_role(self):
+        _create_admin()
+        target = _create_user("u@example.com")
+        for role in ("participant", "system", "owner", ""):
+            r = self._set(target, role)
+            assert r.status_code == 422, role
+            assert r.json()["detail"]["user_message"]
+
+    def test_cannot_change_own_role(self):
+        me = _create_admin()
+        _create_user("other-admin@example.com", kind="admin")
+        r = self._set(me, "researcher")
+        assert r.status_code == 400
+        assert "own role" in r.json()["detail"]["user_message"]
+
+    def test_cannot_demote_the_last_active_admin(self):
+        """With two admins, either can be demoted by the other — but a
+        deactivated admin doesn't count as cover."""
+        me = _create_admin()
+        other = _create_user("other-admin@example.com", kind="admin")
+        con = get_registry().platform_con()
+        pdb.deactivate_actor(con, me)
+        pdb.reactivate_actor(con, me)  # `me` stays the acting, active admin
+        assert self._set(other, "researcher").status_code == 200
+        assert pdb.count_active_admins(con) == 1
+        assert pdb.find_actor_by_id(con, me)["kind"] == "admin"
+
+    def test_platform_identities_are_fixed(self):
+        _create_admin()
+        participant = _create_user("p@example.com", kind="participant")
+        r = self._set(participant, "admin")
+        assert r.status_code == 400
+        assert pdb.find_actor_by_id(get_registry().platform_con(), participant)["kind"] == (
+            "participant"
+        )
+
+    def test_a_judge_with_assigned_work_stays_a_judge(self):
+        """Promoting a judge to researcher or admin would show them the
+        unblinded study data for texts they are rating."""
+        admin_id = _create_admin()
+        judge = _create_user("j@example.com", kind="judge")
+        con = get_registry().platform_con()
+        con.execute(
+            "INSERT INTO text_assignments "
+            "(study_id, text_id, judge_actor_id, assigned_by, position) "
+            "VALUES ('PILOT', 1, ?, ?, 0.5)",
+            [judge, admin_id],
+        )
+        try:
+            r = self._set(judge, "admin")
+            assert r.status_code == 409
+            assert "blinding" in r.json()["detail"]["user_message"]
+            assert pdb.find_actor_by_id(con, judge)["kind"] == "judge"
+        finally:
+            con.execute("DELETE FROM text_assignments")
+
+    def test_a_judge_without_work_can_be_moved(self):
+        _create_admin()
+        judge = _create_user("j@example.com", kind="judge")
+        assert self._set(judge, "researcher").status_code == 200
+
+    def test_missing_actor(self):
+        _create_admin()
+        assert self._set(999_999, "admin").status_code == 404

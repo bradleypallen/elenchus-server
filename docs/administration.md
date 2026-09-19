@@ -14,7 +14,7 @@ lower study roles it supervises.
 
 | Kind | Can do | Gating |
 |---|---|---|
-| `admin` | Everything: issue invites, manage users, back up, audit, plus all researcher powers | `require_admin` |
+| `admin` | Everything: issue invites, manage users and their roles, set the LLM provider and key, see costs, back up, audit, plus all researcher powers | `require_admin` |
 | `researcher` | Run studies: set a study up, enrol participants, assign texts to judges, export study data | `require_researcher` (admin or researcher) |
 | `user` | Create and work in their own dialectics | authenticated |
 | `judge` | See the blinded texts assigned to them and rate each one | `require_judge` (admin or judge) |
@@ -106,6 +106,30 @@ deactivation was security-related). There is no hard delete.
 
 - `PUT /api/admin/users/{id}/deactivate`
 - `PUT /api/admin/users/{id}/reactivate[?require_password_change=true]`
+
+**Change a role.** The *kind* column is a menu for every active person
+other than yourself: pick `admin`, `researcher`, `user` or `judge`. This is
+how an existing account is promoted — an invite can only create a new one.
+The account keeps its id, so the studies it set up, the participants it
+enrolled and the dialectics it owns stay with it, and the change applies
+from the person's next request (no need to log in again). The server
+refuses:
+
+- your own role — another admin changes it, so nobody locks themselves
+  out by accident;
+- demoting the last active admin;
+- the platform's own identities (`participant`, `opponent_llm`, `system`);
+- **any change to or from `judge` once judging work has been assigned** to
+  the account. A judge promoted to researcher or admin would see the
+  condition and participant behind the texts they are rating.
+
+Keep at least two admins: it is what lets one reset the other's password
+or change the other's role. Bear in mind that an admin can change the LLM
+model in Settings — during a study, agree that nobody does (every turn's
+model is in the capture log, so a change would show, but it would still
+confound the comparison).
+
+- `PUT /api/admin/users/{id}/role` — body `{"role": "admin"}`
 
 ## Passwords & resets
 
@@ -276,6 +300,7 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `GET /api/admin/users` | List all actors |
 | `PUT /api/admin/users/{id}/deactivate` | Soft-delete an actor |
 | `PUT /api/admin/users/{id}/reactivate` | Restore an actor |
+| `PUT /api/admin/users/{id}/role` | Change a person's role (`admin` / `researcher` / `user` / `judge`) |
 | `GET /api/admin/costs?days=N` | Cost dashboard report (N = 0 for all time) |
 | `PUT /api/admin/costs/budget` | Set (`llm_usd`, `period_start`, `period_end`, `label`) or clear (`{}`) the budget line |
 | `GET /api/admin/usage?days=N` | Older cost/usage rollup (same read-time pricing) |

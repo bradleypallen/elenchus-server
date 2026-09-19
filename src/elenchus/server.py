@@ -863,6 +863,77 @@ def admin_deactivate_user(user_id: int, actor: dict = Depends(auth.require_admin
     return {"status": "deactivated", "id": user_id}
 
 
+class ChangeRoleRequest(BaseModel):
+    role: str
+
+
+@app.put("/api/admin/users/{user_id}/role")
+def admin_change_user_role(
+    user_id: int,
+    req: ChangeRoleRequest,
+    actor: dict = Depends(auth.require_admin),
+):
+    """Move a person between `admin`, `researcher`, `user` and `judge`.
+    The actor keeps their id, so everything they did (studies set up,
+    participants enrolled, dialectics owned) stays theirs, and the
+    change applies from their next request — no re-login.
+
+    Refuses: your own role (another admin changes it, so nobody locks
+    themselves out by accident); demoting the last active admin; the
+    platform's own identities (participants, the opponent, system);
+    and **any change to or from `judge` once judging work has been
+    assigned** — a judge promoted to researcher or admin would see the
+    unblinded study data for texts they are rating.
+    """
+    reg = get_registry()
+    con = reg.platform_con()
+    role = (req.role or "").strip().lower()
+    if role not in pdb.ASSIGNABLE_KINDS:
+        raise HTTPException(
+            422,
+            detail={"user_message": "Choose one of: " + ", ".join(pdb.ASSIGNABLE_KINDS) + "."},
+        )
+    target = pdb.find_actor_by_id(con, user_id)
+    if target is None:
+        raise HTTPException(404, f"Actor #{user_id} not found")
+    if target["kind"] not in pdb.ASSIGNABLE_KINDS:
+        raise HTTPException(
+            400,
+            detail={"user_message": f"A {target['kind']} account's role can't be changed."},
+        )
+    if target["kind"] == role:
+        return {"status": "unchanged", "id": user_id, "role": role}
+    if user_id == actor["id"]:
+        raise HTTPException(
+            400, detail={"user_message": "You can't change your own role — ask another admin."}
+        )
+    if (
+        target["kind"] == "admin"
+        and target.get("deactivated_at") is None
+        and pdb.count_active_admins(con) <= 1
+    ):
+        raise HTTPException(
+            400,
+            detail={"user_message": "This is the last active admin; promote someone else first."},
+        )
+    if "judge" in (target["kind"], role) and pdb.count_judging_assignments(con, user_id) > 0:
+        raise HTTPException(
+            409,
+            detail={
+                "user_message": (
+                    "This account has judging work assigned. Changing its role would break "
+                    "the blinding of those ratings, so it isn't allowed."
+                )
+            },
+        )
+    with reg.platform_lock:
+        pdb.update_actor_kind(con, user_id, role)
+    logger.info(
+        "Actor #%d role changed %s -> %s by admin #%d", user_id, target["kind"], role, actor["id"]
+    )
+    return {"status": "changed", "id": user_id, "role": role, "previous_role": target["kind"]}
+
+
 @app.put("/api/admin/users/{user_id}/reactivate")
 def admin_reactivate_user(
     user_id: int,
