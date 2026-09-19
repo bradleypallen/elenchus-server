@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import audit as audit_mod
-from . import auth, invites, secretbox, study_text
+from . import auth, invites, secretbox, study_enrolment, study_text
 from . import backup as backup_mod
 from . import integrity as integrity_mod
 from .db import get_registry, init_registry
@@ -404,6 +404,30 @@ class ParticipantTokenRequest(BaseModel):
     # the longer framing shown in the writing pane.
     topic_title: str | None = ""
     topic_brief: str | None = ""
+
+
+class StudyConfigRequest(BaseModel):
+    """Body for `PUT /api/admin/study/{study_id}/config`: the study's
+    two topics and the minimum gap between a participant's sessions."""
+
+    topic_a_title: str
+    topic_a_brief: str = ""
+    topic_b_title: str
+    topic_b_brief: str = ""
+    min_gap_hours: int = 48
+
+
+class EnrolParticipantRequest(BaseModel):
+    """Body for `POST /api/admin/study/{study_id}/participants`.
+
+    Leave the allocation fields unset to draw the participant's cell by
+    permuted-block randomization. Set **both** to place them by hand —
+    for a replacement who should take the cell of the person replaced."""
+
+    display_name: str
+    first_condition: str | None = None  # 'elenchus' | 'baseline'
+    first_topic: str | None = None  # 'A' | 'B'
+    notes: str | None = ""
 
 
 class StudyTextRequest(BaseModel):
@@ -961,6 +985,245 @@ def admin_void_participant_token(
     return {"status": "voided", "token": token}
 
 
+@app.get("/api/admin/study/configs")
+def admin_list_study_configs(actor: dict = Depends(auth.require_researcher)):
+    return {"studies": pdb.list_study_configs(get_registry().platform_con())}
+
+
+@app.put("/api/admin/study/{study_id}/config")
+def admin_set_study_config(
+    study_id: str,
+    req: StudyConfigRequest,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Set up (or edit) a study: its two topics and the minimum gap
+    between a participant's sessions.
+
+    Topics are copied onto each participant's links when they are
+    enrolled, so editing them here affects **future enrolments only** —
+    a participant already holding links keeps the wording they were
+    issued. The gap, by contrast, is read when a second link is opened."""
+    study_id = study_id.strip()
+    if not study_id:
+        raise HTTPException(400, "study_id is required")
+    if not req.topic_a_title.strip() or not req.topic_b_title.strip():
+        raise HTTPException(400, "Both topics need a title")
+    if req.topic_a_title.strip() == req.topic_b_title.strip():
+        raise HTTPException(400, "The two topics must be different")
+    if req.min_gap_hours < 0:
+        raise HTTPException(400, "min_gap_hours can't be negative")
+    reg = get_registry()
+    with reg.platform_lock:
+        config = pdb.upsert_study_config(
+            reg.platform_con(),
+            study_id=study_id,
+            topic_a_title=req.topic_a_title.strip(),
+            topic_a_brief=req.topic_a_brief.strip(),
+            topic_b_title=req.topic_b_title.strip(),
+            topic_b_brief=req.topic_b_brief.strip(),
+            min_gap_hours=req.min_gap_hours,
+            actor_id=actor["id"],
+        )
+    logger.info(
+        "Study config set: study=%s topics=(%r, %r) min_gap_hours=%d (by %d)",
+        study_id,
+        config["topics"]["A"]["title"],
+        config["topics"]["B"]["title"],
+        config["min_gap_hours"],
+        actor["id"],
+    )
+    return config
+
+
+@app.get("/api/admin/study/{study_id}/config")
+def admin_get_study_config(study_id: str, actor: dict = Depends(auth.require_researcher)):
+    config = pdb.find_study_config(get_registry().platform_con(), study_id)
+    if config is None:
+        raise HTTPException(404, f"Study '{study_id}' has not been set up")
+    return config
+
+
+def _participant_view(con, participant: dict) -> dict:
+    """A roster row: the participant, their allocation, and their two
+    sessions with link, status and whether a text has been submitted."""
+    sessions = []
+    for period in (1, 2):
+        token = pdb.find_participant_period_token(con, participant["id"], period)
+        if token is None:
+            continue
+        session = pdb.find_study_session(con, token["session_id"]) if token["session_id"] else None
+        gate = pdb.second_session_gate(con, token) if token["status"] == "scheduled" else None
+        sessions.append(
+            {
+                "period": period,
+                "condition": token["condition"],
+                "topic_title": token["topic_title"],
+                "token": token["token"],
+                "token_status": token["status"],
+                "session_id": token["session_id"],
+                "session_state": session["state"] if session else None,
+                "text_submitted": bool(
+                    session and pdb.find_study_text_for_session(con, session["id"]) is not None
+                ),
+                "gate": gate,
+            }
+        )
+    return {**participant, "sessions": sessions}
+
+
+@app.post("/api/admin/study/{study_id}/participants")
+def admin_enrol_participant(
+    study_id: str,
+    req: EnrolParticipantRequest,
+    actor: dict = Depends(auth.require_researcher),
+):
+    """Enrol one person in the crossover: allocate their cell, and issue
+    both of their session links in one step.
+
+    The cell — which condition and which topic they meet first — is
+    drawn by permuted-block randomization (`study_enrolment.next_cell`)
+    unless the researcher places them by hand. Doing both links here,
+    rather than issuing tokens one at a time, is what guarantees a
+    participant gets each condition once and each topic once, and that
+    their two sessions are linked in the data."""
+    if not req.display_name.strip():
+        raise HTTPException(400, "display_name is required")
+    manual = req.first_condition is not None or req.first_topic is not None
+    if manual and (req.first_condition is None or req.first_topic is None):
+        raise HTTPException(400, "Set both first_condition and first_topic, or neither")
+
+    reg = get_registry()
+    con = reg.platform_con()
+    config = pdb.find_study_config(con, study_id)
+    if config is None:
+        raise HTTPException(
+            409, f"Set up study '{study_id}' (its two topics) before enrolling participants"
+        )
+
+    with reg.platform_lock:
+        existing = pdb.list_study_participants(con, study_id)
+        if manual:
+            try:
+                cell = study_enrolment.Cell(req.first_condition, req.first_topic)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from None
+        else:
+            cell = study_enrolment.next_cell(
+                [
+                    study_enrolment.Cell(p["first_condition"], p["first_topic"])
+                    for p in existing
+                    if p["allocation"] == "block"
+                ]
+            )
+        code = study_enrolment.participant_code(len(existing) + 1)
+        participant_id = pdb.create_study_participant(
+            con,
+            study_id=study_id,
+            participant_code=code,
+            display_name=req.display_name.strip(),
+            first_condition=cell.first_condition,
+            first_topic=cell.first_topic,
+            allocation="manual" if manual else "block",
+            enrolled_by=actor["id"],
+            notes=(req.notes or "").strip(),
+        )
+        for plan in study_enrolment.session_plan(cell):
+            topic = config["topics"][plan["topic"]]
+            # One passwordless actor per link, as for hand-issued tokens:
+            # the actor is the session's identity, the participant row
+            # the person's.
+            session_actor = pdb.create_actor(
+                con,
+                kind="participant",
+                email=None,
+                display_name=f"{code} · session {plan['period']}",
+                password_hash=None,
+            )
+            pdb.create_participant_token(
+                con,
+                token=auth.generate_token(),
+                actor_id=session_actor,
+                study_id=study_id,
+                condition=plan["condition"],
+                issued_by=actor["id"],
+                topic_title=topic["title"],
+                topic_brief=topic["brief"],
+                participant_id=participant_id,
+                period=plan["period"],
+            )
+    logger.info(
+        "Enrolled participant: study=%s code=%s cell=%s allocation=%s (by %d)",
+        study_id,
+        code,
+        cell.key,
+        "manual" if manual else "block",
+        actor["id"],
+    )
+    return _participant_view(con, pdb.find_study_participant(con, participant_id))
+
+
+@app.get("/api/admin/study/{study_id}/participants")
+def admin_list_study_participants(study_id: str, actor: dict = Depends(auth.require_researcher)):
+    """The study roster, in enrolment order, with each cell's count so
+    the researcher can see the balance at a glance."""
+    con = get_registry().platform_con()
+    participants = pdb.list_study_participants(con, study_id)
+    cells = {c.key: 0 for c in study_enrolment.ALL_CELLS}
+    for p in participants:
+        cells[study_enrolment.Cell(p["first_condition"], p["first_topic"]).key] += 1
+    return {
+        "study_id": study_id,
+        "participants": [_participant_view(con, p) for p in participants],
+        "cell_counts": cells,
+    }
+
+
+@app.post("/api/admin/study/sessions/{session_id}/interrupt")
+def admin_interrupt_session(session_id: int, actor: dict = Depends(auth.require_researcher)):
+    """Close a session the participant abandoned (browser closed
+    mid-task and never resumed). An open first session holds a
+    participant's second link shut, so the researcher needs a way to
+    end it. The session is marked `interrupted`, not deleted: everything
+    captured up to that point stays in the export."""
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None or not session.get("study_token"):
+        raise HTTPException(404, "Study session not found")
+    with reg.platform_lock:
+        updated = pdb.advance_session_state(con, session_id, "interrupted")
+    if updated is None:
+        raise HTTPException(
+            409, f"Session is already closed (state: {session['state']}) — nothing to interrupt"
+        )
+    logger.info(
+        "Session interrupted by researcher: session=%d was_state=%s (by %d)",
+        session_id,
+        session["state"],
+        actor["id"],
+    )
+    return {"session_id": session_id, "state": updated["state"], "was_state": session["state"]}
+
+
+def _second_session_message(gate: dict) -> str:
+    if gate["reason"] == "first_not_started":
+        return (
+            "This is the link for your second session. Please do your first session "
+            "first — use the other link you were sent."
+        )
+    if gate["reason"] == "first_still_open":
+        return (
+            "Your first session is still open. Please finish it (use your first link), "
+            "or contact the researcher."
+        )
+    opens = gate["opens_at"]
+    when = opens.strftime("%A %d %B at %H:%M UTC") if hasattr(opens, "strftime") else str(opens)
+    return (
+        f"Your second session isn't open yet — the two sessions are kept apart. "
+        f"This link will work from {when}."
+    )
+
+
 @app.post("/api/study/{token}")
 def consume_participant_token(token: str, response: Response):
     """Public endpoint — the participant clicks the emailed link and
@@ -982,6 +1245,30 @@ def consume_participant_token(token: str, response: Response):
     structured body so the frontend renders one message).
     """
     reg = get_registry()
+    # An enrolled participant's second link stays shut until their first
+    # session has ended and the study's minimum gap has passed. Checked
+    # before consuming, and only for a link that hasn't been used yet —
+    # resuming a second session already under way is never blocked.
+    pending = pdb.find_participant_token(reg.platform_con(), token)
+    if pending is not None and pending["status"] == "scheduled":
+        gate = pdb.second_session_gate(reg.platform_con(), pending)
+        if gate is not None:
+            logger.info(
+                "Second-session link held: study=%s participant_id=%s reason=%s opens_at=%s",
+                pending["study_id"],
+                pending["participant_id"],
+                gate["reason"],
+                gate.get("opens_at"),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "status": "not_yet",
+                    "reason": gate["reason"],
+                    "opens_at": str(gate["opens_at"]) if gate.get("opens_at") else None,
+                    "user_message": _second_session_message(gate),
+                },
+            )
     with reg.platform_lock:
         consumed = pdb.consume_participant_token(reg.platform_con(), token)
     if consumed is None:

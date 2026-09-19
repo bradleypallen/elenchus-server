@@ -58,7 +58,9 @@ class TestScriptedSimulation:
         # And the key actions all appear and succeeded.
         actions = {s.action for s in report.steps if s.ok}
         for needed in (
-            "issue_token",
+            "study_config",
+            "enrol",
+            "second_link_early_probe",
             "consume_token",
             "begin_tutorial",
             "begin_task",

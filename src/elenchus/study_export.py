@@ -7,6 +7,9 @@ analyze downstream. Layout inside the archive:
 
     study-{study_id}-{timestamp}/
       manifest.json                  — export metadata + content listing
+      participants.json              — enrolled participants: code, cell
+                                       (first condition × first topic),
+                                       allocation method — no names
       judging.json                   — packages, assignments, ratings
       sessions/{pseudonym}-{cond}/   — one directory per session
         session.json                 — lifecycle row (pseudonymized), with the
@@ -58,7 +61,10 @@ from .integrity import compute_base_integrity
 
 logger = logging.getLogger(__name__)
 
-EXPORT_FORMAT_VERSION = "1"
+# "2": sessions carry the participant code, period and allocation
+# (crossover linkage), the submitted text and its draft history, and the
+# capture log; `participants.json` added; session tokens no longer exported.
+EXPORT_FORMAT_VERSION = "2"
 
 
 def _safe_sql_literal(path: str) -> str:
@@ -97,6 +103,11 @@ def _build_pseudonyms(con, study_id: str) -> dict[int, str]:
             staff_ids.add(assignment["assigned_by"])
     for token in pdb.list_participant_tokens(con, study_id=study_id):
         staff_ids.add(token["issued_by"])
+    for participant in pdb.list_study_participants(con, study_id):
+        staff_ids.add(participant["enrolled_by"])
+    config = pdb.find_study_config(con, study_id)
+    if config is not None:
+        staff_ids.add(config["created_by"])
 
     for i, actor_id in enumerate(sorted(judge_ids - set(pseudonyms)), 1):
         pseudonyms[actor_id] = f"J-{i:03d}"
@@ -207,6 +218,28 @@ def export_study(
         }
         _write_json(os.path.join(staging, "manifest.json"), manifest)
 
+        # The roster, minus anything identifying: the code is the
+        # researcher-assigned sequence number, the name stays out.
+        participants = pdb.list_study_participants(con, study_id)
+        _write_json(
+            os.path.join(staging, "participants.json"),
+            [
+                {
+                    "participant_code": p["participant_code"],
+                    "first_condition": p["first_condition"],
+                    "first_topic": p["first_topic"],
+                    "allocation": p["allocation"],
+                    "enrolled_at": p["enrolled_at"],
+                    "enrolled_by": pseudonyms.get(
+                        p["enrolled_by"], f"UNMAPPED-{p['enrolled_by']}"
+                    ),
+                }
+                for p in participants
+            ],
+        )
+        config = pdb.find_study_config(con, study_id)
+        _write_json(os.path.join(staging, "study_config.json"), _pseudonymize(config, pseudonyms))
+
         # Seal the archive.
         archive_path = os.path.join(output_dir, f"{archive_name}.tar.gz")
         with tarfile.open(archive_path, "w:gz") as tar:
@@ -216,7 +249,13 @@ def export_study(
         pseudonym_file = os.path.join(output_dir, f"{archive_name}.pseudonyms.json")
         _write_json(
             pseudonym_file,
-            {str(actor_id): pseudonym for actor_id, pseudonym in pseudonyms.items()},
+            {
+                **{str(actor_id): pseudonym for actor_id, pseudonym in pseudonyms.items()},
+                # Participant code → the researcher's label for the
+                # person. Same rule as the rest of this file: it stays
+                # with the research team, never in a deposit.
+                "participants": {p["participant_code"]: p["display_name"] for p in participants},
+            },
         )
 
         return {
@@ -236,10 +275,23 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
 
     sid = session["id"]
     token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    participant = (
+        pdb.find_study_participant(con, token["participant_id"])
+        if token.get("participant_id") is not None
+        else None
+    )
     session_out = {
         **{k: v for k, v in session.items() if k != "study_token"},  # a credential
         "topic_title": token.get("topic_title", ""),
         "topic_brief": token.get("topic_brief", ""),
+        # Crossover linkage: `participant_code` is the key that ties a
+        # person's two sessions together (the per-session actor ids
+        # differ by design). None for hand-issued, unenrolled tokens.
+        "participant_code": participant["participant_code"] if participant else None,
+        "period": token.get("period"),
+        "first_condition": participant["first_condition"] if participant else None,
+        "first_topic": participant["first_topic"] if participant else None,
+        "allocation": participant["allocation"] if participant else None,
     }
     _write_json(os.path.join(dest, "session.json"), _pseudonymize(session_out, pseudonyms))
     _write_json(

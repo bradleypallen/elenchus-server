@@ -20,7 +20,7 @@ from .. import auth
 from ..db import get_registry
 from ..db import platform as pdb
 from .client import Recorder, SimClient
-from .driver import _topic_for
+from .driver import SIM_TOPICS
 from .personas import JudgePersona, ParticipantPersona
 
 logger = logging.getLogger(__name__)
@@ -71,15 +71,50 @@ class StudyHarness:
         researcher = self._make_staff("admin", "researcher")
         self.researcher = researcher  # retained for the access-probe phase
 
-        for i, persona in enumerate(self.participants):
-            # Counterbalance condition order across participants.
-            order = ["elenchus", "baseline"] if i % 2 == 0 else ["baseline", "elenchus"]
+        # Study setup: the two topics every participant meets (one per
+        # condition), and no waiting time between a participant's two
+        # sessions — the sim runs them back to back.
+        researcher.request(
+            "PUT",
+            f"/api/admin/study/{self.study_id}/config",
+            json={
+                "topic_a_title": SIM_TOPICS["A"],
+                "topic_a_brief": f"Introduce {SIM_TOPICS['A']} to a colleague new to it.",
+                "topic_b_title": SIM_TOPICS["B"],
+                "topic_b_brief": f"Introduce {SIM_TOPICS['B']} to a colleague new to it.",
+                "min_gap_hours": 0,
+            },
+            action="study_config",
+        )
+
+        for persona in self.participants:
             self.outcomes[persona.label] = {}
-            for cond in order:
+            # Enrolment allocates the participant's cell (which condition
+            # and topic come first) and issues both of their links.
+            st, enrolled = researcher.post(
+                f"/api/admin/study/{self.study_id}/participants",
+                json={"display_name": persona.label},
+                action="enrol",
+                note=persona.label,
+            )
+            if st != 200:
+                continue
+            first, second = enrolled["sessions"]
+            # The second link must stay shut until the first session is done.
+            SimClient(f"{persona.label}/early", self.app, self.rec).probe(
+                "POST",
+                f"/api/study/{second['token']}",
+                action="second_link_early_probe",
+                expect=409,
+                note="second session can't start before the first",
+            )
+            for planned in (first, second):
                 try:
-                    self._run_session(researcher, persona, cond)
+                    self._run_session(persona, planned)
                 except Exception:
-                    logger.exception("Session crashed: %s / %s", persona.label, cond)
+                    logger.exception(
+                        "Session crashed: %s / %s", persona.label, planned["condition"]
+                    )
 
         try:
             self._run_judging(researcher)
@@ -105,26 +140,14 @@ class StudyHarness:
 
     # ── One participant session, one condition ──
 
-    def _run_session(self, researcher: SimClient, persona: ParticipantPersona, cond: str):
+    def _run_session(self, persona: ParticipantPersona, planned: dict):
+        """One of a participant's two sessions, as enrolment planned it
+        (`planned` is a roster session row: token, condition, topic)."""
         label = persona.label
-        # 1. Researcher issues the token.
-        st, body = researcher.post(
-            "/api/admin/study/tokens",
-            json={
-                "study_id": self.study_id,
-                "condition": cond,
-                "display_name": label,
-                "topic_title": _topic_for(persona, cond),
-                "topic_brief": f"Introduce {_topic_for(persona, cond)} to a colleague new to it.",
-            },
-            action="issue_token",
-            note=f"{label}/{cond}",
-        )
-        if st != 200:
-            return
-        token = body["token"]
+        cond = planned["condition"]
+        token = planned["token"]
 
-        # 2. Participant consumes it (sets the session cookie).
+        # 2. Participant opens their link (sets the session cookie).
         participant = SimClient(f"{label}/{cond}", self.app, self.rec)
         st, body = participant.post(f"/api/study/{token}", action="consume_token")
         if st != 200:
@@ -189,7 +212,7 @@ class StudyHarness:
         # 7. The writing pane: an autosaved draft, a paste event, then
         # the submitted text. The text is the judged artifact, so the
         # task can't be left without one — probe that first.
-        text = self.driver.participant_text(persona, cond, state)
+        text = self.driver.participant_text(persona, cond, state, topic=planned["topic_title"])
         participant.put(
             "/api/study/session/text",
             json={"content": text[: len(text) // 2], "trigger": "autosave"},
@@ -242,7 +265,7 @@ class StudyHarness:
         )
 
         # 10. Researcher generates the structured report.
-        st, body = researcher.post(
+        st, body = self.researcher.post(
             f"/api/study/session/{session_id}/generate-report",
             action="generate_report",
             note=f"{label}/{cond}",
