@@ -360,8 +360,19 @@ recipient — issuing an invite reports `emailed: true / false / null`, and
 the Invites tab says in red when the email could not be sent (the
 invitation is still valid; pass the link on by hand). The commonest cause
 is an **Amazon SES account still in its sandbox**, which delivers only to
-verified addresses: request production access in the SES console. That
-alert is deliberately not itself sent by email.
+verified addresses: request production access
+([`deploy/ses-production-access.md`](https://github.com/bradleypallen/elenchus-server/blob/main/deploy/ses-production-access.md)
+has the request ready to paste). That alert is deliberately not itself
+sent by email.
+
+**Who the platform will email.** Only account holders, and study
+participants never. Invitations, admin-issued resets and password-changed
+notices need an authenticated admin or the person themselves. The two
+public forms — *forgot password?* and *email me a login link* — send only
+to an **active, registered account**, at most five times in fifteen
+minutes, and answer identically whether or not anything was sent, so they
+neither reveal who is registered nor let a stranger make the server email
+someone.
 
 When the server can't send email, the sign-in page's *forgot password?* and
 *email me a login link* say so and point people to an admin — instead of

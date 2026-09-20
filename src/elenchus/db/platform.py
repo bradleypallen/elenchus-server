@@ -238,6 +238,19 @@ def create_magic_link(
     return expires_at
 
 
+def count_recent_magic_links(con, email: str, minutes: int) -> int:
+    """How many login links were issued for `email` in the last
+    `minutes`. Both sides of the comparison are the database's own
+    clock in the column's own (naive, server-local) terms, so the
+    answer doesn't depend on the server's time zone."""
+    row = con.execute(
+        "SELECT COUNT(*) FROM magic_links WHERE email = ? "
+        "AND issued_at >= CAST(CURRENT_TIMESTAMP AS TIMESTAMP) - INTERVAL (?) MINUTE",
+        [email, minutes],
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def consume_magic_link(con, token: str) -> str | None:
     """Atomically mark a magic link as consumed. Returns the email if
     the link was valid (not yet consumed, not expired), else None."""

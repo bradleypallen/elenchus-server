@@ -101,8 +101,11 @@ Setup (region must match `SMTP_HOST`):
    verified domain).
 4. **Sandbox:** new SES accounts can only send to *verified* recipient
    addresses and are capped (~200/day). Verify your test recipients, or
-   request production access (console, ~24 h) before emailing real
-   participants.
+   request production access (console, ~24 h) —
+   [`deploy/ses-production-access.md`](https://github.com/bradleypallen/elenchus-server/blob/main/deploy/ses-production-access.md)
+   has the request ready to paste and what to put in place first. Until
+   then the dashboard tells an admin when a message was refused; links
+   have to be passed on by hand.
 
 ## 3. Bootstrap the first admin
 

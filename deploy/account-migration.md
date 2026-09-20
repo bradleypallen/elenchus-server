@@ -215,7 +215,9 @@ The PoC runs with `EMAIL_BACKEND=console`, so nothing depends on this yet.
       `/etc/elenchus/elenchus.env` on the box, set `EMAIL_BACKEND=smtp`,
       restart — [OPERATIONS.md](../docs/OPERATIONS.md) has the details. A
       new account's SES starts in the **sandbox** (verified recipients
-      only) until production access is requested.
+      only) until production access is requested — the request, and what
+      to put in place first, is in
+      [ses-production-access.md](ses-production-access.md).
 
 ## Part G — What it should cost
 

@@ -577,16 +577,25 @@ def change_password(
 
 @app.post("/api/auth/magic-link")
 def request_magic_link(req: MagicLinkRequest, request: Request):
-    """Email a magic-link login token. Returns 200 regardless of
-    whether the email is registered (don't leak registration state)."""
-    base_url = str(request.base_url).rstrip("/")
-    token = auth.issue_magic_link(req.email)
-    try:
-        from . import email_service
+    """Email a login link — **only to an active, registered account**,
+    rate-limited (`auth.magic_link_recipient`). The response is the same
+    whether or not anything was sent, so it doesn't reveal which
+    addresses are registered; but this form is public, and it must not
+    be a way to make the server email strangers."""
+    actor = auth.magic_link_recipient(req.email)
+    if actor is not None:
+        base_url = str(request.base_url).rstrip("/")
+        token = auth.issue_magic_link(actor["email"])
+        try:
+            from . import email_service
 
-        email_service.send_magic_link_email(token=token, recipient=req.email, base_url=base_url)
-    except Exception:
-        logger.exception("Failed to send magic-link email")
+            email_service.send_magic_link_email(
+                token=token, recipient=actor["email"], base_url=base_url
+            )
+        except Exception:
+            logger.exception("Failed to send magic-link email")
+    else:
+        logger.info("Login link requested for an address with no active account; nothing sent")
     return {"status": "sent"}
 
 
