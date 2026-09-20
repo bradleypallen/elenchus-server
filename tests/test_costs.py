@@ -432,11 +432,38 @@ class TestBudget:
         budget = client.get("/api/admin/costs").json()["budget"]
         assert budget["llm_usd"] == 3000
         assert budget["label"] == self.PERIOD["label"]
-        assert budget["spent_usd"] == pytest.approx(300.0)
-        assert budget["remaining_usd"] == pytest.approx(2700.0)
-        assert budget["pct_spent"] == pytest.approx(10.0)
         assert budget["pct_period_elapsed"] == pytest.approx(10.0)
-        assert budget["spent_before_period_usd"] == pytest.approx(10.0)
+        llm = budget["llm"]
+        assert llm["amount_usd"] == 3000
+        assert llm["spent_usd"] == pytest.approx(300.0)
+        assert llm["remaining_usd"] == pytest.approx(2700.0)
+        assert llm["pct_spent"] == pytest.approx(10.0)
+        assert llm["spent_before_period_usd"] == pytest.approx(10.0)
+        # No infrastructure line was set, so none is reported.
+        assert budget["infra_usd"] is None and budget["infra"] is None
+
+    def test_a_budget_stored_by_0_5_0_still_reads(self):
+        """0.5.0 stored only `llm_usd`; the infrastructure line came later."""
+        import json
+
+        _login()
+        con = get_registry().platform_con()
+        pdb.set_setting(
+            con,
+            costs.BUDGET_SETTING_KEY,
+            json.dumps({k: v for k, v in self.PERIOD.items()}),
+        )
+        budget = client.get("/api/admin/costs").json()["budget"]
+        assert budget["llm"]["amount_usd"] == 3000
+        assert budget["infra"] is None
+
+    def test_needs_at_least_one_line(self):
+        _login()
+        r = client.put(
+            "/api/admin/costs/budget", json={**self.PERIOD, "llm_usd": None, "infra_usd": None}
+        )
+        assert r.status_code == 422
+        assert "both" in r.json()["detail"]["user_message"]
 
     def test_clear(self):
         _login()
@@ -492,6 +519,7 @@ class TestRoute:
             "waste",
             "unpriced",
             "studies",
+            "infrastructure",
             "budget",
         }
 
@@ -503,9 +531,13 @@ class TestRoute:
 
     def test_text_rendering_does_not_repeat_the_all_time_line(self):
         _seed(prompt=1_000_000)
-        assert costs.format_report(_report(days=0)).count("All time  ") == 1
-        windowed = costs.format_report(_report(days=30))
-        assert "Last 30 days" in windowed and windowed.count("All time  ") == 1
+
+        def llm_part(days: int) -> str:
+            # The infrastructure section has an "All time" line of its own.
+            return costs.format_report(_report(days=days)).split("Infrastructure")[0]
+
+        assert llm_part(0).count("All time  ") == 1
+        assert "Last 30 days" in llm_part(30) and llm_part(30).count("All time  ") == 1
 
     def test_text_rendering_flags_unpriced_models(self):
         _seed(model="mystery-model", prompt=5000)
