@@ -1295,14 +1295,16 @@ def upsert_study_config(
     topic_b_brief: str,
     min_gap_hours: int,
     actor_id: int,
+    task_minutes: int | None = None,
 ) -> dict:
     """Create or update a study's setup. `created_by` / `created_at`
-    are kept from the first write."""
+    are kept from the first write. `task_minutes` None = the server's
+    default task length."""
     if find_study_config(con, study_id) is None:
         con.execute(
             "INSERT INTO study_configs (study_id, topic_a_title, topic_a_brief, "
-            "topic_b_title, topic_b_brief, min_gap_hours, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "topic_b_title, topic_b_brief, min_gap_hours, task_minutes, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 study_id,
                 topic_a_title,
@@ -1310,15 +1312,24 @@ def upsert_study_config(
                 topic_b_title,
                 topic_b_brief,
                 min_gap_hours,
+                task_minutes,
                 actor_id,
             ],
         )
     else:
         con.execute(
             "UPDATE study_configs SET topic_a_title = ?, topic_a_brief = ?, "
-            "topic_b_title = ?, topic_b_brief = ?, min_gap_hours = ?, "
+            "topic_b_title = ?, topic_b_brief = ?, min_gap_hours = ?, task_minutes = ?, "
             "updated_at = CURRENT_TIMESTAMP WHERE study_id = ?",
-            [topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, min_gap_hours, study_id],
+            [
+                topic_a_title,
+                topic_a_brief,
+                topic_b_title,
+                topic_b_brief,
+                min_gap_hours,
+                task_minutes,
+                study_id,
+            ],
         )
     return find_study_config(con, study_id)
 
@@ -1326,7 +1337,7 @@ def upsert_study_config(
 def find_study_config(con, study_id: str) -> dict | None:
     row = con.execute(
         "SELECT study_id, topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, "
-        "min_gap_hours, created_by, created_at, updated_at "
+        "min_gap_hours, created_by, created_at, updated_at, task_minutes "
         "FROM study_configs WHERE study_id = ?",
         [study_id],
     ).fetchone()
@@ -1339,6 +1350,7 @@ def find_study_config(con, study_id: str) -> dict | None:
             "B": {"title": row[3], "brief": row[4] or ""},
         },
         "min_gap_hours": row[5],
+        "task_minutes": row[9],
         "created_by": row[6],
         "created_at": row[7],
         "updated_at": row[8],
