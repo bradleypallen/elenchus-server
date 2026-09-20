@@ -522,3 +522,70 @@ class TestEmailDeliveryIsVisible:
         r = client.post(f"/api/admin/users/{target}/reset-password")
         assert r.status_code == 200, r.text
         assert r.json()["emailed"] is False and r.json()["reset_url"]
+
+
+# ─── The public "email me a login link" form must not email strangers ──
+
+
+class TestLoginLinkIsNotAMailCannon:
+    """The form is public. It used to email whatever address was typed
+    into it — harmless while the mail provider is sandboxed, an open
+    invitation to abuse the moment it isn't."""
+
+    @pytest.fixture(autouse=True)
+    def _mail(self, monkeypatch):
+        from elenchus import email_service
+
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        self.mail = _WorkingMail()
+        email_service.set_email_service(self.mail)
+        get_registry().platform_con().execute("DELETE FROM magic_links")
+        yield
+        email_service.set_email_service(email_service.ConsoleEmailService())
+
+    def _ask(self, email: str):
+        return TestClient(app).post("/api/auth/magic-link", json={"email": email})
+
+    def _member(self, email="member@example.org", **kw) -> int:
+        return pdb.create_actor(
+            get_registry().platform_con(),
+            kind="researcher",
+            email=email,
+            display_name="Member",
+            password_hash=auth.hash_password("pw"),
+            **kw,
+        )
+
+    def test_a_stranger_gets_no_email_and_the_same_answer(self):
+        self._member()
+        known, unknown = self._ask("member@example.org"), self._ask("stranger@example.net")
+        assert (known.status_code, known.json()) == (unknown.status_code, unknown.json())
+        assert self.mail.sent == ["member@example.org"]
+        con = get_registry().platform_con()
+        assert con.execute("SELECT COUNT(*) FROM magic_links").fetchone()[0] == 1
+
+    def test_a_deactivated_account_gets_nothing(self):
+        actor_id = self._member()
+        pdb.deactivate_actor(get_registry().platform_con(), actor_id)
+        assert self._ask("member@example.org").status_code == 200
+        assert self.mail.sent == []
+
+    def test_one_mailbox_cannot_be_flooded(self):
+        self._member()
+        for _ in range(auth.MAGIC_LINK_RATE_LIMIT + 4):
+            assert self._ask("member@example.org").status_code == 200
+        assert len(self.mail.sent) == auth.MAGIC_LINK_RATE_LIMIT
+
+    def test_the_link_that_is_sent_still_works(self):
+        self._member()
+        self._ask("member@example.org")
+        con = get_registry().platform_con()
+        token = con.execute("SELECT token FROM magic_links").fetchone()[0]
+        who = TestClient(app)
+        assert who.get(f"/api/auth/magic/{token}").status_code == 200
+        assert who.get("/api/auth/me").json()["email"] == "member@example.org"
+
+    def test_empty_and_malformed_addresses(self):
+        for email in ("", "   ", "not-an-address"):
+            assert self._ask(email).status_code in (200, 422)
+        assert self.mail.sent == []

@@ -5,6 +5,29 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-09-19
+
+### Security
+
+- **The public "email me a login link" form emailed any address typed into
+  it**, registered or not, without limit — by design, to avoid revealing
+  which addresses are registered. Not revealing that is the job of the
+  response (identical either way); it never required emailing strangers.
+  Harmless while the mail provider is sandboxed; once it isn't, anyone
+  could make the server send unsolicited mail from its domain, or flood a
+  mailbox. A login link now goes only to an **active, registered account**,
+  at most five times in fifteen minutes (`auth.magic_link_recipient`), as
+  *forgot password?* already did. **Deploy this before turning on SES
+  production access.**
+
+### Documentation
+
+- `deploy/ses-production-access.md` — the Amazon SES production-access
+  request, ready to paste, with what to put in place first (this release;
+  bounce and complaint notifications routed to a real inbox — today they
+  go to a domain with no mailbox), the questions AWS tends to ask, and what
+  to check once it is granted.
+
 ## [0.8.1] — 2026-09-19
 
 ### Fixed

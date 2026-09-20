@@ -162,15 +162,44 @@ def issue_magic_link(email: str, ttl: timedelta = MAGIC_LINK_TTL) -> str:
     via EmailService). The token itself is returned; it should be
     embedded in a URL like `https://.../auth/magic/<token>`.
 
-    Note: we issue magic links for any email, not just registered ones.
-    This avoids leaking which emails are registered. If the email isn't
-    in `actors`, `consume_magic_link` will fail gracefully.
+    This function issues a token for whatever address it is given; the
+    *route* decides who may have one (`magic_link_recipient`). Not
+    leaking which emails are registered is the job of the route's
+    response — identical either way — not of emailing strangers.
     """
     reg = get_registry()
     token = generate_token()
     with reg.platform_lock:
         pdb.create_magic_link(reg.platform_con(), token=token, email=email, ttl=ttl)
     return token
+
+
+MAGIC_LINK_RATE_LIMIT = 5  # max login links per address per window
+MAGIC_LINK_RATE_WINDOW = timedelta(minutes=15)
+
+
+def magic_link_recipient(email: str) -> dict | None:
+    """The actor a login link may be emailed to, or None.
+
+    A login link goes **only to an active, registered account**, and at
+    most `MAGIC_LINK_RATE_LIMIT` times per `MAGIC_LINK_RATE_WINDOW`. The
+    request form is public, so anything looser lets anyone on the
+    internet make this server send mail to an address of their choosing
+    — unsolicited mail from our domain, bounces and complaints against
+    it, and a mailbox that can be flooded. The caller must answer the
+    same way whether this returns an actor or None."""
+    email = (email or "").strip()
+    if not email:
+        return None
+    con = get_registry().platform_con()
+    actor = pdb.find_actor_by_email(con, email)
+    if actor is None or actor.get("deactivated_at") is not None:
+        return None
+    window_minutes = int(MAGIC_LINK_RATE_WINDOW.total_seconds() // 60)
+    if pdb.count_recent_magic_links(con, actor["email"], window_minutes) >= MAGIC_LINK_RATE_LIMIT:
+        logger.warning("Login-link rate limit reached for actor #%s", actor["id"])
+        return None
+    return actor
 
 
 def consume_magic_link(token: str) -> str | None:
