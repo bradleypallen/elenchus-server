@@ -11,11 +11,14 @@ Run: elenchus
 Or:  uvicorn elenchus.server:app --reload
 """
 
+import contextlib
 import glob
 import logging
 import os
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -24,11 +27,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__ as elenchus_version
+from . import alerting as alerting_mod
 from . import audit as audit_mod
 from . import auth, invites, secretbox, study_enrolment, study_text, text_judging
 from . import backup as backup_mod
 from . import cost_ledger as cost_ledger_mod
 from . import costs as costs_mod
+from . import email_service as email_service_mod
 from . import integrity as integrity_mod
 from . import provider_report as provider_report_mod
 from .db import get_registry, init_registry
@@ -834,6 +839,62 @@ def admin_set_cost_budget(
         "Cost budget %s by actor=%s: %s", "cleared" if clearing else "set", actor["id"], budget
     )
     return {"budget": budget}
+
+
+# ── System (admin dashboard) ──
+#
+# What an admin needs to keep the platform healthy, without a shell:
+# is it up and on which release, can it reach the LLM, can it send mail,
+# what has it been alerting about, when was it last backed up.
+
+_SERVER_STARTED_AT = datetime.now(UTC)
+
+
+@app.get("/api/admin/system")
+def admin_system(actor: dict = Depends(auth.require_admin)):
+    """One read for the System tab: release and schema, LLM and email
+    configuration (never a secret), disk space, backups, and the newest
+    alerts."""
+    import shutil
+
+    reg = get_registry()
+    con = reg.platform_con()
+    row = con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+    backups_dir = os.path.join(DATA_DIR, "backups")
+    backups = []
+    for path in backup_mod.list_backups(backups_dir)[:10]:
+        with contextlib.suppress(OSError):
+            stat = os.stat(path)
+            backups.append(
+                {
+                    "name": os.path.basename(path),
+                    "size_bytes": stat.st_size,
+                    "modified_utc": datetime.fromtimestamp(stat.st_mtime, UTC).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                }
+            )
+    disk = shutil.disk_usage(DATA_DIR)
+    alerts = alerting_mod.list_alerts(con, limit=50)
+    day_ago = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    return {
+        "version": elenchus_version,
+        "schema_version": int(row[0]) if row and row[0] else None,
+        "started_utc": _SERVER_STARTED_AT.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "server_timezone": time.tzname[0],
+        "llm": _settings_payload(),
+        "email": {
+            "backend": email_service_mod.active_backend(),
+            "enabled": email_service_mod.active_backend() == "smtp",
+            "alert_email_to": bool(os.environ.get("ALERT_EMAIL_TO", "").strip()),
+        },
+        "disk": {"free_bytes": disk.free, "total_bytes": disk.total},
+        "backups": backups,
+        "backups_total": len(backup_mod.list_backups(backups_dir)),
+        "alerts": alerts,
+        "alerts_last_24h": sum(1 for a in alerts if a["at_utc"] >= day_ago),
+        "phase_b_enabled": opponent.enable_phase_b,
+    }
 
 
 @app.put("/api/admin/costs/alert")
@@ -3358,6 +3419,10 @@ def healthz(response: Response):
         "schema_version": schema_version,
         "phase_b_enabled": opponent.enable_phase_b,
         "llm_configured": opponent._has_api_key,
+        # Whether the server can actually send mail. The sign-in page
+        # uses it to say so, instead of promising a reset link or a
+        # login link that will never arrive.
+        "email_enabled": email_service_mod.active_backend() == "smtp",
         "checks": checks,
     }
     if not healthy:

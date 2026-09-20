@@ -248,3 +248,112 @@ class TestExportDownload:
     def test_a_study_with_no_exports(self):
         _login("researcher")
         assert client.get("/api/admin/study/NOTHING/exports").json() == {"exports": []}
+
+
+# ─── The System tab: alerts an admin can see, health, backups ────────
+
+
+class TestStoredAlerts:
+    @pytest.fixture(autouse=True)
+    def _fresh(self):
+        from elenchus import alerting
+
+        get_registry().platform_con().execute("DELETE FROM alerts")
+        alerting.set_dispatcher_for_tests(None)
+        yield
+        alerting.set_dispatcher_for_tests(None)
+
+    def _alert(self, category="llm.rate_limit", severity=None, **metadata):
+        from elenchus import alerting
+
+        return alerting.Alert(
+            severity=severity or alerting.Severity.HIGH,
+            category=category,
+            subject=f"something about {category}",
+            body="details",
+            metadata=metadata,
+        )
+
+    def test_a_dispatched_alert_is_kept_for_the_dashboard(self):
+        from elenchus import alerting
+
+        assert alerting.dispatch(self._alert(model="claude-opus-4-8", attempts=3)) is True
+        (row,) = alerting.list_alerts(get_registry().platform_con())
+        assert row["severity"] == "high" and row["category"] == "llm.rate_limit"
+        assert row["metadata"] == {"model": "claude-opus-4-8", "attempts": 3}
+        assert row["at_utc"].endswith("Z")
+
+    def test_a_deduped_alert_is_not_stored_twice(self):
+        from elenchus import alerting
+
+        alerting.dispatch(self._alert())
+        assert alerting.dispatch(self._alert()) is False  # inside the dedup window
+        assert len(alerting.list_alerts(get_registry().platform_con())) == 1
+
+    def test_history_is_capped(self, monkeypatch):
+        from elenchus import alerting
+
+        monkeypatch.setattr(alerting, "ALERT_HISTORY_ROWS", 5)
+        channel = alerting.DatabaseAlertChannel()
+        for i in range(12):
+            channel.send(self._alert(category=f"test.{i}"))
+        kept = alerting.list_alerts(get_registry().platform_con(), limit=5)
+        assert [a["category"] for a in kept] == [f"test.{i}" for i in (11, 10, 9, 8, 7)]
+        count = get_registry().platform_con().execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+        assert count == 5
+
+    def test_the_spend_alert_reaches_the_dashboard(self):
+        """The alert built yesterday was only visible in the server log."""
+        from elenchus import cost_alerts
+
+        con = get_registry().platform_con()
+        con.execute("DELETE FROM usage")
+        con.execute(
+            "DELETE FROM platform_settings WHERE key IN (?, ?)",
+            [cost_alerts.SETTING_KEY, cost_alerts.STATE_KEY],
+        )
+        pdb.record_usage(
+            con,
+            actor_id=None,
+            base_id=None,
+            model="claude-opus-4-6",
+            category="success",
+            prompt_tokens=6_000_000,  # $30
+            completion_tokens=0,
+            cost_usd=0.0,
+            attempts=1,
+            latency_ms=1,
+            purpose="dialectic_turn",
+        )
+        cost_alerts.check(con)
+        _login("admin")
+        system = client.get("/api/admin/system").json()
+        assert system["alerts"][0]["category"] == "cost.daily_spend.x1"
+        assert system["alerts_last_24h"] == 1
+        con.execute("DELETE FROM usage")
+
+
+class TestSystemRoute:
+    def test_admin_only(self):
+        assert client.get("/api/admin/system").status_code == 401
+        _login("researcher")
+        assert client.get("/api/admin/system").status_code == 403
+
+    def test_payload(self, monkeypatch):
+        monkeypatch.delenv("ALERT_EMAIL_TO", raising=False)
+        monkeypatch.setenv("EMAIL_BACKEND", "console")
+        _login("admin")
+        assert client.post("/api/admin/backup", json={}).status_code == 200
+        s = client.get("/api/admin/system").json()
+        assert s["version"] and s["schema_version"] >= 16
+        assert s["email"] == {"backend": "console", "enabled": False, "alert_email_to": False}
+        assert s["disk"]["free_bytes"] > 0
+        assert s["backups_total"] >= 1 and s["backups"][0]["name"].endswith(".tar.gz")
+        assert "api_key" not in json.dumps(s["llm"]).replace("has_api_key", "")
+        assert set(s["llm"]) >= {"model", "has_api_key", "key_persisted"}
+
+    def test_the_sign_in_page_can_tell_whether_mail_works(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_BACKEND", "console")
+        assert TestClient(app).get("/healthz").json()["email_enabled"] is False
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        assert TestClient(app).get("/healthz").json()["email_enabled"] is True

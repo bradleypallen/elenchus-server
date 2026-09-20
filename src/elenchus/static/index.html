@@ -293,6 +293,35 @@ function salvageResponseField(s) {
 // determining whether the user is logged in.
 const AuthContext = React.createContext(null);
 
+// Whether this server can send mail at all (/healthz `email_enabled`).
+// When it can't, "forgot password" and "email me a login link" would
+// promise an email that never arrives — so the forms say what to do
+// instead: an admin can make a reset link from the Users tab.
+function useEmailEnabled() {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    fetch(API + '/healthz').then(r => r.json()).then(h => {
+      if (h && h.email_enabled === false) setEnabled(false);
+    }).catch(() => {});
+  }, []);
+  return enabled;
+}
+
+function NoEmailNotice({ what }) {
+  const enabled = useEmailEnabled();
+  if (enabled) return null;
+  return (
+    <div role="note" style={{
+      marginBottom: 14, padding: '10px 12px', borderRadius: 6, border: '1px solid var(--tension)',
+      fontSize: 12, fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6,
+    }}>
+      <b style={{ color: 'var(--text)' }}>This server isn’t set up to send email</b>, so {what} can’t reach you.
+      Ask an administrator instead: in the dashboard’s <i>Users</i> tab they can press <i>reset password</i> and
+      send you the one-time link it shows.
+    </div>
+  );
+}
+
 // ── Auth UI ──
 //
 // Three small, deliberately stylistically-aligned forms: login, signup
@@ -617,6 +646,7 @@ function MagicLink({ onSwitchLogin }) {
         <button style={authLinkStyle} onClick={onSwitchLogin}>back to sign in</button>
       }
     >
+      <NoEmailNotice what="a login link" />
       {sent ? (
         <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
                       fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '20px 8px' }}>
@@ -659,6 +689,7 @@ function ForgotPassword({ onSwitchLogin }) {
       title="Reset your password"
       footer={<button style={authLinkStyle} onClick={onSwitchLogin}>back to sign in</button>}
     >
+      <NoEmailNotice what="a reset link" />
       {sent ? (
         <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
                       fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '20px 8px' }}>
@@ -4271,10 +4302,181 @@ function AdminCostsTab({ fs }) {
   );
 }
 
+// ── System (admin only) ──
+//
+// What an admin needs to keep the platform healthy without a shell on
+// the server: which release is running, whether it can reach the LLM and
+// send mail, what it has been alerting about, and when it was last
+// backed up.
+function AdminSystemTab({ fs }) {
+  const [sys, setSys] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const [audit, setAudit] = useState(null);
+  const [openAlert, setOpenAlert] = useState(null);
+
+  const load = async () => {
+    try { setSys(await api('/api/admin/system')); setError(null); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const backupNow = async () => {
+    if (busy) return;
+    setBusy(true); setNote(null); setError(null);
+    try {
+      const r = await api('/api/admin/backup', { method: 'POST', body: JSON.stringify({}) });
+      setNote(`Backup made: every account and study, and ${r.bases_dumped.length} dialectic${r.bases_dumped.length === 1 ? '' : 's'}`
+              + (r.bases_failed.length ? ` — ${r.bases_failed.length} dialectic(s) FAILED to back up` : '') + '.');
+      await load();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+  const runAudit = async () => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try { setAudit(await api('/api/admin/audit')); }
+    catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const card = { padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: 16 };
+  const note_ = { fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.6 };
+  const th = { padding: '6px 8px', fontWeight: 400, textAlign: 'left', color: 'var(--text-muted)' };
+  const td = { padding: '7px 8px', fontFamily: 'var(--sans)', verticalAlign: 'top' };
+  const smallButton = { background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                        color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '3px 10px',
+                        letterSpacing: 1, fontFamily: 'var(--mono)', opacity: busy ? 0.5 : 1 };
+  const ok = (good, yes, no) => (
+    <span style={{ color: good ? 'var(--commit)' : 'var(--deny)' }}>{good ? yes : no}</span>
+  );
+  const when = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return iso; } };
+  const gb = (n) => (n / 1e9).toFixed(1) + ' GB';
+  const sevColor = { critical: 'var(--deny)', high: 'var(--deny)', medium: 'var(--tension)', low: 'var(--text-dim)' };
+
+  if (error && !sys) return <div style={{ ...note_, color: 'var(--deny)' }}>{error}</div>;
+  if (!sys) return <div style={note_}>Loading…</div>;
+
+  const lastBackup = sys.backups[0];
+  const backupAgeDays = lastBackup ? (Date.now() - new Date(lastBackup.modified_utc).getTime()) / 86400000 : null;
+  // `registered_with_file` is the healthy case; only these are drift.
+  const auditProblems = audit ? [
+    ['registered_missing_file', audit.registered_missing_file],
+    ['orphan_scoped', audit.orphan_scoped],
+    ['orphan_flat', audit.orphan_flat],
+    ['dangling_actor_refs', audit.dangling_actor_refs],
+    ['owner_mismatch', (audit.registered_with_file || []).filter(r => r.path_owner_matches_row === false)],
+  ].filter(([, v]) => Array.isArray(v) && v.length > 0) : [];
+
+  return (
+    <div>
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={heading}>STATUS</div>
+          <button style={smallButton} onClick={load}>REFRESH</button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}><tbody>
+          <tr><td style={{ ...td, width: 170, color: 'var(--text-muted)' }}>Release</td>
+              <td style={{ ...td, fontFamily: 'var(--mono)' }}>{sys.version} · database schema {sys.schema_version} · running since {when(sys.started_utc)}</td></tr>
+          <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>AI model</td>
+              <td style={td}>
+                {ok(sys.llm.has_api_key, 'API key set', 'NO API KEY — participants cannot get replies')} ·
+                {' '}<span style={{ fontFamily: 'var(--mono)' }}>{sys.llm.model}</span>
+                {sys.llm.has_api_key && !sys.llm.key_persisted && <span style={{ color: 'var(--tension)' }}> · the key will be lost when the server restarts</span>}
+                <div style={note_}>Change these with the gear icon on the home page. Don’t change the model while a study is running.</div>
+              </td></tr>
+          <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Email</td>
+              <td style={td}>
+                {ok(sys.email.enabled, 'can send email', 'cannot send email')}
+                {!sys.email.enabled && <div style={note_}>
+                  Invites, password resets and login links are not emailed: copy the link the dashboard shows and send it yourself.
+                  “Forgot password” on the sign-in page tells people to ask an admin. Setting up mail needs access to the server.
+                </div>}
+                <div style={note_}>Alerts {sys.email.alert_email_to ? 'are also emailed.' : 'are not emailed — they appear below.'}</div>
+              </td></tr>
+          <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Disk</td>
+              <td style={td}>{ok(sys.disk.free_bytes > 2e9, `${gb(sys.disk.free_bytes)} free`, `only ${gb(sys.disk.free_bytes)} free`)} of {gb(sys.disk.total_bytes)}</td></tr>
+          <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Server clock</td>
+              <td style={td}>{ok(sys.server_timezone === 'UTC', 'UTC', `${sys.server_timezone} — should be UTC`)}
+                {sys.server_timezone !== 'UTC' && <div style={note_}>Stored times and the provider reconciliation assume UTC. Fixing it needs access to the server.</div>}</td></tr>
+        </tbody></table>
+      </div>
+
+      <div style={card}>
+        <div style={heading}>ALERTS — {sys.alerts_last_24h} IN THE LAST 24 HOURS</div>
+        {sys.alerts.length === 0 ? <div style={note_}>None recorded. Alerts raised from now on appear here — an AI outage, a rejected API key, a day’s spend far above normal.</div> :
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+            <thead><tr><th style={th}>when</th><th style={th}>severity</th><th style={th}>what</th></tr></thead>
+            <tbody>{sys.alerts.slice(0, 25).map(a => (
+              <tr key={a.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+                  onClick={() => setOpenAlert(openAlert === a.id ? null : a.id)}>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--text-dim)' }}>{when(a.at_utc)}</td>
+                <td style={{ ...td, color: sevColor[a.severity] || 'var(--text)', fontFamily: 'var(--mono)' }}>{a.severity}</td>
+                <td style={td}>
+                  {a.subject}
+                  {openAlert === a.id && (
+                    <div style={{ ...note_, marginTop: 6 }}>
+                      {a.body && <div>{a.body}</div>}
+                      <div style={{ fontFamily: 'var(--mono)', wordBreak: 'break-all', marginTop: 4 }}>
+                        {a.category} · {Object.entries(a.metadata).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => `${k}=${v}`).join(' · ')}
+                      </div>
+                    </div>
+                  )}
+                </td>
+              </tr>))}</tbody>
+          </table>}
+        {sys.alerts.length > 25 && <div style={{ ...note_, marginTop: 6 }}>Showing the newest 25 of {sys.alerts.length} kept.</div>}
+      </div>
+
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={heading}>BACKUPS — {sys.backups_total} KEPT ON THE SERVER</div>
+          <button style={smallButton} disabled={busy} onClick={backupNow}>{busy ? 'WORKING…' : 'BACK UP NOW'}</button>
+        </div>
+        {!lastBackup
+          ? <div style={{ ...note_, color: 'var(--deny)' }}>There is no backup. Press BACK UP NOW before the first participant.</div>
+          : <div style={note_}>
+              Newest: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text)' }}>{lastBackup.name}</span>
+              {' '}({(lastBackup.size_bytes / 1024).toFixed(0)} KB), {when(lastBackup.modified_utc)} —{' '}
+              {ok(backupAgeDays < 2, backupAgeDays < 1 ? 'less than a day old' : 'a day old', `${Math.floor(backupAgeDays)} days old`)}.
+            </div>}
+        <div style={{ ...note_, marginTop: 8 }}>
+          A backup is a snapshot of every account, study and dialectic. Take one before and after each day of sessions.
+          Backups stay <b>on the server</b>: they protect against a mistake or a bad upgrade, not against losing the
+          server itself — copying them elsewhere, and restoring one, needs access to the server.
+          The study <i>export</i> (Study tab) is what you download to keep the research data.
+        </div>
+        {note && <div style={{ ...note_, color: 'var(--commit)', marginTop: 8 }}>{note}</div>}
+        {error && <div style={{ ...note_, color: 'var(--deny)', marginTop: 8 }}>{error}</div>}
+      </div>
+
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={heading}>CONSISTENCY CHECK</div>
+          <button style={smallButton} disabled={busy} onClick={runAudit}>RUN CHECK</button>
+        </div>
+        <div style={note_}>
+          Compares the accounts and studies on record with the dialectic files on disk. Worth running after an
+          upgrade or a restore.
+        </div>
+        {audit && (auditProblems.length === 0
+          ? <div style={{ ...note_, color: 'var(--commit)', marginTop: 8 }}>Everything on record matches what is on disk.</div>
+          : <div style={{ marginTop: 8 }}>
+              <div style={{ ...note_, color: 'var(--deny)' }}>Something doesn’t match — send this to whoever maintains the server:</div>
+              <pre style={{ fontSize: fs(10), fontFamily: 'var(--mono)', color: 'var(--text-dim)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                {JSON.stringify(Object.fromEntries(auditProblems), null, 2)}</pre>
+            </div>)}
+      </div>
+    </div>
+  );
+}
+
 function AdminDashboard({ fs, actor, onBack }) {
   // Researchers run studies but don't administer the platform: they get
   // the Study and Judging tabs (whose routes are researcher-gated) and
-  // not Invites / Users / Costs (admin-only routes that would just 403).
+  // not Invites / Users / Costs / System (admin-only routes that would just 403).
   const isAdmin = actor?.kind === 'admin';
   const [tab, setTab] = useState(isAdmin ? 'invites' : 'study');
   return (
@@ -4311,6 +4513,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           { id: 'study', label: 'Study' },
           { id: 'judging', label: 'Judging' },
           { id: 'costs', label: 'Costs', adminOnly: true },
+          { id: 'system', label: 'System', adminOnly: true },
         ].filter(t => isAdmin || !t.adminOnly).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
@@ -4331,6 +4534,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           {tab === 'study' && <AdminStudyTab fs={fs} />}
           {tab === 'judging' && <AdminJudgingTab fs={fs} />}
           {tab === 'costs' && <AdminCostsTab fs={fs} />}
+          {tab === 'system' && <AdminSystemTab fs={fs} />}
         </div>
       </div>
     </div>
