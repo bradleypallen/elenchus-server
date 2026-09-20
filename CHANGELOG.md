@@ -5,8 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Platform schema 12 → 13 (`cost_entries`, `cost_recurring`); applied
-automatically at startup.
+## [0.6.0] — 2026-09-19
+
+An infrastructure ledger beside the measured LLM spend. Platform schema
+12 → 13 (`cost_entries`, `cost_recurring`); applied automatically at
+startup — back up first, as for any schema change.
 
 ### Added
 
