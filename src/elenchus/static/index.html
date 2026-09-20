@@ -2741,7 +2741,7 @@ function AdminUsersTab({ fs }) {
 // and topic come first (permuted blocks), which keeps the four cells
 // balanced and the two sessions linked in the data.
 function AdminEnrolmentPanel({ fs, onChanged }) {
-  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48 };
+  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48, task_minutes: '' };
   const [studies, setStudies] = useState([]);
   const [studyId, setStudyId] = useState('');
   const [cfg, setCfg] = useState(blank);
@@ -2753,11 +2753,13 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(null);
+  const [defaultTaskMinutes, setDefaultTaskMinutes] = useState(60);
 
   const loadStudies = async () => {
     try {
       const r = await api('/api/admin/study/configs');
       setStudies(r.studies || []);
+      if (r.default_task_minutes) setDefaultTaskMinutes(r.default_task_minutes);
       if (!studyId && r.studies?.length) setStudyId(r.studies[0].study_id);
       if (!r.studies?.length) setShowSetup(true);
     } catch (e) { setError(e.message); }
@@ -2773,6 +2775,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
     const st = studies.find(x => x.study_id === studyId);
     if (st) setCfg({
       study_id: st.study_id, min_gap_hours: st.min_gap_hours,
+      task_minutes: st.task_minutes === null || st.task_minutes === undefined ? '' : String(st.task_minutes),
       topic_a_title: st.topics.A.title, topic_a_brief: st.topics.A.brief,
       topic_b_title: st.topics.B.title, topic_b_brief: st.topics.B.brief,
     });
@@ -2784,7 +2787,10 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
     try {
       const { study_id, ...body } = cfg;
       await api(`/api/admin/study/${encodeURIComponent(study_id.trim())}/config`, {
-        method: 'PUT', body: JSON.stringify({ ...body, min_gap_hours: parseInt(body.min_gap_hours, 10) || 0 }),
+        method: 'PUT', body: JSON.stringify({
+          ...body, min_gap_hours: parseInt(body.min_gap_hours, 10) || 0,
+          task_minutes: String(body.task_minutes).trim() === '' ? null : parseInt(body.task_minutes, 10),
+        }),
       });
       setStudyId(study_id.trim()); setShowSetup(false);
       await loadStudies();
@@ -2873,8 +2879,16 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
               <input type="number" min="0" value={cfg.min_gap_hours}
                 onChange={e => setCfg(c => ({ ...c, min_gap_hours: e.target.value }))} style={{ ...input, width: 80 }} />
             </label>
+            <label style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+              Length of the main task, in minutes{' '}
+              <input type="number" min="1" max="600" value={cfg.task_minutes} placeholder={String(defaultTaskMinutes)}
+                onChange={e => setCfg(c => ({ ...c, task_minutes: e.target.value }))} style={{ ...input, width: 80 }} />
+              <span style={{ color: 'var(--text-muted)' }}> — leave empty for the usual {defaultTaskMinutes}. Use 5 for a practice study.</span>
+            </label>
             <div style={{ fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>
               Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrolments only.
+              The task length only drives the clock and its two reminders; nothing is ever cut off. Set it before the first
+              participant starts and leave it alone afterwards.
             </div>
             <button onClick={saveConfig} disabled={busy} style={{
               justifySelf: 'start', padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4,
@@ -2969,6 +2983,15 @@ function AdminStudyTab({ fs }) {
   const [lastLink, setLastLink] = useState(null);
   const [exporting, setExporting] = useState(null);
   const [exportResult, setExportResult] = useState(null);
+  const [exportsByStudy, setExportsByStudy] = useState({});
+  const { actor: me } = React.useContext(AuthContext) || {};
+
+  const loadExports = async (studyId) => {
+    try {
+      const r = await api(`/api/admin/study/${encodeURIComponent(studyId)}/exports`);
+      setExportsByStudy(prev => ({ ...prev, [studyId]: r.exports || [] }));
+    } catch (e) { /* the list is a convenience; the export result still shows */ }
+  };
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -3018,7 +3041,8 @@ function AdminStudyTab({ fs }) {
     setExporting(studyId); setError(null); setExportResult(null);
     try {
       const res = await api(`/api/admin/study/${encodeURIComponent(studyId)}/export`, { method: 'POST' });
-      setExportResult(res);
+      setExportResult({ ...res, study_id: studyId });
+      await loadExports(studyId);
     } catch (e) { setError(e.message); }
     setExporting(null);
   };
@@ -3098,15 +3122,49 @@ function AdminStudyTab({ fs }) {
                 padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1,
                 opacity: exporting === sid ? 0.5 : 1 }}>
                 {exporting === sid ? 'EXPORTING…' : 'EXPORT'}</button>
+              <button onClick={() => exportsByStudy[sid] ? setExportsByStudy(prev => { const n = { ...prev }; delete n[sid]; return n; }) : loadExports(sid)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                         fontSize: fs(10), fontFamily: 'var(--sans)', textDecoration: 'underline' }}>
+                {exportsByStudy[sid] ? 'hide downloads' : 'downloads'}</button>
             </div>
           ))}
           {exportResult && (
             <div style={{ marginTop: 6, padding: 8, borderRadius: 4, background: 'var(--surface2)',
-                          fontSize: fs(10), fontFamily: 'var(--mono)', color: 'var(--text-dim)', wordBreak: 'break-all' }}>
-              archive: {exportResult.archive}<br/>
-              {exportResult.sessions_exported.length} sessions, {exportResult.sessions_failed.length} failed
+                          fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+              Exported {exportResult.study_id}: {exportResult.sessions_exported.length} sessions
+              {exportResult.sessions_failed.length > 0 && <span style={{ color: 'var(--deny)' }}>, {exportResult.sessions_failed.length} failed</span>}.
+              It is the newest file under <i>downloads</i> below.
             </div>
           )}
+          {Object.entries(exportsByStudy).map(([sid, files]) => (
+            <div key={sid} style={{ marginTop: 8, padding: 10, borderRadius: 4, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>
+                EXPORTS OF {sid}
+              </div>
+              {files.length === 0
+                ? <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>None yet — press EXPORT.</div>
+                : files.map(f => (
+                  <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4,
+                                             fontSize: fs(11), fontFamily: 'var(--mono)' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>{f.created}</span>
+                    <a href={`/api/admin/study/${encodeURIComponent(sid)}/exports/${encodeURIComponent(f.name)}`} download
+                       style={{ color: 'var(--accent)' }}>{f.name}</a>
+                    <span style={{ color: 'var(--text-muted)' }}>{(f.size_bytes / 1024).toFixed(0)} KB</span>
+                    {f.pseudonym_file && me?.kind === 'admin' && (
+                      <a href={`/api/admin/study/${encodeURIComponent(sid)}/exports/${encodeURIComponent(f.name)}/pseudonyms`} download
+                         onClick={e => { if (!confirm(
+                           'This file links participant codes to the names you typed when enrolling them.\n\n'
+                           + 'Keep it apart from the data archive, never upload it to a repository or a shared drive, '
+                           + 'and never send the two together.\n\nDownload it?')) e.preventDefault(); }}
+                         style={{ color: 'var(--deny)', fontFamily: 'var(--sans)' }}>names key (keep separate)</a>
+                    )}
+                  </div>))}
+              <div style={{ marginTop: 6, fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                The archive holds no names — participants appear by code. The key from codes back to names is a separate
+                file only an admin can download.
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

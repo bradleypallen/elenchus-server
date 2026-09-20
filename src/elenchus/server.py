@@ -438,6 +438,9 @@ class StudyConfigRequest(BaseModel):
     topic_b_title: str
     topic_b_brief: str = ""
     min_gap_hours: int = 48
+    # How long this study's main task is meant to take (the writing
+    # pane's clock). None = the server's default. Guidance only.
+    task_minutes: int | None = None
 
 
 class EnrolParticipantRequest(BaseModel):
@@ -1278,7 +1281,11 @@ def admin_void_participant_token(
 
 @app.get("/api/admin/study/configs")
 def admin_list_study_configs(actor: dict = Depends(auth.require_researcher)):
-    return {"studies": pdb.list_study_configs(get_registry().platform_con())}
+    return {
+        "studies": pdb.list_study_configs(get_registry().platform_con()),
+        # What a study with no task length of its own gets.
+        "default_task_minutes": _task_minutes(),
+    }
 
 
 @app.put("/api/admin/study/{study_id}/config")
@@ -1303,7 +1310,10 @@ def admin_set_study_config(
         raise HTTPException(400, "The two topics must be different")
     if req.min_gap_hours < 0:
         raise HTTPException(400, "min_gap_hours can't be negative")
+    if req.task_minutes is not None and not 1 <= req.task_minutes <= 600:
+        raise HTTPException(400, "task_minutes must be between 1 and 600 (or empty)")
     reg = get_registry()
+    before = pdb.find_study_config(reg.platform_con(), study_id)
     with reg.platform_lock:
         config = pdb.upsert_study_config(
             reg.platform_con(),
@@ -1313,17 +1323,21 @@ def admin_set_study_config(
             topic_b_title=req.topic_b_title.strip(),
             topic_b_brief=req.topic_b_brief.strip(),
             min_gap_hours=req.min_gap_hours,
+            task_minutes=req.task_minutes,
             actor_id=actor["id"],
         )
     logger.info(
-        "Study config set: study=%s topics=(%r, %r) min_gap_hours=%d (by %d)",
+        "Study config set: study=%s topics=(%r, %r) min_gap_hours=%d task_minutes=%s "
+        "(was %s) (by %d)",
         study_id,
         config["topics"]["A"]["title"],
         config["topics"]["B"]["title"],
         config["min_gap_hours"],
+        config["task_minutes"],
+        before["task_minutes"] if before else "—",
         actor["id"],
     )
-    return config
+    return {**config, "default_task_minutes": _task_minutes()}
 
 
 @app.get("/api/admin/study/{study_id}/config")
@@ -1678,6 +1692,95 @@ def admin_export_study(
         actor["id"],
     )
     return result
+
+
+# ── Downloading exports ──
+#
+# An export lands in `{data_dir}/exports/` on the server. Whoever runs
+# the study shouldn't need a shell to look at what they collected, so
+# the files can be downloaded. Two files, two gates: the archive holds
+# no names (researcher); the pseudonym map is the key from codes back to
+# people (admin only, and the UI says what it is before handing it over).
+# A file is served only if it is in the listing for that study — the
+# name is matched against what is on disk, never joined into a path.
+
+
+def _exports_dir() -> str:
+    return os.path.join(os.path.dirname(get_registry().platform_path), "exports")
+
+
+def _study_exports(study_id: str) -> list[dict]:
+    """This study's archives, newest first."""
+    import re
+
+    pattern = re.compile(rf"^study-{re.escape(study_id)}-(\d{{8}}-\d{{6}})\.tar\.gz$")
+    directory = _exports_dir()
+    found = []
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            m = pattern.match(name)
+            path = os.path.join(directory, name)
+            if not m or not os.path.isfile(path):
+                continue
+            stem = name[: -len(".tar.gz")]
+            found.append(
+                {
+                    "name": name,
+                    "created": m.group(1),
+                    "size_bytes": os.path.getsize(path),
+                    "pseudonym_file": (
+                        f"{stem}.pseudonyms.json"
+                        if os.path.isfile(os.path.join(directory, f"{stem}.pseudonyms.json"))
+                        else None
+                    ),
+                }
+            )
+    return sorted(found, key=lambda e: e["created"], reverse=True)
+
+
+@app.get("/api/admin/study/{study_id}/exports")
+def admin_list_study_exports(study_id: str, actor: dict = Depends(auth.require_researcher)):
+    """The archives already made for this study, newest first."""
+    return {"exports": _study_exports(study_id.strip())}
+
+
+@app.get("/api/admin/study/{study_id}/exports/{name}")
+def admin_download_study_export(
+    study_id: str, name: str, actor: dict = Depends(auth.require_researcher)
+):
+    """Download one archive. It contains no names — the pseudonym map
+    is a separate file behind a separate, admin-only route."""
+    if name not in {e["name"] for e in _study_exports(study_id.strip())}:
+        raise HTTPException(404, "No such export for this study")
+    logger.info(
+        "Study export downloaded: study=%s file=%s by actor=%d", study_id, name, actor["id"]
+    )
+    return FileResponse(
+        os.path.join(_exports_dir(), name), media_type="application/gzip", filename=name
+    )
+
+
+@app.get("/api/admin/study/{study_id}/exports/{name}/pseudonyms")
+def admin_download_study_pseudonyms(
+    study_id: str, name: str, actor: dict = Depends(auth.require_admin)
+):
+    """Download the pseudonym map that goes with an archive: the key
+    from participant codes back to the names the researcher typed. Admin
+    only. It must never travel with the archive or reach a repository."""
+    match = next((e for e in _study_exports(study_id.strip()) if e["name"] == name), None)
+    if match is None or not match["pseudonym_file"]:
+        raise HTTPException(404, "No pseudonym map for this export")
+    logger.warning(
+        "Pseudonym map downloaded: study=%s file=%s by actor=%d",
+        study_id,
+        match["pseudonym_file"],
+        actor["id"],
+    )
+    return FileResponse(
+        os.path.join(_exports_dir(), match["pseudonym_file"]),
+        media_type="application/json",
+        filename=match["pseudonym_file"],
+    )
 
 
 # ─── Phase D/8: post-session questionnaires ──────────────────────
@@ -2413,8 +2516,14 @@ def study_session_current(actor: dict = Depends(auth.current_actor)):
 # How long the main task is meant to take. Guidance, not a cutoff: the
 # participant sees an elapsed timer and a soft warning as the time runs
 # down and again when it is up, and ends the task themselves. Override
-# for training runs and demos (e.g. ELENCHUS_TASK_MINUTES=10).
-def _task_minutes() -> int:
+# A study can set its own length (`study_configs.task_minutes`, Study
+# tab) — a TRAINING study at 5 minutes beside a PILOT at 60; this is the
+# server-wide default for studies that don't (ELENCHUS_TASK_MINUTES).
+def _task_minutes(study_id: str | None = None) -> int:
+    if study_id:
+        config = pdb.find_study_config(get_registry().platform_con(), study_id)
+        if config and config.get("task_minutes"):
+            return int(config["task_minutes"])
     try:
         return max(1, int(os.environ.get("ELENCHUS_TASK_MINUTES", "60")))
     except ValueError:
@@ -2437,7 +2546,7 @@ def _study_session_payload(session: dict) -> dict:
     replaces its session object with whatever a route returns."""
     con = get_registry().platform_con()
     token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
-    task_minutes = _task_minutes()
+    task_minutes = _task_minutes(token.get("study_id"))
     payload = {
         **session,
         "topic_title": token.get("topic_title", ""),
