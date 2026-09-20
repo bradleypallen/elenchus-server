@@ -337,7 +337,9 @@ to the server (`GET /api/admin/system`):
 
 - **Status** — the running release and database schema, and when the
   server started; whether an **AI key** is set (and whether it will
-  survive a restart); whether the server **can send email**; free disk;
+  survive a restart); whether the server is **set up to send email and
+  whether its last message was accepted** (with the reason, in plain
+  words, when it wasn't); free disk;
   and whether the **server clock** is UTC. Anything wrong is red, and says
   whether you can fix it from the dashboard or it needs server access.
 - **Alerts** — the newest alerts the platform has raised, with their
@@ -350,6 +352,16 @@ to the server (`GET /api/admin/system`):
   restoring one, are [server tasks](OPERATIONS.md).
 - **Consistency check** — the audit below, run on demand, reported as
   "everything matches" or the list to pass to whoever maintains the server.
+
+**A failed email is never silent.** Every message goes through
+`email_service.deliver`: the outcome of the latest one is shown in Status,
+and a failure raises a `high` alert (`email.send_failed`) naming the
+recipient — issuing an invite reports `emailed: true / false / null`, and
+the Invites tab says in red when the email could not be sent (the
+invitation is still valid; pass the link on by hand). The commonest cause
+is an **Amazon SES account still in its sandbox**, which delivers only to
+verified addresses: request production access in the SES console. That
+alert is deliberately not itself sent by email.
 
 When the server can't send email, the sign-in page's *forgot password?* and
 *email me a login link* say so and point people to an admin — instead of

@@ -2534,6 +2534,22 @@ function AdminInvitesTab({ fs }) {
               ISSUED — share this link with {lastIssued.intended_email || 'recipient'}:
             </div>
             <div>{inviteUrl(lastIssued.token)}</div>
+            {lastIssued.emailed === true && (
+              <div style={{ color: 'var(--commit)', fontFamily: 'var(--sans)', marginTop: 6 }}>
+                Also emailed to {lastIssued.intended_email}. If they say it hasn't arrived, send them this link yourself.
+              </div>
+            )}
+            {lastIssued.emailed === false && (
+              <div style={{ color: 'var(--deny)', fontFamily: 'var(--sans)', marginTop: 6 }}>
+                <b>The email to {lastIssued.intended_email} could not be sent.</b> The invitation itself is fine —
+                copy the link above and send it to them yourself. The System tab says why the email failed.
+              </div>
+            )}
+            {lastIssued.emailed === null && (
+              <div style={{ color: 'var(--tension)', fontFamily: 'var(--sans)', marginTop: 6 }}>
+                Nothing was emailed — copy the link above and send it to them yourself.
+              </div>
+            )}
             <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', marginTop: 6 }}>
               They open it, pick a display name and password, and they're in.
               Afterwards they sign in with their email + that password.
@@ -4410,7 +4426,19 @@ function AdminSystemTab({ fs }) {
               </td></tr>
           <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Email</td>
               <td style={td}>
-                {ok(sys.email.enabled, 'can send email', 'cannot send email')}
+                {ok(sys.email.enabled && !(sys.email.last_delivery && !sys.email.last_delivery.ok),
+                    'set up to send email', sys.email.enabled ? 'set up to send email — but the last message FAILED' : 'cannot send email')}
+                {sys.email.last_delivery && (
+                  <div style={{ ...note_, color: sys.email.last_delivery.ok ? 'var(--text-muted)' : 'var(--deny)' }}>
+                    Last message ({when(sys.email.last_delivery.at_utc)}, to {sys.email.last_delivery.recipient}):{' '}
+                    {sys.email.last_delivery.ok ? 'accepted by the mail server.' : `not sent. ${sys.email.last_delivery.explanation}`}
+                    {!sys.email.last_delivery.ok && <div style={{ fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>{sys.email.last_delivery.error}</div>}
+                  </div>
+                )}
+                {sys.email.enabled && !sys.email.last_delivery && <div style={note_}>
+                  Nothing has been sent since the server last started, so this is untested. Being set up to send is not the
+                  same as mail arriving: always check that an invitation reached the person, and keep the link.
+                </div>}
                 {!sys.email.enabled && <div style={note_}>
                   Invites, password resets and login links are not emailed: copy the link the dashboard shows and send it yourself.
                   “Forgot password” on the sign-in page tells people to ask an admin. Setting up mail needs access to the server.

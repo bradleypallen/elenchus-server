@@ -286,9 +286,13 @@ you can do. For more detail on any of them, see
 **Invites** tab → choose the role **judge** → enter the judge's email — it
 is what they will sign in with (leave it empty and they are asked for it
 when they sign up) → **Issue**. The page shows **a
-link**. If the site can send email, the judge gets it by email too;
-otherwise **copy the link and send it yourself**, with the
-[Guide for Judges](judge-guide.md). The link works once and lasts 30 days.
+link**, and says what happened to the email: *also emailed*, *nothing was
+emailed*, or — in red — **the email could not be sent**. Unless it says
+*also emailed*, **copy the link and send it yourself**, with the
+[Guide for Judges](judge-guide.md). Even when it was emailed, keep the
+link until the person confirms they're in: a mail server accepting a
+message is not the same as it arriving. The link works once and lasts 30
+days.
 
 The same goes for a second researcher or another admin: choose that role
 instead. Accounts can't be created any other way.
@@ -319,8 +323,14 @@ is recorded. Keep it somewhere the data archive is not.
 - **Status** should be all green: *API key set*, enough disk. If it says
   **NO API KEY**, participants can't get replies — set the key with the
   gear icon on the home page before anyone starts.
+- **Email** says whether the last message the site sent was accepted. If
+  it says **the last message FAILED**, it gives the reason in plain words
+  — most often that the mail provider only delivers to verified addresses
+  (an Amazon SES "sandbox") — and until that is fixed on the server, send
+  every link by hand.
 - **Alerts** lists what the platform has complained about: an AI outage,
-  a rejected key, a day's spend far above normal. If a participant
+  a rejected key, an email that could not be sent, a day's spend far above
+  normal. If a participant
   reports the AI not answering, look here first; note the time.
 - **Back up now** — before the first session of the day and after the
   last. A backup protects against a mistake or a bad upgrade. It stays on

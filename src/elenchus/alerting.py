@@ -160,6 +160,11 @@ class EmailAlertChannel:
             return
         if not self.recipient or self.email_service is None:
             return
+        # "An email could not be sent" is not news to deliver by email:
+        # it would fail the same way and raise the same alert again. It
+        # still reaches the log and the dashboard.
+        if alert.category.startswith("email."):
+            return
         try:
             self.email_service.send(
                 to=self.recipient,
