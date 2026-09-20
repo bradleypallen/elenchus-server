@@ -16,9 +16,10 @@ material, not a plan of record — nothing here is sequenced in
 
 The note has three parts: what the project asks for and what already
 exists (§1–2); the gaps (§3); and an **outreach mode** (§4) — inviting
-people to use Elenchus itself, without the study harness — which turns out
-to be the piece that most of the project's external-facing promises rest
-on, and the cheapest to build. §5 is about running this work beside a
+people to use Elenchus itself, without the study harness, and deciding
+**whose LLM account each of them spends** — which turns out to be the piece
+that most of the project's external-facing promises rest on, and the
+cheapest to build. §5 is about running this work beside a
 study that needs the protocol frozen. §6 proposes an order.
 
 ## 1. What the project asks of Elenchus
@@ -322,6 +323,16 @@ wrong acknowledgement until there is a release. And mail: an instance whose
 provider is still sandboxed invites nobody
 ([`deploy/ses-production-access.md`](../deploy/ses-production-access.md)).
 
+**O10 · Everyone spends the same LLM account.** The server holds one
+process-wide `Opponent` with one client — one API key, one model, one
+endpoint — set in the Settings modal and stored encrypted as
+`platform_settings['llm_api_key_enc']`. The message route chooses nothing
+per person. So a study funded by one grant, a prototype funded by another,
+a workshop someone else is paying for, and a collaborator happy to use
+their own key all draw on the same bill, and the only way to separate them
+today is **a separate instance per billable account**. (That is not a bad
+answer — §5 wants separate instances anyway — but it is the only one.)
+
 ### Design sketch: cohorts
 
 One new concept carries most of it. A **cohort** is a named group of
@@ -333,7 +344,8 @@ cohorts
   code                         the secret in the link: /?cohort=<code>
   seats, seats_taken           40 · how many have signed up
   opens_at, closes_at          the link works only in this window
-  allowance_usd                LLM spend per account before a hard stop
+  llm_account_id               whose LLM account this cohort spends (below)
+  allowance_usd                LLM spend per person before a hard stop
   max_dialectics               per account
   protocol_profile             default profile for their dialectics (G5)
   welcome_md                   what they see first (O3)
@@ -390,7 +402,82 @@ actors.cohort_id               who came in through which door
   (a file in the data directory, served in place of the packaged one), so an
   instance acknowledges the project it serves.
 
+### Who pays: LLM accounts
+
+Make the billable account a thing the platform knows about, and choose it
+per call.
+
+```text
+llm_accounts
+  id, label                    "Study (grantee's workspace)" · "Prototype" · "A. Scholar's own key"
+  protocol, base_url           anthropic | openai-compatible, as in Settings today
+  default_model
+  api_key_enc                  Fernet, under ELENCHUS_SECRET_KEY — as the single key is now
+  owner_actor_id               NULL = the platform's; set = a person's own key
+  created_by, created_at, disabled_at
+actors.llm_account_id          one person → one account (their own key, or a sponsor's)
+cohorts.llm_account_id         a cohort → one account
+study_configs.llm_account_id   a study → one account
+usage.llm_account_id           which account paid for this call
+```
+
+- **Resolution, per call:** the person's own assignment, else their
+  cohort's, else their study's, else the server default — which is exactly
+  what exists today, so nothing changes for an instance that defines no
+  accounts. A dialectic's protocol profile (G5) names the *model*; the
+  account supplies the key and endpoint, and must be one that can serve
+  that model.
+- **Where it plugs in.** There are four places the server calls a model:
+  `Opponent._chat` and `_async_chat` (all dialectic and baseline traffic,
+  and the summaries), the legacy study-report generator, and the
+  simulator's personas. `LLMClient` already takes its protocol, model and
+  SDK clients as constructor arguments, so the change is a resolver —
+  `client_for(actor_id, base_id)` — and a small cache of clients keyed by
+  account, rebuilt when an account is edited. `Opponent.reconfigure` becomes
+  "edit the default account".
+- **Costs follow the money.** With `usage.llm_account_id`, the cost
+  dashboard shows spend per account, **budget lines attach to accounts**
+  (one grant's LLM line against one account, another's against another — on
+  one page, with no arithmetic), and provider reconciliation becomes per
+  account: a provider report is already scoped to a workspace, which is
+  what an account is on the provider's side. The daily spend alert should
+  be per account too, since a runaway on a workshop's key is the workshop
+  sponsor's problem and not the study's.
+- **Bringing your own key** is the same mechanism with `owner_actor_id`
+  set: a person enters a key in their own profile, it is used for their
+  dialectics only, they can replace or remove it, and it is never shown
+  again after entry — to them or to an admin. Three things differ. The
+  **allowance does not apply** (they are paying), though the rate limit
+  does. **Failures are theirs to hear about:** a rejected or exhausted key
+  should tell the person, in the conversation, and must not page the
+  platform's admin as the `critical` alert a rejected platform key
+  deserves. And **custody is a real obligation:** the server holds someone
+  else's secret, encrypted at rest but decryptable by whoever holds the
+  master key, so the sign-up notice must say so, and should recommend a
+  dedicated workspace key with its own spend limit on the provider's side
+  rather than a key that can do anything else.
+- **Keys are the most sensitive thing the platform stores.** Admin-only
+  management; every create, edit, assignment and removal logged with its
+  actor; never in an export, a report, a log line or an API response
+  (`has_api_key`, as now). They live in the platform database, so a backup
+  contains them — encrypted, and useless without `ELENCHUS_SECRET_KEY`,
+  which lives in the server's environment and not in the backup. Keep it
+  that way: the two must never travel together. Rotating the master key
+  means re-encrypting every account, which wants a command.
+- **A study stays on one account and one model** for as long as data is
+  being collected. A different account serving the same model is
+  scientifically harmless; what is not harmless is sharing: provider rate
+  limits are per account, so a workshop on the study's account can throttle
+  a participant mid-task. Another reason the study gets an account, and an
+  instance, of its own.
+
 ### Sizing
+
+LLM accounts — the table, the resolver and client cache, the account on
+every usage row, costs and budgets per account, the admin screen, and the
+alerting distinction — are **M, about a week**, and independent of
+everything else in this note; bringing your own key adds the profile screen
+and the notice.
 
 Cohort invitations, the allowance, per-owner names, a welcome and
 glossary, and the notice with its choice are **S to M together**, touch
@@ -424,8 +511,11 @@ What holds the line:
    that these never varied within a study; today it doesn't look at them.
 4. **Different doors.** Study participants are passwordless token actors;
    outreach users are `user` accounts in a cohort; neither can reach the
-   other's routes. Costs are already attributed per account, so study spend
+   other's routes. Costs are already attributed per person, so study spend
    and outreach spend separate cleanly — they should be shown separately.
+5. **Different purses.** With LLM accounts (§4), each project's calls are
+   paid from its own provider account and counted against its own budget
+   line — and the study's rate limit is nobody else's to exhaust.
 
 ## 6. An order
 
@@ -436,22 +526,28 @@ the thing that tells you whether it was worth building:
    per-owner dialectic names, welcome and glossary, the notice and its
    choice (§4). *Lets a named group of outside experts use the tool at all,
    which the case studies and the uptake indicators both start from.*
-2. **Interchange export/import; a query panel; derivation timing in the
+2. **LLM accounts** (§4): named, encrypted provider accounts chosen per
+   call — person, else cohort, else study, else the server default — with
+   spend, budgets and reconciliation per account. *Needed as soon as two
+   funders, or one sponsor's workshop, share an instance; harmless to build
+   before then, since an instance with no accounts behaves as it does now.*
+3. **Interchange export/import; a query panel; derivation timing in the
    capture log** (G6, G4.1). *Lets the external engine load Elenchus-built
    KBs offline, gives papers a data file to cite, makes examples forkable,
    and starts measuring where proof search hurts.*
-3. **Protocol profiles per dialectic** (G5). *Makes it safe to move
+4. **Protocol profiles per dialectic** (G5). *Makes it safe to move
    quickly.*
-4. **A reasoner interface**, pyNMMS as the first backend, the Julia engine
+5. **A reasoner interface**, pyNMMS as the first backend, the Julia engine
    as a sidecar (G3). *By now there are real KBs and real timings to justify
    it.*
-5. **Several positions per base, then alignment, then crux detection**
+6. **Several positions per base, then alignment, then crux detection**
    (G1, G2) — demonstrated first on a small case where the cruxes are known.
-6. **Sources and citations** for the legal study (G8); natural-language
+7. **Sources and citations** for the legal study (G8); natural-language
    and tentative answers (G4.2–3).
-7. **The public demonstration**: an open cohort with a small allowance,
-   seeded with forkable examples from the case studies.
-8. Structured vocabulary and composition (G7, G6) as the mathematics
+8. **The public demonstration**: an open cohort with a small allowance,
+   on an account of its own, seeded with forkable examples from the case
+   studies.
+9. Structured vocabulary and composition (G7, G6) as the mathematics
    delivers them; metrology (G9) once there is a reference KB to score
    against.
 
@@ -474,6 +570,12 @@ the thing that tells you whether it was worth building:
   the smallest allowance that lets someone reach a first accepted
   implication? The cost dashboard can answer that from existing use: the
   PoC's history runs at about five cents a turn.
+- **Should the platform hold other people's keys at all?** Bringing your
+  own key is convenient and is the honest way to let a collaborator pay
+  their own way — but it makes the server a store of third-party secrets,
+  with everything that implies for whoever operates it. The alternative is
+  to give such a person a sponsored account with an allowance and settle up
+  outside the software. Worth deciding before the first person asks.
 - **Is outreach data research data?** If opted-in outreach dialectics feed
   worked examples or papers, that is research use of personal data and
   wants the same ethical review as the study — a question for the

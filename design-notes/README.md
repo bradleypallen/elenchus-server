@@ -42,7 +42,12 @@ Elenchus itself, without the study harness — around one new concept, the
 *cohort* (a link that seats forty, an LLM allowance with a hard stop that
 is never applied to study participants, a welcome, a recorded notice and a
 choice about research use), and notes that a public demonstration is an
-open cohort rather than another feature. Also: why dialectic names must
+open cohort rather than another feature. It also designs **LLM accounts**:
+named, encrypted provider accounts chosen per call (person, else cohort,
+else study, else the server default), so that two funders or a sponsored
+workshop can share an instance with spend, budgets and reconciliation kept
+per account — including a person bringing their own key, and what holding
+someone else's key obliges. Also: why dialectic names must
 stop being global, how to run a changing prototype beside a study that
 needs the protocol frozen, and a suggested order.
 
