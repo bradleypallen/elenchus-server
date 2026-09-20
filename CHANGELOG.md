@@ -5,8 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Platform schema 14 → 16 (`study_configs.task_minutes`, `alerts`); applied
-automatically at startup.
+## [0.8.0] — 2026-09-19
+
+Self-serve operation. Platform schema 14 → 16 (`study_configs.task_minutes`,
+`alerts`); applied automatically at startup — back up first, as for any
+schema change.
 
 Everything here serves one aim: that the person running a study — an
 admin with no shell on the server — can do a complete run-through from the
