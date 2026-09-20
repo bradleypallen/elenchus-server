@@ -523,6 +523,26 @@ def logout(request: Request, response: Response):
     return {"status": "logged_out"}
 
 
+@app.get("/api/auth/invites/{token}")
+def peek_invite(token: str):
+    """What the sign-up page needs to know about an invitation before
+    the person fills it in: the role it grants, and whether it already
+    carries their email. An invite issued without one is only usable if
+    the form asks for it — it used not to, which made every such invite
+    a dead end. Holding the token is the authorization; an unknown, used
+    or expired token is a 404 and says nothing more."""
+    invite = pdb.find_invite(get_registry().platform_con(), token)
+    if invite is None or invite.get("consumed_at") is not None:
+        raise HTTPException(404, "This invitation isn't valid (it may have been used already).")
+    expires = invite.get("expires_at")
+    if expires is not None:
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if expires < datetime.now(UTC):
+            raise HTTPException(404, "This invitation has expired — ask for a new one.")
+    return {"role": invite["role"], "needs_email": not invite.get("intended_email")}
+
+
 @app.post("/api/auth/signup")
 def signup(req: SignupRequest, response: Response):
     """Consume an invite, create the actor it authorizes, and start a

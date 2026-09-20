@@ -557,16 +557,31 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
   const [token, setToken] = useState(initialToken || '');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [needsEmail, setNeedsEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  // An invitation issued without an email can only be used if this form
+  // asks for one. Ask the server what this token needs.
+  useEffect(() => {
+    if (!token) { setNeedsEmail(false); return; }
+    let cancelled = false;
+    fetch(API + `/api/auth/invites/${encodeURIComponent(token)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(info => { if (!cancelled) setNeedsEmail(!!(info && info.needs_email)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
+
   const submit = async () => {
-    if (!token || !displayName || !password || busy) return;
+    if (!token || !displayName || !password || busy || (needsEmail && !email.trim())) return;
     setBusy(true); setError(null);
     try {
       await api('/api/auth/signup', {
         method: 'POST',
-        body: JSON.stringify({ token, display_name: displayName, password }),
+        body: JSON.stringify({ token, display_name: displayName, password,
+                               ...(needsEmail ? { email_override: email.trim() } : {}) }),
       });
       // Clean the ?token= from the URL so a refresh doesn't re-submit.
       if (window.history && window.history.replaceState) {
@@ -603,6 +618,12 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
           placeholder="invite token" style={authInputStyle}
         />
       )}
+      {needsEmail && (
+        <input
+          type="email" value={email} onChange={e => setEmail(e.target.value)}
+          placeholder="your email — you'll sign in with it" style={authInputStyle}
+        />
+      )}
       <input
         value={displayName} onChange={e => setDisplayName(e.target.value)}
         placeholder="display name" autoFocus={invited} style={authInputStyle}
@@ -612,8 +633,8 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
         onKeyDown={e => { if (e.key === 'Enter') submit(); }}
         placeholder="choose a password" style={authInputStyle}
       />
-      <button onClick={submit} disabled={!token || !displayName || !password || busy}
-        style={authButtonStyle(!!(token && displayName && password) && !busy)}>
+      <button onClick={submit} disabled={!token || !displayName || !password || busy || (needsEmail && !email.trim())}
+        style={authButtonStyle(!!(token && displayName && password && (!needsEmail || email.trim())) && !busy)}>
         {busy ? '…' : 'CREATE ACCOUNT'}
       </button>
     </AuthShell>
@@ -2484,7 +2505,7 @@ function AdminInvitesTab({ fs }) {
           <input
             value={form.intended_email}
             onChange={e => setForm(f => ({ ...f, intended_email: e.target.value }))}
-            placeholder="recipient email (optional)"
+            placeholder="their email (they sign in with it)"
             style={{
               flex: 1, padding: '8px 10px', background: 'var(--surface2)',
               border: '1px solid var(--border)', borderRadius: 4,
