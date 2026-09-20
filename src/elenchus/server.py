@@ -27,6 +27,7 @@ from . import __version__ as elenchus_version
 from . import audit as audit_mod
 from . import auth, invites, secretbox, study_enrolment, study_text, text_judging
 from . import backup as backup_mod
+from . import cost_ledger as cost_ledger_mod
 from . import costs as costs_mod
 from . import integrity as integrity_mod
 from .db import get_registry, init_registry
@@ -776,10 +777,11 @@ def admin_usage(
 
 
 class CostBudgetRequest(BaseModel):
-    """The LLM budget line the cost dashboard reports against. All
-    fields None clears it."""
+    """The budget lines the cost dashboard reports against — LLM,
+    infrastructure, or both, over one period. All fields None clears it."""
 
     llm_usd: float | None = None
+    infra_usd: float | None = None
     period_start: str | None = None
     period_end: str | None = None
     label: str | None = None
@@ -811,7 +813,12 @@ def admin_set_cost_budget(
     """Set (or clear) the LLM budget line shown on the cost dashboard.
     Display only — nothing is cut off when it is exceeded."""
     reg = get_registry()
-    clearing = req.llm_usd is None and not req.period_start and not req.period_end
+    clearing = (
+        req.llm_usd is None
+        and req.infra_usd is None
+        and not req.period_start
+        and not req.period_end
+    )
     with reg.platform_lock:
         try:
             budget = costs_mod.set_budget(
@@ -823,6 +830,109 @@ def admin_set_cost_budget(
         "Cost budget %s by actor=%s: %s", "cleared" if clearing else "set", actor["id"], budget
     )
     return {"budget": budget}
+
+
+# ── Infrastructure ledger (cost_ledger.py) ──
+#
+# Hosting / domain / email charges can't be measured the way LLM tokens
+# are: an admin records them from invoices. Payloads are plain dicts —
+# `cost_ledger.validate_*` owns the rules and the messages, so the
+# route, the CLI and the tests can't drift apart.
+
+
+def _ledger_call(fn, *args, **kwargs):
+    """Run a ledger write under the platform lock, turning its
+    ValueError / LookupError into the structured 422 / 404 the UI shows."""
+    reg = get_registry()
+    with reg.platform_lock:
+        try:
+            return fn(reg.platform_con(), *args, **kwargs)
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(422, detail={"user_message": str(e)}) from None
+
+
+@app.get("/api/admin/costs/ledger")
+def admin_cost_ledger(actor: dict = Depends(auth.require_admin)):
+    """Every ledger entry (voided ones included, flagged) and every
+    recurring charge, with the category vocabulary for the forms."""
+    reg = get_registry()
+    with reg.platform_lock:
+        con = reg.platform_con()
+        return {
+            "entries": cost_ledger_mod.list_entries(con),
+            "recurring": cost_ledger_mod.list_recurring(con),
+            "categories": cost_ledger_mod.CATEGORIES,
+            "infra_categories": list(cost_ledger_mod.INFRA_CATEGORIES),
+            "reconciliation_category": cost_ledger_mod.RECONCILIATION_CATEGORY,
+        }
+
+
+@app.post("/api/admin/costs/ledger")
+def admin_cost_ledger_add(payload: dict, actor: dict = Depends(auth.require_admin)):
+    """Record a charge (or a credit: a negative amount)."""
+    return {"entry": _ledger_call(cost_ledger_mod.create_entry, payload, actor_id=actor["id"])}
+
+
+@app.put("/api/admin/costs/ledger/{entry_id}")
+def admin_cost_ledger_edit(
+    entry_id: int, payload: dict, actor: dict = Depends(auth.require_admin)
+):
+    """Correct an entry — e.g. replace an estimate with the invoiced
+    amount and clear `estimated`. The change is logged field by field."""
+    return {
+        "entry": _ledger_call(
+            cost_ledger_mod.update_entry, entry_id, payload, actor_id=actor["id"]
+        )
+    }
+
+
+@app.post("/api/admin/costs/ledger/{entry_id}/void")
+def admin_cost_ledger_void(
+    entry_id: int, payload: dict | None = None, actor: dict = Depends(auth.require_admin)
+):
+    """Take an entry out of every sum. Nothing is deleted."""
+    reason = str((payload or {}).get("reason") or "")
+    return {
+        "entry": _ledger_call(
+            cost_ledger_mod.void_entry, entry_id, actor_id=actor["id"], reason=reason
+        )
+    }
+
+
+@app.post("/api/admin/costs/ledger/record-recurring")
+def admin_cost_ledger_record_recurring(payload: dict, actor: dict = Depends(auth.require_admin)):
+    """Enter a month's expected recurring charges as estimated entries.
+    Idempotent: charges already recorded for the month are skipped."""
+    return _ledger_call(
+        cost_ledger_mod.record_recurring_month,
+        str(payload.get("month") or ""),
+        actor_id=actor["id"],
+    )
+
+
+@app.post("/api/admin/costs/recurring")
+def admin_cost_recurring_add(payload: dict, actor: dict = Depends(auth.require_admin)):
+    """Add a charge expected every month or year."""
+    return {
+        "recurring": _ledger_call(cost_ledger_mod.create_recurring, payload, actor_id=actor["id"])
+    }
+
+
+@app.put("/api/admin/costs/recurring/{recurring_id}/end")
+def admin_cost_recurring_end(
+    recurring_id: int, payload: dict, actor: dict = Depends(auth.require_admin)
+):
+    """Stop expecting a recurring charge after `ends_on`."""
+    return {
+        "recurring": _ledger_call(
+            cost_ledger_mod.end_recurring,
+            recurring_id,
+            ends_on=payload.get("ends_on"),
+            actor_id=actor["id"],
+        )
+    }
 
 
 @app.get("/api/admin/audit")

@@ -5,6 +5,41 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Platform schema 12 → 13 (`cost_entries`, `cost_recurring`); applied
+automatically at startup.
+
+### Added
+
+- **Infrastructure ledger** in the Costs tab. Hosting, domain and email
+  charges can't be measured the way tokens are, so an admin records them
+  from invoices — a ledger that doesn't care who the host is, needs no
+  billing credential on the server, and carries the invoice reference a
+  grant report asks for. Entries take the invoiced amount and currency
+  plus the US-dollar figure charged to the budget; a credit is a negative
+  amount; nothing is ever deleted (a wrong entry is **voided**, with a
+  reason, and drops out of every total); every write is logged, an edit
+  field by field. **Recurring charges** (monthly / yearly) are a forecast,
+  never counted as spend: they give the run-rate, a reminder when a past
+  month has nothing recorded, and one-click entry of a month's charges as
+  *estimated* entries to check against the invoice.
+- **An infrastructure budget line** beside the LLM one
+  (`PUT /api/admin/costs/budget` takes `llm_usd` and/or `infra_usd`), with
+  a projection to the end of the period: recorded + expected but not yet
+  entered + still to come from the recurring charges. The Costs tab's
+  headline figures are now LLM + infrastructure, with the split shown.
+- **LLM reconciliation.** Record what the LLM provider says a month of
+  usage cost; the tab shows it next to the platform's computed figure with
+  the difference. It is never added to a total — that spend is already
+  counted from tokens.
+- `elenchus costs` prints the infrastructure section and both budget lines.
+
+### Changed
+
+- The `budget` block of `GET /api/admin/costs` is now
+  `{label, period_start, period_end, pct_period_elapsed, llm_usd, infra_usd,
+  llm: {…} | null, infra: {…} | null}` (0.5.0 had the LLM line's figures at
+  the top level). A budget stored by 0.5.0 still reads.
+
 ### Fixed
 
 - `elenchus costs --days 0` printed the "All time" total twice.

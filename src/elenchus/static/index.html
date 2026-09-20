@@ -3452,13 +3452,324 @@ function compactTokens(n) {
   return String(n);
 }
 
+// The infrastructure ledger (cost_ledger.py): charges an admin records
+// from invoices. Recurring items forecast and remind; they are never
+// themselves counted as spend. The LLM provider's own monthly figure is
+// kept for reconciliation only — that money is already counted from tokens.
+function CostLedgerPanel({ fs, infra, onChanged }) {
+  // The admin's own calendar day — toISOString() would give the UTC date,
+  // which is already tomorrow for an evening in the Americas.
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const blank = { incurred_on: today, category: 'hosting', vendor: '', description: '', amount: '',
+                  currency: 'USD', amount_usd: '', invoice_ref: '', covers_month: '', estimated: false };
+  const blankRecurring = { category: 'hosting', vendor: '', description: '', amount_usd: '', cadence: 'monthly', starts_on: today };
+  const [ledger, setLedger] = useState(null);
+  const [form, setForm] = useState(blank);
+  const [editingId, setEditingId] = useState(null);
+  const [recurringForm, setRecurringForm] = useState(blankRecurring);
+  const [endingId, setEndingId] = useState(null);
+  const [endDate, setEndDate] = useState(today);
+  const [showVoided, setShowVoided] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  const load = async () => {
+    try { setLedger(await api('/api/admin/costs/ledger')); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const run = async (fn) => {
+    if (busy) return;
+    setBusy(true); setError(null); setNotice(null);
+    try { await fn(); await load(); onChanged && onChanged(); }
+    catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const saveEntry = () => run(async () => {
+    const body = { ...form, amount: form.amount === '' ? null : Number(form.amount),
+                   amount_usd: form.amount_usd === '' ? null : Number(form.amount_usd) };
+    if (editingId) await api(`/api/admin/costs/ledger/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
+    else await api('/api/admin/costs/ledger', { method: 'POST', body: JSON.stringify(body) });
+    setForm(blank); setEditingId(null);
+  });
+  const editEntry = (e) => {
+    setEditingId(e.id); setError(null); setNotice(null);
+    setForm({ incurred_on: e.incurred_on, category: e.category, vendor: e.vendor, description: e.description,
+              amount: String(e.amount), currency: e.currency, amount_usd: e.currency === 'USD' ? '' : String(e.amount_usd),
+              invoice_ref: e.invoice_ref, covers_month: e.covers_month, estimated: e.estimated });
+  };
+  const voidEntry = (e) => {
+    const reason = prompt(`Void this entry (${e.vendor}, ${usd(e.amount_usd)})? It stays in the ledger but is left out of every total.\n\nReason (optional):`, '');
+    if (reason === null) return;
+    run(() => api(`/api/admin/costs/ledger/${e.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }));
+  };
+  const recordMonth = (month) => run(async () => {
+    const r = await api('/api/admin/costs/ledger/record-recurring', { method: 'POST', body: JSON.stringify({ month }) });
+    setNotice(`${r.created.length} estimated entr${r.created.length === 1 ? 'y' : 'ies'} added for ${month}. Check each against the invoice, then edit it and untick “estimated”.`);
+  });
+  const addRecurring = () => run(async () => {
+    await api('/api/admin/costs/recurring', { method: 'POST',
+      body: JSON.stringify({ ...recurringForm, amount_usd: recurringForm.amount_usd === '' ? null : Number(recurringForm.amount_usd) }) });
+    setRecurringForm(blankRecurring);
+  });
+  const endRecurring = (id) => run(async () => {
+    await api(`/api/admin/costs/recurring/${id}/end`, { method: 'PUT', body: JSON.stringify({ ends_on: endDate }) });
+    setEndingId(null);
+  });
+
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const card = { padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' };
+  const th = { padding: '6px 8px', fontWeight: 400, textAlign: 'left', color: 'var(--text-muted)' };
+  const thr = { ...th, textAlign: 'right' };
+  const td = { padding: '7px 8px', fontFamily: 'var(--sans)' };
+  const tdr = { ...td, textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
+  const note = { fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.6 };
+  const input = { padding: '7px 9px', background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)', outline: 'none' };
+  const smallButton = { background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                        color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '3px 10px',
+                        letterSpacing: 1, fontFamily: 'var(--mono)' };
+  const primary = { padding: '7px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+                    fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer', opacity: busy ? 0.5 : 1 };
+  const tag = (text, color) => (
+    <span style={{ marginLeft: 6, fontSize: fs(9), letterSpacing: 1, color, border: `1px solid ${color}`,
+                   borderRadius: 3, padding: '0 4px', fontFamily: 'var(--mono)' }}>{text}</span>
+  );
+
+  if (!ledger) return <div style={{ ...note, marginTop: 16 }}>{error || 'Loading the ledger…'}</div>;
+
+  const categories = ledger.categories;
+  const isReconciliation = form.category === ledger.reconciliation_category;
+  const entries = ledger.entries.filter(e => showVoided || !e.voided);
+  const voidedCount = ledger.entries.filter(e => e.voided).length;
+  const maxMonth = Math.max(0, ...infra.by_month.map(m => m.amount_usd));
+  const active = (r) => !r.ends_on || r.ends_on >= today;
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ ...heading, fontSize: fs(11), color: 'var(--text)' }}>INFRASTRUCTURE LEDGER</div>
+      <div style={{ ...note, marginBottom: 14 }}>
+        Hosting, domain and email charges can’t be measured the way tokens are, so they are entered here from
+        invoices — whoever the host is. Entries are never deleted: a wrong one is voided and drops out of every total.
+      </div>
+
+      {infra.unrecorded.length > 0 && (
+        <div style={{ ...card, borderColor: 'var(--accent)', marginBottom: 16 }}>
+          <div style={{ ...heading, color: 'var(--accent)' }}>EXPECTED BUT NOT YET RECORDED — ABOUT {usd(infra.unrecorded_usd)}</div>
+          <div style={{ ...note, marginBottom: 8 }}>
+            The recurring charges below expected something in these months, and nothing has been entered. “Record”
+            adds each as an <i>estimated</i> entry for you to check against the invoice.
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {infra.unrecorded.map(m => (
+              <button key={m.month} disabled={busy} onClick={() => recordMonth(m.month)} style={smallButton}
+                      title={`${m.items} recurring charge${m.items === 1 ? '' : 's'}`}>
+                RECORD {m.month} · {usd(m.amount_usd)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={heading}>RECORDED PER MONTH — LAST 12 MONTHS</div>
+          {maxMonth === 0 ? <div style={note}>Nothing recorded yet.</div> : (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 70 }}>
+                {infra.by_month.map(m => (
+                  <div key={m.month} title={`${m.month}: ${usd(m.amount_usd)}${m.estimated_usd ? ` (${usd(m.estimated_usd)} estimated)` : ''}`}
+                       style={{ flex: 1, height: `${Math.max(m.amount_usd > 0 ? 4 : 0, 100 * m.amount_usd / maxMonth)}%`,
+                                background: 'var(--accent)', opacity: 0.85, borderRadius: '2px 2px 0 0' }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', ...note, marginTop: 4 }}>
+                <span>{infra.by_month[0].month}</span><span>{infra.by_month[infra.by_month.length - 1].month}</span>
+              </div>
+            </div>
+          )}
+          <div style={{ ...note, marginTop: 8 }}>
+            Run-rate {usd(infra.run_rate_monthly_usd)} a month from the recurring charges (a yearly charge counts as a twelfth).
+            {infra.unconfirmed.entries > 0 && ` ${infra.unconfirmed.entries} estimated entr${infra.unconfirmed.entries === 1 ? 'y' : 'ies'} (${usd(infra.unconfirmed.amount_usd)}) not yet checked against an invoice.`}
+          </div>
+        </div>
+        <div style={card}>
+          <div style={heading}>LLM RECONCILIATION — THE PROVIDER’S FIGURE VS COMPUTED</div>
+          {infra.reconciliation.length === 0
+            ? <div style={note}>
+                None recorded. To check the computed LLM spend, add an entry in the category “{categories[ledger.reconciliation_category]}”
+                with the month’s cost from the provider’s console or invoice. It is compared here and never added to a total.
+              </div>
+            : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+                <thead><tr><th style={th}>month</th><th style={thr}>provider</th><th style={thr}>computed</th><th style={thr}>difference</th></tr></thead>
+                <tbody>{infra.reconciliation.map(r => (
+                  <tr key={r.month} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{r.month}</td>
+                    <td style={tdr}>{usd(r.provider_usd)}</td>
+                    <td style={tdr}>{usd(r.computed_usd)}</td>
+                    <td style={{ ...tdr, color: Math.abs(r.difference_pct || 0) > 10 ? 'var(--deny)' : 'var(--text-dim)' }}>
+                      {r.difference_usd >= 0 ? '+' : '−'}{usd(Math.abs(r.difference_usd))}
+                      {r.difference_pct !== null && ` (${r.difference_pct >= 0 ? '+' : '−'}${Math.abs(r.difference_pct).toFixed(0)}%)`}
+                    </td>
+                  </tr>))}</tbody>
+              </table>}
+        </div>
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={heading}>{editingId ? `EDIT ENTRY #${editingId}` : 'ADD AN ENTRY'}</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input aria-label="Date of the charge" type="date" value={form.incurred_on}
+                 onChange={e => setForm({ ...form, incurred_on: e.target.value })} style={input} />
+          <select aria-label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} style={input}>
+            {Object.entries(categories).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+          <input aria-label="Vendor" placeholder="vendor (e.g. AWS Lightsail)" value={form.vendor}
+                 onChange={e => setForm({ ...form, vendor: e.target.value })} style={{ ...input, flex: '1 1 180px' }} />
+          <input aria-label="Description" placeholder="description" value={form.description}
+                 onChange={e => setForm({ ...form, description: e.target.value })} style={{ ...input, flex: '2 1 220px' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+          <input aria-label="Amount" placeholder="amount (negative for a credit)" inputMode="decimal" value={form.amount}
+                 onChange={e => setForm({ ...form, amount: e.target.value })} style={{ ...input, width: 210 }} />
+          <input aria-label="Currency" value={form.currency} maxLength={3}
+                 onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} style={{ ...input, width: 64, fontFamily: 'var(--mono)' }} />
+          {form.currency !== 'USD' && (
+            <input aria-label="US-dollar equivalent" placeholder="USD charged to the budget" inputMode="decimal" value={form.amount_usd}
+                   onChange={e => setForm({ ...form, amount_usd: e.target.value })} style={{ ...input, width: 200 }} />
+          )}
+          <input aria-label="Invoice reference" placeholder="invoice reference" value={form.invoice_ref}
+                 onChange={e => setForm({ ...form, invoice_ref: e.target.value })} style={{ ...input, flex: '1 1 160px' }} />
+          <label style={{ ...note, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {isReconciliation ? 'usage month' : 'covers'}
+            <input aria-label="Month covered" type="month" value={form.covers_month}
+                   onChange={e => setForm({ ...form, covers_month: e.target.value })} style={input} />
+          </label>
+          <label style={{ ...note, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={form.estimated} onChange={e => setForm({ ...form, estimated: e.target.checked })} />
+            estimated
+          </label>
+        </div>
+        {isReconciliation && (
+          <div style={{ ...note, marginTop: 8 }}>
+            This records what the LLM provider says a month of usage cost. It is shown next to the computed figure
+            and <b>not</b> added to any total — that spend is already counted from tokens.
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={saveEntry} disabled={busy} style={primary}>{editingId ? 'SAVE' : 'ADD'}</button>
+          {editingId && <button onClick={() => { setEditingId(null); setForm(blank); }} style={smallButton}>CANCEL</button>}
+        </div>
+        {notice && <div style={{ ...note, color: 'var(--commit)', marginTop: 8 }}>{notice}</div>}
+        {error && <div style={{ ...note, color: 'var(--deny)', marginTop: 8 }}>{error}</div>}
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={heading}>ENTRIES ({entries.length})</div>
+          {voidedCount > 0 && <button style={smallButton} onClick={() => setShowVoided(!showVoided)}>
+            {showVoided ? 'HIDE VOIDED' : `SHOW VOIDED (${voidedCount})`}</button>}
+        </div>
+        {entries.length === 0 ? <div style={note}>No entries yet.</div> :
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+            <thead><tr>
+              <th style={th}>date</th><th style={th}>category</th><th style={th}>vendor</th><th style={th}>invoice</th>
+              <th style={thr}>amount</th><th style={thr}>USD</th><th style={th}></th>
+            </tr></thead>
+            <tbody>{entries.map(e => (
+              <tr key={e.id} style={{ borderTop: '1px solid var(--border)', opacity: e.voided ? 0.45 : 1 }}>
+                <td style={{ ...td, fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>{e.incurred_on}</td>
+                <td style={td}>{e.category === ledger.reconciliation_category ? 'LLM provider’s figure' : e.category}</td>
+                <td style={td}>
+                  {e.vendor}
+                  {e.description && <span style={{ color: 'var(--text-dim)' }}> — {e.description}</span>}
+                  {e.covers_month && <span style={{ color: 'var(--text-muted)' }}> · {e.covers_month}</span>}
+                  {e.estimated && !e.voided && tag('ESTIMATED', 'var(--accent)')}
+                  {e.voided && tag('VOID', 'var(--deny)')}
+                  {e.voided && e.void_reason && <span style={{ color: 'var(--text-muted)' }}> {e.void_reason}</span>}
+                </td>
+                <td style={{ ...td, color: 'var(--text-dim)' }}>{e.invoice_ref || '—'}</td>
+                <td style={tdr}>{e.currency === 'USD' ? '' : `${e.amount.toFixed(2)} ${e.currency}`}</td>
+                <td style={{ ...tdr, textDecoration: e.voided ? 'line-through' : 'none' }}>{usd(e.amount_usd)}</td>
+                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {!e.voided && (
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <button style={smallButton} disabled={busy} onClick={() => editEntry(e)}>EDIT</button>
+                      <button style={{ ...smallButton, color: 'var(--deny)', borderColor: 'var(--deny)' }} disabled={busy} onClick={() => voidEntry(e)}>VOID</button>
+                    </span>
+                  )}
+                </td>
+              </tr>))}</tbody>
+          </table>}
+      </div>
+
+      <div style={card}>
+        <div style={heading}>RECURRING CHARGES — A FORECAST, NEVER COUNTED AS SPEND</div>
+        {ledger.recurring.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11), marginBottom: 12 }}>
+            <thead><tr><th style={th}>vendor</th><th style={th}>category</th><th style={thr}>USD</th><th style={th}>every</th><th style={th}>from</th><th style={th}>until</th><th style={th}></th></tr></thead>
+            <tbody>{ledger.recurring.map(r => (
+              <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: active(r) ? 1 : 0.5 }}>
+                <td style={td}>{r.vendor}{r.description && <span style={{ color: 'var(--text-dim)' }}> — {r.description}</span>}</td>
+                <td style={td}>{r.category}</td>
+                <td style={tdr}>{usd(r.amount_usd)}</td>
+                <td style={td}>{r.cadence === 'yearly' ? 'year' : 'month'}</td>
+                <td style={{ ...td, fontFamily: 'var(--mono)' }}>{r.starts_on}</td>
+                <td style={{ ...td, fontFamily: 'var(--mono)' }}>{r.ends_on || '—'}</td>
+                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {endingId === r.id ? (
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <input aria-label="Last day this charge applies" type="date" value={endDate}
+                             onChange={e => setEndDate(e.target.value)} style={{ ...input, padding: '3px 6px' }} />
+                      <button style={smallButton} disabled={busy} onClick={() => endRecurring(r.id)}>END</button>
+                      <button style={smallButton} onClick={() => setEndingId(null)}>CANCEL</button>
+                    </span>
+                  ) : active(r) && <button style={smallButton} onClick={() => { setEndingId(r.id); setEndDate(today); }}>END…</button>}
+                </td>
+              </tr>))}</tbody>
+          </table>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select aria-label="Recurring category" value={recurringForm.category}
+                  onChange={e => setRecurringForm({ ...recurringForm, category: e.target.value })} style={input}>
+            {ledger.infra_categories.map(k => <option key={k} value={k}>{categories[k]}</option>)}
+          </select>
+          <input aria-label="Recurring vendor" placeholder="vendor" value={recurringForm.vendor}
+                 onChange={e => setRecurringForm({ ...recurringForm, vendor: e.target.value })} style={{ ...input, flex: '1 1 160px' }} />
+          <input aria-label="Recurring description" placeholder="description" value={recurringForm.description}
+                 onChange={e => setRecurringForm({ ...recurringForm, description: e.target.value })} style={{ ...input, flex: '1 1 160px' }} />
+          <input aria-label="Recurring amount in US dollars" placeholder="USD" inputMode="decimal" value={recurringForm.amount_usd}
+                 onChange={e => setRecurringForm({ ...recurringForm, amount_usd: e.target.value })} style={{ ...input, width: 90 }} />
+          <select aria-label="How often" value={recurringForm.cadence}
+                  onChange={e => setRecurringForm({ ...recurringForm, cadence: e.target.value })} style={input}>
+            <option value="monthly">every month</option><option value="yearly">every year</option>
+          </select>
+          <label style={{ ...note, display: 'flex', alignItems: 'center', gap: 6 }}>from
+            <input aria-label="First charge date" type="date" value={recurringForm.starts_on}
+                   onChange={e => setRecurringForm({ ...recurringForm, starts_on: e.target.value })} style={input} />
+          </label>
+          <button onClick={addRecurring} disabled={busy} style={primary}>ADD</button>
+        </div>
+        <div style={{ ...note, marginTop: 8 }}>
+          A price change is: end the old charge, add a new one. Recurring charges give the run-rate, the projection
+          against the budget, and the reminder above — the ledger only ever sums what has actually been entered.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminCostsTab({ fs }) {
   const [days, setDays] = useState(30);
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
   const [openStudy, setOpenStudy] = useState(null);
   const [editingBudget, setEditingBudget] = useState(false);
-  const [budgetForm, setBudgetForm] = useState({ llm_usd: '', period_start: '', period_end: '', label: '' });
+  const [budgetForm, setBudgetForm] = useState({ llm_usd: '', infra_usd: '', period_start: '', period_end: '', label: '' });
   const [budgetError, setBudgetError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -3472,8 +3783,9 @@ function AdminCostsTab({ fs }) {
   const startEditingBudget = () => {
     const b = report?.budget;
     setBudgetForm(b
-      ? { llm_usd: String(b.llm_usd), period_start: b.period_start, period_end: b.period_end, label: b.label || '' }
-      : { llm_usd: '', period_start: '', period_end: '', label: '' });
+      ? { llm_usd: b.llm_usd ? String(b.llm_usd) : '', infra_usd: b.infra_usd ? String(b.infra_usd) : '',
+          period_start: b.period_start, period_end: b.period_end, label: b.label || '' }
+      : { llm_usd: '', infra_usd: '', period_start: '', period_end: '', label: '' });
     setBudgetError(null); setEditingBudget(true);
   };
   const saveBudget = async (clear) => {
@@ -3482,7 +3794,11 @@ function AdminCostsTab({ fs }) {
     try {
       await api('/api/admin/costs/budget', {
         method: 'PUT',
-        body: JSON.stringify(clear ? {} : { ...budgetForm, llm_usd: parseFloat(budgetForm.llm_usd) }),
+        body: JSON.stringify(clear ? {} : {
+          ...budgetForm,
+          llm_usd: budgetForm.llm_usd === '' ? null : Number(budgetForm.llm_usd),
+          infra_usd: budgetForm.infra_usd === '' ? null : Number(budgetForm.infra_usd),
+        }),
       });
       setEditingBudget(false);
       await load(days);
@@ -3508,6 +3824,7 @@ function AdminCostsTab({ fs }) {
 
   const span = report.window.days ? `last ${report.window.days} days` : 'all time';
   const t = report.totals;
+  const it = report.infrastructure.totals;
   const maxDay = Math.max(0, ...report.by_day.map(d => d.cost_usd));
   const budget = report.budget;
 
@@ -3515,8 +3832,9 @@ function AdminCostsTab({ fs }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={note}>
-          LLM spend, priced from recorded token counts under the current price table
-          (checked {report.prices_as_of}). The provider’s invoice is the final word.
+          LLM spend is priced from recorded token counts under the current price table
+          (checked {report.prices_as_of}); infrastructure is what has been entered in the ledger below.
+          The providers’ invoices are the final word.
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[[7, '7 D'], [30, '30 D'], [90, '90 D'], [0, 'ALL']].map(([d, label]) => (
@@ -3547,11 +3865,15 @@ function AdminCostsTab({ fs }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {[['MONTH TO DATE', t.month_to_date], [span.toUpperCase(), t.window], ['ALL TIME', t.all_time]].map(([label, b]) => (
+        {[['MONTH TO DATE', t.month_to_date, it.month_to_date], [span.toUpperCase(), t.window, it.window],
+          ['ALL TIME', t.all_time, it.all_time]].map(([label, b, i]) => (
           <div key={label} style={card}>
             <div style={heading}>{label}</div>
-            <div style={{ fontSize: fs(22), fontFamily: 'var(--mono)', color: 'var(--text)' }}>{usd(b.cost_usd)}</div>
+            <div style={{ fontSize: fs(22), fontFamily: 'var(--mono)', color: 'var(--text)' }}>{usd(b.cost_usd + i.amount_usd)}</div>
             <div style={{ ...note, marginTop: 4 }}>
+              LLM {usd(b.cost_usd)} · infrastructure {usd(i.amount_usd)}
+            </div>
+            <div style={note}>
               {b.calls.toLocaleString()} calls · {compactTokens(b.prompt_tokens)} in · {compactTokens(b.completion_tokens)} out
             </div>
           </div>
@@ -3564,34 +3886,49 @@ function AdminCostsTab({ fs }) {
           {!editingBudget && <button style={smallButton} onClick={startEditingBudget}>{budget ? 'EDIT' : 'SET A BUDGET'}</button>}
         </div>
         {!editingBudget && !budget && (
-          <div style={note}>No budget line set. Give the amount and the period it covers to see spend against it.</div>
+          <div style={note}>No budget set. Give an LLM line, an infrastructure line, or both, and the period they cover.</div>
         )}
         {!editingBudget && budget && (
           <div>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: fs(14), color: 'var(--text)' }}>
-              {usd(budget.spent_usd)} <span style={{ color: 'var(--text-muted)' }}>of {usd(budget.llm_usd)}</span>
-              <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}> · {budget.pct_spent.toFixed(1)}% spent · {usd(budget.remaining_usd)} left</span>
-            </div>
-            <div title={`${budget.pct_spent.toFixed(1)}% of the budget spent; ${budget.pct_period_elapsed.toFixed(0)}% of the period elapsed`}
-                 style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--surface2)', margin: '10px 0 6px', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(100, budget.pct_spent)}%`, height: '100%',
-                            background: budget.pct_spent > 100 ? 'var(--deny)' : 'var(--accent)' }} />
-              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(100, budget.pct_period_elapsed)}%`,
-                            width: 2, background: 'var(--text)' }} />
-            </div>
+            {[['LLM API', budget.llm], ['INFRASTRUCTURE', budget.infra]].filter(([, b]) => b).map(([name, b]) => (
+              <div key={name} style={{ marginBottom: 12 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: fs(13), color: 'var(--text)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: fs(10), letterSpacing: 1, marginRight: 10 }}>{name}</span>
+                  {usd(b.spent_usd)} <span style={{ color: 'var(--text-muted)' }}>of {usd(b.amount_usd)}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}> · {b.pct_spent.toFixed(1)}% spent · {usd(b.remaining_usd)} left</span>
+                </div>
+                <div title={`${b.pct_spent.toFixed(1)}% of the budget spent; ${budget.pct_period_elapsed.toFixed(0)}% of the period elapsed`}
+                     style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--surface2)', margin: '8px 0 4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, b.pct_spent)}%`, height: '100%',
+                                background: b.pct_spent > 100 ? 'var(--deny)' : 'var(--accent)' }} />
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(100, budget.pct_period_elapsed)}%`,
+                                width: 2, background: 'var(--text)' }} />
+                </div>
+                {b.projected_usd !== undefined && (
+                  <div style={note}>
+                    Projected {usd(b.projected_usd)} by the end of the period: {usd(b.spent_usd)} recorded
+                    {b.unrecorded_usd > 0 && `, about ${usd(b.unrecorded_usd)} expected but not yet entered`}
+                    , {usd(b.upcoming_usd)} still to come from the recurring charges.
+                  </div>
+                )}
+                {b.spent_before_period_usd > 0 && (
+                  <div style={note}>{usd(b.spent_before_period_usd)} was spent before the period opened and is not charged to it.</div>
+                )}
+              </div>
+            ))}
             <div style={note}>
               {budget.period_start} → {budget.period_end} · the marker shows how much of the period has passed
-              ({budget.pct_period_elapsed.toFixed(0)}%).
-              {budget.spent_before_period_usd > 0 && ` ${usd(budget.spent_before_period_usd)} was spent before the period opened and is not charged to it.`}
-              {' '}Display only — nothing is cut off when a budget is exceeded.
+              ({budget.pct_period_elapsed.toFixed(0)}%). Display only — nothing is cut off when a budget is exceeded.
             </div>
           </div>
         )}
         {editingBudget && (
           <div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <input aria-label="Budget amount in US dollars" placeholder="amount (USD)" inputMode="decimal" value={budgetForm.llm_usd}
+              <input aria-label="LLM budget in US dollars" placeholder="LLM (USD)" inputMode="decimal" value={budgetForm.llm_usd}
                      onChange={e => setBudgetForm({ ...budgetForm, llm_usd: e.target.value })} style={{ ...input, width: 130 }} />
+              <input aria-label="Infrastructure budget in US dollars" placeholder="infrastructure (USD)" inputMode="decimal" value={budgetForm.infra_usd}
+                     onChange={e => setBudgetForm({ ...budgetForm, infra_usd: e.target.value })} style={{ ...input, width: 170 }} />
               <input aria-label="Period start" type="date" value={budgetForm.period_start}
                      onChange={e => setBudgetForm({ ...budgetForm, period_start: e.target.value })} style={input} />
               <span style={note}>to</span>
@@ -3743,6 +4080,8 @@ function AdminCostsTab({ fs }) {
           </table>}
         {report.by_actor.length > 15 && <div style={{ ...note, marginTop: 6 }}>Showing the 15 largest of {report.by_actor.length}.</div>}
       </div>
+
+      <CostLedgerPanel fs={fs} infra={report.infrastructure} onChanged={() => load(days)} />
     </div>
   );
 }

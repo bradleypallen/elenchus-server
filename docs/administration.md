@@ -57,9 +57,9 @@ with five tabs:
   (See [Running a Study](study.md) and the [Study Runbook](study-runbook.md).)
 - **Judging** — assign submitted texts to judges and watch the panel's
   progress.
-- **Costs** — what the LLM calls have cost, against a budget line, by
-  model, by purpose and per study session. (See [Cost and
-  usage](#cost-and-usage).)
+- **Costs** — what the LLM calls have cost (by model, by purpose and per
+  study session), a ledger of hosting / domain / email charges, and both
+  against their budget lines. (See [Cost and usage](#cost-and-usage).)
 
 The Study and Judging tabs drive researcher-gated routes. A `researcher`
 account sees a **STUDY** button instead of ADMIN, opening the same
@@ -177,12 +177,15 @@ never used.
 
 The tab shows:
 
-- **Month to date / the chosen window / all time**, with a 7-, 30-,
-  90-day or all-time window for the breakdowns.
-- **Budget** — spend against a budget line you set (an amount and the
-  period it covers, e.g. a grant's LLM line and the grant period), with a
-  marker for how much of the period has passed. Display only: nothing is
-  cut off when it is exceeded.
+- **Month to date / the chosen window / all time** — LLM plus
+  infrastructure, with the split underneath — and a 7-, 30-, 90-day or
+  all-time window for the breakdowns.
+- **Budget** — spend against the budget lines you set: an LLM line, an
+  infrastructure line, or both, over one period (e.g. a grant's two
+  compute lines and the grant period), each with a marker for how much of
+  the period has passed. The infrastructure line also shows a projection
+  to the end of the period. Display only: nothing is cut off when a line
+  is exceeded.
 - **Spend per day**, **by model** (with the rate used) and **by
   purpose** — which separates participants' turns from platform overhead
   — plus failed calls and retry attempts. Providers don't report the
@@ -214,8 +217,47 @@ starts with, so dated revisions resolve to their family.
 
 For a grant report or a post-run record, `elenchus costs [--days N]
 [--json]` prints the same report from the command line (stop the server
-first — DuckDB allows one process per file). Infrastructure costs
-(hosting, domain) are not tracked by the platform.
+first — DuckDB allows one process per file).
+
+### The infrastructure ledger
+
+Hosting, domain and email charges can't be measured the way tokens are —
+they arrive as invoices from whoever hosts the box this year. So they are
+**entered by an admin, not fetched**: a ledger that doesn't care who the
+host is survives a move between providers or accounts, needs no billing
+credential on the server, and lets every row carry the invoice reference
+a grant report asks for. It lives at the bottom of the Costs tab.
+
+- **Entries.** A date, a category (hosting / domain / email / other), a
+  vendor, a description, the amount and an invoice reference. A credit is
+  a negative amount. For an invoice that isn't in dollars, enter the
+  amount and currency as invoiced **and** the US-dollar figure charged to
+  the budget — the exchange rate that counts is your finance office's.
+  Entries are **never deleted**: *Void* takes one out of every total and
+  keeps it in the ledger with your reason; *Edit* corrects one. Every
+  write is logged with who made it, and an edit with each field's old and
+  new value — the server log is the ledger's audit trail.
+- **Recurring charges.** What you expect every month or year — the box,
+  the DNS zone, the domain renewal. They are a forecast and a convenience,
+  **never themselves counted as spend**: they give the monthly run-rate,
+  the projection against the infrastructure budget, and a reminder when a
+  past month has nothing recorded. *Record 2026-10* enters that month's
+  expected charges as **estimated** entries (pressing twice is harmless);
+  check each against the invoice, then edit it — put in the invoiced
+  amount and reference, untick *estimated*. A price change is: end the old
+  charge, add a new one.
+- **LLM reconciliation.** The category *LLM provider's own figure* records
+  what the provider says a month of usage cost (from its console or
+  invoice). It is shown next to the platform's computed figure for that
+  month, with the difference — and is **not added to any total**, because
+  that spend is already counted from tokens. A gap of more than a few
+  percent usually means a stale rate in the price table, usage on the
+  same API key from outside the platform, or provider-side charges the
+  token counts don't carry.
+
+The infrastructure budget's projection is: what is recorded in the period,
+plus what the recurring charges expected in the period but nobody has
+entered, plus what they expect from tomorrow to the period's end.
 
 ## Integrity and audit
 
@@ -302,7 +344,11 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `PUT /api/admin/users/{id}/reactivate` | Restore an actor |
 | `PUT /api/admin/users/{id}/role` | Change a person's role (`admin` / `researcher` / `user` / `judge`) |
 | `GET /api/admin/costs?days=N` | Cost dashboard report (N = 0 for all time) |
-| `PUT /api/admin/costs/budget` | Set (`llm_usd`, `period_start`, `period_end`, `label`) or clear (`{}`) the budget line |
+| `PUT /api/admin/costs/budget` | Set (`llm_usd` and/or `infra_usd`, `period_start`, `period_end`, `label`) or clear (`{}`) the budget |
+| `GET`/`POST /api/admin/costs/ledger` | List the ledger (entries + recurring charges) / record an entry |
+| `PUT /api/admin/costs/ledger/{id}` · `POST …/{id}/void` | Correct an entry / void it (`{"reason": …}`) |
+| `POST /api/admin/costs/ledger/record-recurring` | Enter a month's (`{"month": "2026-10"}`) expected recurring charges as estimated entries |
+| `POST /api/admin/costs/recurring` · `PUT …/{id}/end` | Add a recurring charge / stop expecting it after `ends_on` |
 | `GET /api/admin/usage?days=N` | Older cost/usage rollup (same read-time pricing) |
 | `GET /api/admin/integrity` · `/{base_id}` | Per-base integrity summary / detail |
 | `GET /api/admin/audit` | Platform ↔ filesystem drift |

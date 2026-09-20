@@ -25,7 +25,13 @@ return:
   * `studies`    — per study → condition → session, all time, with the
                    mean cost of a finished session and a projection for
                    the sessions still outstanding
-  * `budget`     — spend against the configured LLM budget line
+  * `infrastructure` — the admin-entered ledger of hosting / domain /
+                   email charges (`cost_ledger.py`): totals, by month and
+                   category, the recurring run-rate, expected charges
+                   nobody has recorded, and the LLM provider's own
+                   monthly figure next to the computed one
+  * `budget`     — spend against the configured LLM and infrastructure
+                   budget lines
 
 A study session is attributed through its **actor**: every participant
 token owns its own passwordless actor, so all of that actor's calls —
@@ -39,7 +45,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 
-from . import pricing
+from . import cost_ledger, pricing
 
 logger = logging.getLogger(__name__)
 
@@ -376,8 +382,9 @@ def _studies(con, groups: list[dict]) -> list[dict]:
 
 
 def get_budget(con) -> dict | None:
-    """The configured LLM budget line, or None. Stored as JSON under
-    `platform_settings['cost_budget']`."""
+    """The configured budget — an LLM line (`llm_usd`), an
+    infrastructure line (`infra_usd`), or both, over one period — or
+    None. Stored as JSON under `platform_settings['cost_budget']`."""
     from .db import platform as pdb
 
     raw = pdb.get_setting(con, BUDGET_SETTING_KEY)
@@ -390,15 +397,25 @@ def get_budget(con) -> dict | None:
         return None
 
 
+def _budget_amount(payload: dict, key: str, label: str) -> float | None:
+    if payload.get(key) in (None, ""):
+        return None
+    try:
+        amount = float(payload.get(key))
+    except (TypeError, ValueError):
+        raise ValueError(f"The {label} budget must be a number of US dollars.") from None
+    if not 0 < amount <= 10_000_000:
+        raise ValueError(f"The {label} budget must be greater than zero.")
+    return round(amount, 2)
+
+
 def validate_budget(payload: dict) -> dict:
     """Normalize a budget submitted by an admin. Raises ValueError with
     a message fit to show them."""
-    try:
-        amount = float(payload.get("llm_usd"))
-    except (TypeError, ValueError):
-        raise ValueError("The budget amount must be a number of US dollars.") from None
-    if amount <= 0 or amount > 10_000_000:
-        raise ValueError("The budget amount must be greater than zero.")
+    llm = _budget_amount(payload, "llm_usd", "LLM")
+    infra = _budget_amount(payload, "infra_usd", "infrastructure")
+    if llm is None and infra is None:
+        raise ValueError("Give an LLM budget, an infrastructure budget, or both.")
     try:
         start = date.fromisoformat(str(payload.get("period_start") or ""))
         end = date.fromisoformat(str(payload.get("period_end") or ""))
@@ -408,7 +425,8 @@ def validate_budget(payload: dict) -> dict:
         raise ValueError("The budget period must end after it starts.")
     label = str(payload.get("label") or "").strip()[:80]
     return {
-        "llm_usd": round(amount, 2),
+        "llm_usd": llm,
+        "infra_usd": infra,
         "period_start": start.isoformat(),
         "period_end": end.isoformat(),
         "label": label,
@@ -428,27 +446,44 @@ def set_budget(con, payload: dict | None) -> dict | None:
     return budget
 
 
-def _budget_status(budget: dict | None, all_groups: list[dict], today: date) -> dict | None:
+def _budget_status(con, budget: dict | None, all_groups: list[dict], today: date) -> dict | None:
+    """Spend against each configured line. `llm` is computed from
+    tokens; `infra` comes from the ledger (`cost_ledger.budget_status`)
+    and carries a projection to the end of the period."""
     if not budget:
         return None
     start = date.fromisoformat(budget["period_start"])
     end = date.fromisoformat(budget["period_end"])
-    in_period = [g for g in all_groups if start <= g["day"] <= end]
-    spent = summarize(in_period)
-    before = summarize([g for g in all_groups if g["day"] < start])
     length = max(1, (end - start).days + 1)
     elapsed = min(length, max(0, (today - start).days + 1))
-    return {
-        **budget,
-        "spent_usd": spent["cost_usd"],
-        "remaining_usd": budget["llm_usd"] - spent["cost_usd"],
-        "pct_spent": 100.0 * spent["cost_usd"] / budget["llm_usd"],
+    status = {
+        "label": budget.get("label", ""),
+        "period_start": budget["period_start"],
+        "period_end": budget["period_end"],
         "pct_period_elapsed": 100.0 * elapsed / length,
-        "unpriced_tokens": spent["unpriced_tokens"],
-        # Spend before the period opened isn't charged to the line,
-        # but it shouldn't vanish either.
-        "spent_before_period_usd": before["cost_usd"],
+        "llm_usd": budget.get("llm_usd"),
+        "infra_usd": budget.get("infra_usd"),
+        "llm": None,
+        "infra": None,
     }
+    if budget.get("llm_usd"):
+        spent = summarize([g for g in all_groups if start <= g["day"] <= end])
+        before = summarize([g for g in all_groups if g["day"] < start])
+        status["llm"] = {
+            "amount_usd": budget["llm_usd"],
+            "spent_usd": spent["cost_usd"],
+            "remaining_usd": budget["llm_usd"] - spent["cost_usd"],
+            "pct_spent": 100.0 * spent["cost_usd"] / budget["llm_usd"],
+            "unpriced_tokens": spent["unpriced_tokens"],
+            # Spend before the period opened isn't charged to the line,
+            # but it shouldn't vanish either.
+            "spent_before_period_usd": before["cost_usd"],
+        }
+    if budget.get("infra_usd"):
+        status["infra"] = cost_ledger.budget_status(
+            con, amount_usd=budget["infra_usd"], start=start, end=end, today=today
+        )
+    return status
 
 
 # ─── The report ──────────────────────────────────────────────────────
@@ -482,12 +517,23 @@ def build_report(con, *, days: int = 30, today: date | None = None) -> dict:
         "waste": _waste(window),
         "unpriced": _unpriced(everything),
         "studies": _studies(con, everything),
-        "budget": _budget_status(get_budget(con), everything, today),
+        "infrastructure": cost_ledger.infrastructure_report(
+            con,
+            since=since,
+            today=today,
+            llm_usd_by_month={
+                month: b["cost_usd"]
+                for month, b in rollup(everything, lambda g: g["day"].isoformat()[:7]).items()
+            },
+        ),
+        "budget": _budget_status(con, get_budget(con), everything, today),
     }
     total = report["totals"]["all_time"]
+    infra = report["infrastructure"]
     logger.info(
-        "Cost report: all_time=$%.4f calls=%d window_days=%s window=$%.4f "
-        "unpriced_models=%d unpriced_tokens=%d studies=%d",
+        "Cost report: llm_all_time=$%.4f calls=%d window_days=%s llm_window=$%.4f "
+        "unpriced_models=%d unpriced_tokens=%d studies=%d infra_all_time=$%.2f "
+        "infra_entries=%d infra_unrecorded=$%.2f",
         total["cost_usd"],
         total["calls"],
         report["window"]["days"] or "all",
@@ -495,6 +541,9 @@ def build_report(con, *, days: int = 30, today: date | None = None) -> dict:
         len(report["unpriced"]),
         total["unpriced_tokens"],
         len(report["studies"]),
+        infra["totals"]["all_time"]["amount_usd"],
+        infra["totals"]["all_time"]["entries"],
+        infra["unrecorded_usd"],
     )
     return report
 
@@ -529,11 +578,23 @@ def format_report(report: dict) -> str:
     if budget:
         lines += [
             "",
-            f"Budget {budget.get('label') or 'LLM API'}: {_usd(budget['spent_usd'])} of "
-            f"{_usd(budget['llm_usd'])} spent ({budget['pct_spent']:.1f}%), "
-            f"{budget['pct_period_elapsed']:.0f}% of {budget['period_start']} → "
-            f"{budget['period_end']} elapsed",
+            f"Budget{' — ' + budget['label'] if budget.get('label') else ''}: "
+            f"{budget['period_start']} → {budget['period_end']}, "
+            f"{budget['pct_period_elapsed']:.0f}% of the period elapsed",
         ]
+        if budget["llm"]:
+            b = budget["llm"]
+            lines.append(
+                f"  LLM API          {_usd(b['spent_usd']):>12} of {_usd(b['amount_usd'])} "
+                f"({b['pct_spent']:.1f}%)"
+            )
+        if budget["infra"]:
+            b = budget["infra"]
+            lines.append(
+                f"  Infrastructure   {_usd(b['spent_usd']):>12} of {_usd(b['amount_usd'])} "
+                f"({b['pct_spent']:.1f}%), projected {_usd(b['projected_usd'])} by the end "
+                f"of the period"
+            )
     if report["unpriced"]:
         lines += ["", "UNPRICED MODELS — these tokens are NOT in any figure above:"]
         for u in report["unpriced"]:
@@ -573,4 +634,33 @@ def format_report(report: dict) -> str:
                 f"  projected total {_usd(study['projected_total_usd'])} "
                 f"({_usd(study['projected_remaining_usd'])} still to come)"
             )
+    infra = report["infrastructure"]
+    it = infra["totals"]
+    lines += [
+        "",
+        "Infrastructure (recorded from invoices; not measured):",
+        f"  Month to date   {_usd(it['month_to_date']['amount_usd']):>12}",
+        f"  All time        {_usd(it['all_time']['amount_usd']):>12}   "
+        f"{it['all_time']['entries']} entries",
+        f"  Run-rate        {_usd(infra['run_rate_monthly_usd']):>12}   per month, from the "
+        f"recurring charges",
+    ]
+    for row in infra["by_category"]:
+        lines.append(f"    {row['label']:<40} {_usd(row['amount_usd']):>10}  ({span})")
+    if infra["unrecorded"]:
+        months = ", ".join(m["month"] for m in infra["unrecorded"])
+        lines.append(
+            f"  NOT YET RECORDED: about {_usd(infra['unrecorded_usd'])} of expected recurring "
+            f"charges ({months})"
+        )
+    if infra["unconfirmed"]["entries"]:
+        lines.append(
+            f"  {infra['unconfirmed']['entries']} estimated entries "
+            f"({_usd(infra['unconfirmed']['amount_usd'])}) not yet checked against an invoice"
+        )
+    for r in infra["reconciliation"]:
+        lines.append(
+            f"  LLM reconciliation {r['month']}: provider {_usd(r['provider_usd'])}, computed "
+            f"{_usd(r['computed_usd'])}, difference {_usd(r['difference_usd'])}"
+        )
     return "\n".join(lines)
