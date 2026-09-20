@@ -147,9 +147,14 @@ holds an editor that **saves automatically**; a reload, or resuming on
 another device, restores the draft.
 
 **The clock is guidance, not a cutoff.** It shows time on task against the
-intended length (`ELENCHUS_TASK_MINUTES`, default 60), warns softly ten
-minutes before and again at the limit, and never locks anything: the
-participant ends the task themselves.
+intended length, warns softly ten minutes before and again at the limit,
+and never locks anything: the participant ends the task themselves. The
+length is **the study's own** — *Length of the main task* in the study's
+setup (leave it empty for the server's default: `ELENCHUS_TASK_MINUTES`,
+else 60). That is how a `TRAINING` study runs a five-minute task beside
+the real study's sixty, with nobody touching the server. Set it before
+the first participant starts; it is recorded in the export's
+`study_config.json`, and every change is logged.
 
 **Finishing submits the text.** An empty text can't be submitted, a very
 short one asks for confirmation, and there is no route to the
@@ -272,8 +277,13 @@ This writes two things:
 > participant-tracking records and must be **excluded from any public
 > deposit** (Zenodo, OSF). The archive alone is safe to share/deposit.
 
-Archives stay on the server; retrieve them out-of-band (`scp`/`sftp`).
-Individual session failures are recorded in the manifest, not fatal.
+**Downloading.** In the Study tab, *downloads* beside a study lists every
+export made for it, newest first. The archive is a link any researcher can
+download (`GET /api/admin/study/{id}/exports/{name}`). The pseudonym map
+is a **separate link that only an admin sees** (`…/{name}/pseudonyms`); it
+asks before downloading and each download is logged at warning level.
+Exports also stay on the server, under `{data_dir}/exports/`. Individual
+session failures are recorded in the manifest, not fatal.
 
 ## Pre-study checklist
 

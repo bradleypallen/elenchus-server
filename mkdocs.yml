@@ -24,6 +24,7 @@ nav:
   - Running a Study:
       - How the study works: study.md
       - Study Runbook: study-runbook.md
+      - Guide for Judges: judge-guide.md
   - Deployment:
       - Overview: deployment.md
       - Operations Runbook: OPERATIONS.md

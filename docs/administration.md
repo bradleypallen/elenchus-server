@@ -44,7 +44,7 @@ Migrating a pre-0.2 single-user install? Run `elenchus migrate-legacy
 ## The admin dashboard
 
 Admins see an **ADMIN** button in the home header. It opens a dashboard
-with five tabs:
+with six tabs:
 
 - **Invites** — issue an invite (pick a role, optionally pin it to an
   email), list outstanding/consumed/expired invites, and revoke unused
@@ -60,11 +60,16 @@ with five tabs:
 - **Costs** — what the LLM calls have cost (by model, by purpose and per
   study session), a ledger of hosting / domain / email charges, and both
   against their budget lines. (See [Cost and usage](#cost-and-usage).)
+- **System** — is it healthy: release, AI key, email, disk, clock; the
+  alerts it has raised; backups (and *Back up now*); a consistency check.
+  (See [The System tab](#the-system-tab).)
 
 The Study and Judging tabs drive researcher-gated routes. A `researcher`
 account sees a **STUDY** button instead of ADMIN, opening the same
-dashboard with just those two tabs; an admin sees all five, so a sole
-admin can run a pilot end to end. **Judge accounts are created by an
+dashboard with just those two tabs; an admin sees all six, so a sole
+admin can run a pilot end to end **without a shell on the server** — the
+[Study Runbook](study-runbook.md#if-you-are-the-admin) has the admin's
+click-by-click, and lists the few things that still need server access. **Judge accounts are created by an
 admin** (invite with role `judge`) — researchers can assign work to judges
 but not create them.
 
@@ -324,6 +329,32 @@ And **the Admin API is not available to individual accounts** — set up an
 organization in the Console first, or use the typed-in monthly figure.
 Provider days are UTC, another reason to run the server with `TZ=UTC`.
 
+## The System tab
+
+Everything an admin needs to keep the platform healthy without logging in
+to the server (`GET /api/admin/system`):
+
+- **Status** — the running release and database schema, and when the
+  server started; whether an **AI key** is set (and whether it will
+  survive a restart); whether the server **can send email**; free disk;
+  and whether the **server clock** is UTC. Anything wrong is red, and says
+  whether you can fix it from the dashboard or it needs server access.
+- **Alerts** — the newest alerts the platform has raised, with their
+  detail on click. Every dispatched alert is kept in the database (the
+  newest 500), whether or not alert email is configured — see
+  [Alerting](#alerting).
+- **Backups** — how many are kept and how old the newest is, and **Back up
+  now**. Backups stay on the server: they guard against a mistake or a bad
+  upgrade, not against losing the server. Copying them elsewhere, and
+  restoring one, are [server tasks](OPERATIONS.md).
+- **Consistency check** — the audit below, run on demand, reported as
+  "everything matches" or the list to pass to whoever maintains the server.
+
+When the server can't send email, the sign-in page's *forgot password?* and
+*email me a login link* say so and point people to an admin — instead of
+promising a message that never arrives. Reset a password from the **Users**
+tab and send the one-time link yourself.
+
 ## Integrity and audit
 
 - **Per-base integrity** — `GET /api/admin/integrity` gives a cheap,
@@ -351,7 +382,9 @@ forward-only).
 
 Operational failures (LLM outages, exhausted retries) and an unusually
 expensive day (see [the daily spend alert](#the-daily-spend-alert)) are
-dispatched to alert channels. The **console** channel is always on; set
+dispatched to alert channels. Two are always on: the **console** (the
+server log) and the **database**, which is what the System tab lists — so
+an admin sees alerts with no log access and no mail set up. Set
 `ALERT_EMAIL_TO` to also email them. Tune with:
 
 | Variable | Meaning | Default |
@@ -421,8 +454,11 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `GET /api/admin/usage?days=N` | Older cost/usage rollup (same read-time pricing) |
 | `GET /api/admin/integrity` · `/{base_id}` | Per-base integrity summary / detail |
 | `GET /api/admin/audit` | Platform ↔ filesystem drift |
+| `GET /api/admin/system` | System tab: release, AI/email configuration (no secrets), disk, backups, recent alerts |
 | `POST /api/admin/backup` · `GET` | Run a backup / list archives |
-| `PUT`/`GET /api/admin/study/{study_id}/config` *(researcher)* | Set up / read a study (topics, session gap) |
+| `PUT`/`GET /api/admin/study/{study_id}/config` *(researcher)* | Set up / read a study (topics, session gap, task length) |
+| `GET /api/admin/study/{study_id}/exports` · `…/{name}` *(researcher)* | List a study's exports / download an archive |
+| `GET /api/admin/study/{study_id}/exports/{name}/pseudonyms` | Download the names key for an export (**admin only**) |
 | `POST`/`GET /api/admin/study/{study_id}/participants` *(researcher)* | Enrol a participant (both links) / roster |
 | `POST /api/admin/study/sessions/{id}/interrupt` *(researcher)* | Close an abandoned session |
 | `GET /api/admin/study/judges` *(researcher)* | Judge accounts |

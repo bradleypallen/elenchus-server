@@ -5,6 +5,54 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Platform schema 14 → 16 (`study_configs.task_minutes`, `alerts`); applied
+automatically at startup.
+
+Everything here serves one aim: that the person running a study — an
+admin with no shell on the server — can do a complete run-through from the
+dashboard and the docs alone.
+
+### Added
+
+- **A study's own task length.** *Length of the main task* in a study's
+  setup (empty = the server default, `ELENCHUS_TASK_MINUTES`, else 60). A
+  `TRAINING` study can run a five-minute task beside the real study's
+  sixty; before, that took an environment change and a restart — and put
+  the real study on the short clock meanwhile. Changes are logged; the
+  value is in the export's `study_config.json`.
+- **Download exports** from the Study tab (*downloads* beside a study):
+  the data archive for any researcher; the **names key** (pseudonym map)
+  as a separate link only an admin sees, behind a warning, each download
+  logged. Exports used to sit on the server's disk with no way to fetch
+  them short of `scp`.
+- **System tab** (admin): the running release and schema, whether an AI
+  key is set and will survive a restart, whether the server can send
+  email, free disk, the server clock; the **alerts** the platform has
+  raised; backups with **Back up now** (the route existed, with no UI);
+  and the platform ↔ filesystem consistency check. It says plainly which
+  problems need access to the server.
+- **Alerts are kept in the database** (the newest 500) and shown in the
+  System tab, whether or not alert email is configured — previously an
+  admin without log access saw none of them, the daily spend alert
+  included.
+- **Guide for Judges** (`docs/judge-guide.md`) — what to send the panel
+  with their invitation.
+
+### Changed
+
+- The **Study Runbook** is written for researchers *and* admins: which
+  button and tabs each sees, an *If you are the admin* track (creating a
+  judge's account, passwords, the names key, the before-and-after routine
+  in System, costs), a list of the few things that still need server
+  access, and a practice run that needs nobody's help.
+
+### Fixed
+
+- With no mail configured, *forgot password?* and *email me a login link*
+  reported success and sent nothing. `/healthz` now reports
+  `email_enabled`, and those forms say the server can't send email and
+  point to an admin's reset link.
+
 ## [0.7.0] — 2026-09-19
 
 A daily spend alert, and reconciliation with the LLM provider's own
