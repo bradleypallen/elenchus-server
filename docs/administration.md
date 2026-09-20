@@ -83,8 +83,9 @@ invite_only`).
    backend is configured, the invite link is emailed; otherwise the token
    is returned for you to share.
 2. The recipient opens `/?token=<token>`, sets a display name and
-   password, and the invite is consumed atomically (`POST
-   /api/auth/signup`). Invites are single-use and expire after 30 days.
+   password — and their email, if the invite was issued without one (the
+   page asks `GET /api/auth/invites/{token}` what it needs) — and the
+   invite is consumed atomically (`POST /api/auth/signup`). Invites are single-use and expire after 30 days.
 
 Passwords are bcrypt-hashed (`BCRYPT_ROUNDS`, default 12 — never lower it
 in production). Sessions are cookie tokens with a 30-day TTL; changing a

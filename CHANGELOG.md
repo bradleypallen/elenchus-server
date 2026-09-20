@@ -48,6 +48,14 @@ dashboard and the docs alone.
 
 ### Fixed
 
+- **An invite issued without an email could not be used.** The Invites
+  form called the email optional, but the sign-up page never asked for
+  one, so the invitee hit "This invite did not specify an email; please
+  supply one" with nowhere to supply it. The sign-up page now asks the
+  server what the invitation needs (`GET /api/auth/invites/{token}`) and
+  shows an email field when it does; the Invites form no longer says
+  "optional". Found by walking the runbook's practice run from a bare
+  admin account — that walk is now a test (`tests/test_practice_run.py`).
 - With no mail configured, *forgot password?* and *email me a login link*
   reported success and sent nothing. `/healthz` now reports
   `email_enabled`, and those forms say the server can't send email and

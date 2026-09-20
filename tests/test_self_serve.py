@@ -357,3 +357,54 @@ class TestSystemRoute:
         assert TestClient(app).get("/healthz").json()["email_enabled"] is False
         monkeypatch.setenv("EMAIL_BACKEND", "smtp")
         assert TestClient(app).get("/healthz").json()["email_enabled"] is True
+
+
+# ─── An invitation issued without an email must still be usable ──────
+
+
+class TestInviteWithoutEmail:
+    """The Invites form called the email optional, but the sign-up page
+    never asked for one — so an invite issued without it was a dead end
+    ("This invite did not specify an email; please supply one", with
+    nowhere to supply it). The page now asks the server what the
+    invitation needs."""
+
+    def _issue(self, **body) -> str:
+        _login("admin")
+        r = client.post("/api/admin/invites", json={"role": "judge", **body})
+        assert r.status_code == 200, r.text
+        return r.json()["token"]
+
+    def test_peek_says_whether_an_email_is_needed(self):
+        anon = TestClient(app)
+        bare = self._issue()
+        assert anon.get(f"/api/auth/invites/{bare}").json() == {
+            "role": "judge",
+            "needs_email": True,
+        }
+        named = self._issue(intended_email="judge@example.org")
+        assert anon.get(f"/api/auth/invites/{named}").json() == {
+            "role": "judge",
+            "needs_email": False,
+        }
+
+    def test_an_invite_without_an_email_can_be_used(self):
+        token = self._issue()
+        anon = TestClient(app)
+        body = {"token": token, "display_name": "Practice Judge", "password": "a-long-password"}
+        assert (
+            anon.post("/api/auth/signup", json=body).status_code == 400
+        )  # what the old form sent
+        r = anon.post("/api/auth/signup", json={**body, "email_override": "judge@example.org"})
+        assert r.status_code == 200 and r.json()["role"] == "judge"
+
+    def test_peek_gives_nothing_away(self):
+        anon = TestClient(app)
+        assert anon.get("/api/auth/invites/not-a-real-token").status_code == 404
+        token = self._issue(intended_email="judge@example.org")
+        anon.post(
+            "/api/auth/signup",
+            json={"token": token, "display_name": "J", "password": "a-long-password"},
+        )
+        assert anon.get(f"/api/auth/invites/{token}").status_code == 404  # used
+        assert "judge@example.org" not in anon.get(f"/api/auth/invites/{token}").text

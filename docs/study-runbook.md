@@ -283,8 +283,9 @@ you can do. For more detail on any of them, see
 
 ### Creating a judge's account
 
-**Invites** tab → choose the role **judge** → enter the judge's email (so
-you can tell the invitations apart) → **Issue**. The page shows **a
+**Invites** tab → choose the role **judge** → enter the judge's email — it
+is what they will sign in with (leave it empty and they are asked for it
+when they sign up) → **Issue**. The page shows **a
 link**. If the site can send email, the judge gets it by email too;
 otherwise **copy the link and send it yourself**, with the
 [Guide for Judges](judge-guide.md). The link works once and lasts 30 days.
