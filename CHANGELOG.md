@@ -5,8 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Platform schema 13 → 14 (`provider_usage_daily`, `provider_report_imports`);
-applied automatically at startup.
+## [0.7.0] — 2026-09-19
+
+A daily spend alert, and reconciliation with the LLM provider's own
+books. Platform schema 13 → 14 (`provider_usage_daily`,
+`provider_report_imports`); applied automatically at startup — back up
+first, as for any schema change.
 
 ### Added
 
