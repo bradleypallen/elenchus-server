@@ -73,6 +73,16 @@ def _make_usage_recorder(
                     latency_ms=result.latency_ms,
                     purpose=purpose,
                 )
+                # A call that cost something may have pushed the day
+                # past the spend-alert threshold (cost_alerts.py). Its
+                # failure must never cost the respondent their turn.
+                if result.prompt_tokens or result.completion_tokens:
+                    try:
+                        from . import cost_alerts
+
+                        cost_alerts.check(con)
+                    except Exception:
+                        logger.exception("daily spend check failed; continuing")
         except RuntimeError as e:
             logger.debug("usage recording skipped (no registry): %s", e)
         except Exception:

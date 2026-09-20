@@ -38,6 +38,8 @@ import logging
 import re
 from datetime import UTC, date, datetime
 
+from . import provider_report
+
 logger = logging.getLogger(__name__)
 
 
@@ -558,38 +560,18 @@ def _by_month(entries: list[dict], today: date, months: int = 12) -> list[dict]:
     return out
 
 
-def _reconciliation(entries: list[dict], llm_usd_by_month: dict[str, float]) -> list[dict]:
-    """Per month the provider's figure was recorded for: that figure,
-    what the platform computed from tokens, and the gap. Newest first."""
-    provider: dict[str, float] = {}
-    for e in entries:
-        provider[e["covers_month"]] = provider.get(e["covers_month"], 0.0) + e["amount_usd"]
-    out = []
-    for month in sorted(provider, reverse=True):
-        computed = llm_usd_by_month.get(month, 0.0)
-        reported = provider[month]
-        out.append(
-            {
-                "month": month,
-                "provider_usd": round(reported, 2),
-                "computed_usd": round(computed, 2),
-                "difference_usd": round(reported - computed, 2),
-                "difference_pct": (100.0 * (reported - computed) / reported) if reported else None,
-            }
-        )
-    return out
-
-
 def infrastructure_report(
     con,
     *,
     since: date | None,
     today: date,
-    llm_usd_by_month: dict[str, float] | None = None,
+    llm_groups: list[dict] | None = None,
 ) -> dict:
     """The `infrastructure` block of the cost report. `since` bounds the
-    window views, as in `costs.build_report`; `llm_usd_by_month` is the
-    platform's computed LLM spend per 'YYYY-MM', for reconciliation."""
+    window views, as in `costs.build_report`; `llm_groups` are the
+    platform's priced usage groups (`costs.priced_groups`), which the
+    reconciliation sets beside the provider's figures
+    (`provider_report.reconciliation`)."""
     everything = list_entries(con)
     live = [e for e in everything if not e["voided"]]
     infra = [e for e in live if e["category"] in INFRA_CATEGORIES]
@@ -625,9 +607,10 @@ def infrastructure_report(
         "unrecorded": sorted(missing_by_month.values(), key=lambda m: m["month"]),
         "unrecorded_usd": round(sum(c["amount_usd"] for c in missing), 2),
         "unconfirmed": _sum(unconfirmed),
-        "reconciliation": _reconciliation(
+        "reconciliation": provider_report.reconciliation(
+            con,
+            llm_groups or [],
             [e for e in live if e["category"] == RECONCILIATION_CATEGORY],
-            llm_usd_by_month or {},
         ),
     }
 
