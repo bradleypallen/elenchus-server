@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-09-19
+
+### Fixed
+
+- **An email that could not be sent failed silently.** A refused send (an
+  unverified recipient in a sandboxed Amazon SES account, a rotated SMTP
+  password) was logged and swallowed, so an admin with no access to the
+  log believed an invitation had been emailed when it had bounced. Every
+  message now goes through `email_service.deliver`: the System tab shows
+  whether the last message was accepted — with the reason in plain words
+  when it wasn't — a failure raises a `high` alert naming the recipient,
+  issuing an invite reports `emailed: true / false / null`, and the
+  Invites tab says in red when the email could not be sent (the invitation
+  stays valid; pass the link on by hand). The failure alert is not itself
+  emailed. Found on the live PoC, whose SES account is still in its
+  sandbox.
+
 ## [0.8.0] — 2026-09-19
 
 Self-serve operation. Platform schema 14 → 16 (`study_configs.task_minutes`,

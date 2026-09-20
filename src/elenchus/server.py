@@ -707,14 +707,21 @@ def admin_create_invite(
 
     base_url = str(request.base_url).rstrip("/")
     ttl = timedelta(days=req.ttl_days) if req.ttl_days else None
-    token = invites.issue_invite(
+    issued = invites.issue_invite_with_outcome(
         role=req.role,
         issued_by=actor["id"],
         intended_email=req.intended_email,
         ttl=ttl,
         base_url=base_url,
     )
-    return {"token": token, "role": req.role, "intended_email": req.intended_email}
+    return {
+        "token": issued["token"],
+        "role": req.role,
+        "intended_email": req.intended_email,
+        # True = emailed; False = the email FAILED (pass the link on by
+        # hand); None = nothing to email, or no mail backend.
+        "emailed": issued["emailed"],
+    }
 
 
 @app.get("/api/admin/invites")
@@ -907,6 +914,9 @@ def admin_system(actor: dict = Depends(auth.require_admin)):
             "backend": email_service_mod.active_backend(),
             "enabled": email_service_mod.active_backend() == "smtp",
             "alert_email_to": bool(os.environ.get("ALERT_EMAIL_TO", "").strip()),
+            # The most recent send since the server started — being
+            # configured to send mail is not the same as mail arriving.
+            "last_delivery": email_service_mod.delivery_status(),
         },
         "disk": {"free_bytes": disk.free, "total_bytes": disk.total},
         "backups": backups,

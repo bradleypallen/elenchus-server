@@ -346,7 +346,8 @@ class TestSystemRoute:
         assert client.post("/api/admin/backup", json={}).status_code == 200
         s = client.get("/api/admin/system").json()
         assert s["version"] and s["schema_version"] >= 16
-        assert s["email"] == {"backend": "console", "enabled": False, "alert_email_to": False}
+        assert s["email"]["backend"] == "console" and s["email"]["enabled"] is False
+        assert s["email"]["alert_email_to"] is False and "last_delivery" in s["email"]
         assert s["disk"]["free_bytes"] > 0
         assert s["backups_total"] >= 1 and s["backups"][0]["name"].endswith(".tar.gz")
         assert "api_key" not in json.dumps(s["llm"]).replace("has_api_key", "")
@@ -408,3 +409,116 @@ class TestInviteWithoutEmail:
         )
         assert anon.get(f"/api/auth/invites/{token}").status_code == 404  # used
         assert "judge@example.org" not in anon.get(f"/api/auth/invites/{token}").text
+
+
+# ─── An email that fails must not fail silently ──────────────────────
+
+
+class _RefusingMail:
+    """What a sandboxed Amazon SES account does to an unverified recipient."""
+
+    def send(self, to, subject, body):
+        import smtplib
+
+        raise smtplib.SMTPDataError(554, b"Message rejected: Email address is not verified.")
+
+
+class _WorkingMail:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, to, subject, body):
+        self.sent.append(to)
+
+
+class TestEmailDeliveryIsVisible:
+    @pytest.fixture(autouse=True)
+    def _mail(self, monkeypatch):
+        from elenchus import alerting, email_service
+
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.setattr(email_service, "_last_delivery", None)
+        get_registry().platform_con().execute("DELETE FROM alerts")
+        alerting.set_dispatcher_for_tests(None)
+        yield
+        email_service.set_email_service(email_service.ConsoleEmailService())
+        alerting.set_dispatcher_for_tests(None)
+
+    def test_a_bounced_invitation_tells_the_admin(self, caplog):
+        """It used to be logged and swallowed: an admin with no log access
+        believed an invitation had been emailed when it had been refused."""
+        from elenchus import email_service
+
+        email_service.set_email_service(_RefusingMail())
+        _login("admin")
+        r = client.post(
+            "/api/admin/invites", json={"role": "judge", "intended_email": "judge@example.org"}
+        )
+        assert r.status_code == 200, r.text  # the invitation itself is fine
+        assert r.json()["emailed"] is False and r.json()["token"]
+
+        system = client.get("/api/admin/system").json()
+        last = system["email"]["last_delivery"]
+        assert last["ok"] is False and last["recipient"] == "judge@example.org"
+        assert "sandbox" in last["explanation"] and "not verified" in last["error"]
+        alert = system["alerts"][0]
+        assert alert["category"] == "email.send_failed" and alert["severity"] == "high"
+        assert "judge@example.org" in alert["subject"]
+
+    def test_a_delivered_invitation_says_so(self):
+        from elenchus import email_service
+
+        mail = _WorkingMail()
+        email_service.set_email_service(mail)
+        _login("admin")
+        r = client.post(
+            "/api/admin/invites", json={"role": "judge", "intended_email": "judge@example.org"}
+        )
+        assert r.json()["emailed"] is True and mail.sent == ["judge@example.org"]
+        last = client.get("/api/admin/system").json()["email"]["last_delivery"]
+        assert last["ok"] is True and last["error"] == ""
+
+    def test_no_address_or_no_backend_is_neither_sent_nor_failed(self, monkeypatch):
+        _login("admin")
+        assert client.post("/api/admin/invites", json={"role": "judge"}).json()["emailed"] is None
+        monkeypatch.setenv("EMAIL_BACKEND", "console")
+        r = client.post(
+            "/api/admin/invites", json={"role": "judge", "intended_email": "j@example.org"}
+        )
+        assert r.json()["emailed"] is None
+
+    def test_the_failure_alert_is_not_itself_emailed(self):
+        """It would fail the same way and raise the same alert again."""
+        from elenchus import alerting
+
+        mail = _WorkingMail()
+        channel = alerting.EmailAlertChannel(
+            recipient="ops@example.org", email_service=mail, min_severity=alerting.Severity.LOW
+        )
+        channel.send(
+            alerting.Alert(
+                severity=alerting.Severity.HIGH, category="email.send_failed", subject="x"
+            )
+        )
+        assert mail.sent == []
+        channel.send(
+            alerting.Alert(severity=alerting.Severity.HIGH, category="llm.rate_limit", subject="x")
+        )
+        assert mail.sent == ["ops@example.org"]
+
+    def test_a_failed_reset_email_still_hands_the_admin_the_link(self):
+        from elenchus import email_service
+
+        email_service.set_email_service(_RefusingMail())
+        _login("admin")
+        con = get_registry().platform_con()
+        target = pdb.create_actor(
+            con,
+            kind="researcher",
+            email="someone@example.org",
+            display_name="Someone",
+            password_hash=auth.hash_password("pw"),
+        )
+        r = client.post(f"/api/admin/users/{target}/reset-password")
+        assert r.status_code == 200, r.text
+        assert r.json()["emailed"] is False and r.json()["reset_url"]

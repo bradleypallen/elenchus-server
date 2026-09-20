@@ -114,6 +114,90 @@ def set_email_service(service: EmailService) -> None:
     _service = service
 
 
+# ─── Delivery: never fail silently ────────────────────────────────────
+#
+# Every message goes through `deliver`. A send that fails used to be
+# logged and swallowed by its caller — and the person running the
+# platform has no access to the log, so an invitation that bounced
+# (an unverified recipient in a sandboxed Amazon SES account, a rotated
+# SMTP password) looked exactly like one that arrived. Now the outcome
+# of the last attempt is kept for the System tab, and a failure raises
+# an alert, which the dashboard stores and shows.
+
+_last_delivery: dict | None = None
+
+
+def _explain(error: str) -> str:
+    """A sentence for the commonest causes, in the admin's terms."""
+    lowered = error.lower()
+    if "not verified" in lowered or "message rejected" in lowered:
+        return (
+            "The mail provider refused the recipient. With Amazon SES this means the "
+            "account is still in its sandbox, which only delivers to addresses that "
+            "have been verified — request production access for SES, or verify this "
+            "address. Until then, copy links from the dashboard and send them yourself."
+        )
+    if "authentication" in lowered or "535" in error or "credentials" in lowered:
+        return "The mail server rejected the platform's SMTP user name or password."
+    if "timed out" in lowered or "connection" in lowered or "name or service" in lowered:
+        return "The platform could not reach the mail server."
+    return "The mail server did not accept the message."
+
+
+def delivery_status() -> dict | None:
+    """The outcome of the most recent send since the server started, or
+    None if nothing has been sent: `{ok, at_utc, recipient, subject,
+    error, explanation}`."""
+    return dict(_last_delivery) if _last_delivery else None
+
+
+def deliver(recipient: str, subject: str, body: str) -> None:
+    """Send one message through the configured backend, recording the
+    outcome. Re-raises on failure, so callers keep deciding what a
+    failed email means for them — but the failure is no longer theirs
+    alone to notice."""
+    global _last_delivery
+    from datetime import UTC, datetime
+
+    at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        get_email_service().send(recipient, subject, body)
+    except Exception as e:
+        error = f"{type(e).__name__}: {e}"[:400]
+        _last_delivery = {
+            "ok": False,
+            "at_utc": at,
+            "recipient": recipient,
+            "subject": subject,
+            "error": error,
+            "explanation": _explain(error),
+        }
+        logger.error("Email to %s failed (subject=%r): %s", recipient, subject, error)
+        try:
+            from . import alerting  # late: alerting imports this module lazily too
+
+            alerting.dispatch(
+                alerting.Alert(
+                    severity=alerting.Severity.HIGH,
+                    category="email.send_failed",
+                    subject=f"An email to {recipient} could not be sent — “{subject}”",
+                    body=_explain(error),
+                    metadata={"recipient": recipient, "subject": subject, "error": error},
+                )
+            )
+        except Exception:
+            logger.exception("Could not raise the email-failure alert")
+        raise
+    _last_delivery = {
+        "ok": True,
+        "at_utc": at,
+        "recipient": recipient,
+        "subject": subject,
+        "error": "",
+        "explanation": "",
+    }
+
+
 # ─── Template functions ───────────────────────────────────────────────
 
 
@@ -129,7 +213,7 @@ def send_invite_email(token: str, recipient: str, role: str, base_url: str = "")
         f"Click here to create your account:\n  {link}\n\n"
         f"If you weren't expecting this invitation, ignore this email.\n"
     )
-    get_email_service().send(recipient, "Your Elenchus invitation", body)
+    deliver(recipient, "Your Elenchus invitation", body)
 
 
 def send_magic_link_email(token: str, recipient: str, base_url: str = "") -> None:
@@ -141,7 +225,7 @@ def send_magic_link_email(token: str, recipient: str, base_url: str = "") -> Non
         "This link is valid for 20 minutes and can be used once.\n"
         "If you didn't request this, ignore this email.\n"
     )
-    get_email_service().send(recipient, "Your Elenchus login link", body)
+    deliver(recipient, "Your Elenchus login link", body)
 
 
 def send_password_reset_email(token: str, recipient: str, base_url: str = "") -> None:
@@ -155,7 +239,7 @@ def send_password_reset_email(token: str, recipient: str, base_url: str = "") ->
         "If you didn't request this, ignore this email — your password "
         "won't change.\n"
     )
-    get_email_service().send(recipient, "Reset your Elenchus password", body)
+    deliver(recipient, "Reset your Elenchus password", body)
 
 
 def active_backend() -> str:
@@ -170,7 +254,7 @@ def send_password_changed_notification(recipient: str) -> None:
         "The password on your Elenchus account was just changed.\n\n"
         "If you did not make this change, contact the administrator immediately.\n"
     )
-    get_email_service().send(recipient, "Your Elenchus password was changed", body)
+    deliver(recipient, "Your Elenchus password was changed", body)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────

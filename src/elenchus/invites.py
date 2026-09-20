@@ -39,7 +39,34 @@ def issue_invite(
     """Issue a new invite. Returns the token. If `intended_email` is
     set and `send_email` is True, delivers the invite by email via the
     configured EmailService (the console backend logs it to stdout for
-    out-of-band delivery)."""
+    out-of-band delivery). Use `issue_invite_with_outcome` to learn
+    whether that email actually went out."""
+    return issue_invite_with_outcome(
+        role=role,
+        issued_by=issued_by,
+        intended_email=intended_email,
+        ttl=ttl,
+        base_url=base_url,
+        send_email=send_email,
+        metadata=metadata,
+    )["token"]
+
+
+def issue_invite_with_outcome(
+    *,
+    role: str,
+    issued_by: int,
+    intended_email: str | None = None,
+    ttl: timedelta | None = DEFAULT_INVITE_TTL,
+    base_url: str = "",
+    send_email: bool = True,
+    metadata: dict | None = None,
+) -> dict:
+    """Issue an invite and say what happened to its email:
+    `{token, emailed}` with `emailed` True (sent), False (**the send
+    failed** — the link must be passed on by hand) or None (no address
+    given, or the server has no mail backend). A failed email never
+    invalidates the invite."""
     if role not in {"admin", "researcher", "user", "judge"}:
         raise HTTPException(status_code=400, detail=f"Invalid invite role: {role!r}")
 
@@ -58,23 +85,27 @@ def issue_invite(
             metadata=metadata,
         )
 
+    emailed: bool | None = None  # None: nothing to send, or mail isn't set up
     if send_email and intended_email:
         try:
             email_service.send_invite_email(
                 token=token, recipient=intended_email, role=role, base_url=base_url
             )
+            emailed = email_service.active_backend() == "smtp" or None
         except Exception:
+            emailed = False
             logger.exception(
                 "Failed to send invite email to %s (token still valid)", intended_email
             )
 
     logger.info(
-        "Issued invite (role=%s, email=%s, issued_by=%d)",
+        "Issued invite (role=%s, email=%s, issued_by=%d, emailed=%s)",
         role,
         intended_email or "(none)",
         issued_by,
+        emailed,
     )
-    return token
+    return {"token": token, "emailed": emailed}
 
 
 def list_invites(*, include_consumed: bool = True) -> list[dict]:
