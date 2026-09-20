@@ -274,17 +274,21 @@ class TestEnvConfiguration:
     def teardown_method(self):
         set_dispatcher_for_tests(None)
 
-    def test_console_only_by_default(self, monkeypatch):
+    def test_console_and_database_by_default(self, monkeypatch):
+        """No email unless asked for — but always the log, and always the
+        database, which is what the dashboard's System tab reads."""
         monkeypatch.delenv("ALERT_EMAIL_TO", raising=False)
         d = get_dispatcher()
-        # Exactly one channel (console).
-        assert len(d.channels) == 1
+        assert [type(c).__name__ for c in d.channels] == [
+            "ConsoleAlertChannel",
+            "DatabaseAlertChannel",
+        ]
         assert isinstance(d.channels[0], ConsoleAlertChannel)
 
     def test_email_added_when_alert_email_to_set(self, monkeypatch):
         monkeypatch.setenv("ALERT_EMAIL_TO", "ops@example.com")
         d = get_dispatcher()
-        assert len(d.channels) == 2
+        assert len(d.channels) == 3
         kinds = {type(c).__name__ for c in d.channels}
         assert "ConsoleAlertChannel" in kinds
         assert "EmailAlertChannel" in kinds

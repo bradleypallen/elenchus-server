@@ -34,11 +34,12 @@ Configuration via env vars:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
@@ -170,6 +171,73 @@ class EmailAlertChannel:
             logger.exception("EmailAlertChannel.send failed")
 
 
+# How many alerts the database keeps; older rows are deleted as new
+# ones arrive, so a long provider outage can't fill the disk.
+ALERT_HISTORY_ROWS = 500
+
+
+class DatabaseAlertChannel:
+    """Keeps each dispatched alert in the platform DB (`alerts`,
+    migration 0016) so an admin can read them in the dashboard — the
+    only channel that reaches someone with no shell and no alert email.
+
+    Does nothing when there is no registry (the CLI, unit tests of the
+    dispatcher): alerting must never be the thing that fails. Each
+    statement is atomic on the registry's serialized connection, so this
+    is safe to call with or without the platform lock held."""
+
+    def send(self, alert: Alert) -> None:
+        try:
+            from .db import get_registry
+
+            con = get_registry().platform_con()
+        except RuntimeError:
+            return
+        con.execute(
+            "INSERT INTO alerts (at_utc, severity, category, subject, body, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                datetime.now(UTC).replace(tzinfo=None),
+                alert.severity.value,
+                alert.category,
+                alert.subject[:500],
+                alert.body[:4000],
+                json.dumps(alert.metadata, default=str)[:4000],
+            ],
+        )
+        con.execute(
+            "DELETE FROM alerts WHERE id <= (SELECT MAX(id) FROM alerts) - ?",
+            [ALERT_HISTORY_ROWS],
+        )
+
+
+def list_alerts(con, limit: int = 50) -> list[dict]:
+    """The newest stored alerts, newest first."""
+    rows = con.execute(
+        "SELECT id, at_utc, severity, category, subject, body, metadata FROM alerts "
+        "ORDER BY id DESC LIMIT ?",
+        [max(1, min(int(limit), ALERT_HISTORY_ROWS))],
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            metadata = json.loads(r[6] or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        out.append(
+            {
+                "id": r[0],
+                "at_utc": r[1].isoformat() + "Z",
+                "severity": r[2],
+                "category": r[3],
+                "subject": r[4],
+                "body": r[5],
+                "metadata": metadata,
+            }
+        )
+    return out
+
+
 def _format_body(alert: Alert) -> str:
     lines = [alert.body or alert.subject, ""]
     if alert.metadata:
@@ -255,8 +323,9 @@ _dispatcher_lock = threading.Lock()
 
 def _build_dispatcher_from_env() -> Dispatcher:
     """Build a Dispatcher from env vars. Always includes the console
-    channel; adds the email channel if `ALERT_EMAIL_TO` is set."""
-    channels: list[AlertChannel] = [ConsoleAlertChannel()]
+    channel and the database channel (the dashboard's System tab reads
+    it); adds the email channel if `ALERT_EMAIL_TO` is set."""
+    channels: list[AlertChannel] = [ConsoleAlertChannel(), DatabaseAlertChannel()]
 
     recipient = os.environ.get("ALERT_EMAIL_TO", "").strip()
     if recipient:
