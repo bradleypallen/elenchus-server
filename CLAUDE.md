@@ -63,8 +63,9 @@ pytest -v
   **Off by default** so the live message route matches the Sloan proposal's
   Elenchus-condition speech-act vocabulary exactly. Set to `1`/`true`/`yes`/
   `on` outside study contexts.
-- `ELENCHUS_TASK_MINUTES` — intended length of the study's main task
-  (default `60`). Drives the writing pane's clock and its two **soft**
+- `ELENCHUS_TASK_MINUTES` — the **default** intended length of a study's
+  main task (default `60`); a study's own *Length of the main task*
+  (`study_configs.task_minutes`, Study tab) overrides it. Drives the writing pane's clock and its two **soft**
   warnings (ten minutes before, and at, the limit); nothing is cut off.
   Set low (e.g. `10`) for training runs and demos.
 - `ELENCHUS_PRICING_JSON` — JSON object mapping model → `{input_per_1m,
@@ -124,7 +125,7 @@ src/elenchus/
 
 9. **pdf_report.py** — Generates PDF reports of dialectics using fpdf2. Includes summary, bilateral position, tensions/implications, material base report, and conversation transcript. Converts Markdown formatting to HTML for rendering via `_md_to_html()`.
 
-**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a five-tab dashboard (Invites + Users + Study + Judging + Costs); researchers see a STUDY button that opens the same dashboard with only the Study and Judging tabs (the ones that drive the researcher-gated study routes). There is no Settings tab — runtime LLM settings live in the gear-icon modal (`PUT /api/settings`). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
+**static/index.html** — Single-file HTML/CSS/JS frontend (no build step). React 18 + Babel (in-browser transpilation). `<AuthGate>` wraps the app and swaps in Login / Signup / MagicLink forms on 401. An `<AuthContext>` exposes `actor` and `logout` to children. Admins see an ADMIN button in the home header that opens a six-tab dashboard (Invites + Users + Study + Judging + Costs + System); researchers see a STUDY button that opens the same dashboard with only the Study and Judging tabs (the ones that drive the researcher-gated study routes). There is no Settings tab — runtime LLM settings live in the gear-icon modal (`PUT /api/settings`). Supports dark/light themes, font scaling, and custom colors (persisted in localStorage).
 
 **cli.py** — Standalone CLI REPL. Bypasses the platform layer entirely: same `Opponent` + `DialecticalState` stack, no auth, no server needed. Supports slash commands (`/state`, `/tensions`, `/derive`, etc.).
 
@@ -193,6 +194,10 @@ The panel gives each submitted text **absolute** ratings (texts on different top
 ## Enrolment (crossover design)
 
 Each participant does two sessions — one per condition, a different topic each time. `study_configs` holds a study's two topics (A, B) and `min_gap_hours`; `study_participants` holds one row per *person* (code `P01…`, `first_condition`, `first_topic`, `allocation`); tokens carry `participant_id` + `period` (platform migration `0010`). `POST /api/admin/study/{id}/participants` allocates the cell and issues **both** links. Allocation is permuted-block randomization over the 2×2 of (first condition × first topic) — pure functions in `study_enrolment.py`; manually-placed participants are excluded from the blocks. **A token still owns its own passwordless actor** (the session's identity, owner of that session's bases); the participant row is the person's identity and is what links the two sessions in the export. `pdb.second_session_gate` keeps a period-2 link shut (HTTP 409 with a `user_message`) until the period-1 session is terminal and the gap has passed — checked only when a `scheduled` token is first opened, never on resume; a voided first token doesn't hold the second. `POST /api/admin/study/sessions/{id}/interrupt` is the researcher's way to close an abandoned session. Hand-issued tokens (`POST /api/admin/study/tokens`) still work and are never gated. The dashboard (`<AdminEnrolmentPanel>`) is reachable by `researcher` **and** `admin` accounts; researchers see only the Study and Judging tabs.
+
+## Self-Serve Operation
+
+The person running a study is an admin with **no shell on the server**, so anything they need day to day must be in the dashboard; when adding a feature, ask whether it leaves them needing SSH. What exists for that: a study's own task length (`study_configs.task_minutes`, platform migration `0015`; NULL = `ELENCHUS_TASK_MINUTES`; read at session time via `_task_minutes(study_id)`, changes logged with the old value); export **downloads** (`GET /api/admin/study/{id}/exports[/{name}]`, researcher; `…/{name}/pseudonyms`, **admin only**, logged at WARNING — a file is served only if `_study_exports(study_id)` lists it, the requested name is never joined into a path); the **System tab** (`GET /api/admin/system`: release, LLM/email configuration without secrets, disk, server time zone, backups with *Back up now*, the consistency check, and recent alerts); **stored alerts** (`alerting.DatabaseAlertChannel`, always on beside the console channel, platform migration `0016`, newest `ALERT_HISTORY_ROWS` kept — it must never raise and must work with or without the platform lock held); and `/healthz` `email_enabled`, which the sign-in page uses to say that reset/login links can't be emailed instead of pretending. What still needs the server: upgrades, restores, copying backups off the box, configuring SMTP, the clock. The runbook (`docs/study-runbook.md`) has an admin track and a practice run that needs nobody's help; `docs/judge-guide.md` is what gets sent to the panel — keep its rubric wording in step with `text_judging.py` (bump `RUBRIC_VERSION` there, then update the guide).
 
 ## Costs
 

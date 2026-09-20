@@ -12,20 +12,33 @@ what is captured, blinding — read [Running a Study](study.md). For
 consent, recruitment, scheduling and what to say to participants, follow
 the study protocol; this runbook covers only the platform.
 
-**You need:** the site address, and a `researcher` account (email +
-password) from the study admin.
+**You need:** the site address and an account — `researcher` or `admin`.
+You get one from an **invitation link**: open it, choose a display name
+and a password (the link works once), and from then on sign in at the
+site's address with your email and password.
 
-**You can:** set up a study, enrol participants, watch their progress,
-close an abandoned session, assign texts to judges, export.
-**You can't** (ask the admin): create or reset accounts, create judges,
-change the AI model or its key, fix the server.
+| Your account | The button, top right | What you see |
+|---|---|---|
+| `researcher` | **STUDY** | two tabs: **Study** and **Judging** — everything in sections 1–10 |
+| `admin` | **ADMIN** | six tabs: the same two, plus **Invites**, **Users**, **Costs** and **System** — see [If you are the admin](#if-you-are-the-admin) |
+
+**A researcher can:** set up a study, enrol participants, watch their
+progress, close an abandoned session, assign texts to judges, export and
+download the data.
+**Only an admin can:** create accounts (including judges'), reset a
+password, download the key that links codes to names, change the AI model
+or its key, take a backup, see costs and alerts. If you are a researcher,
+"ask the admin" below means exactly these.
+
+Almost nothing needs access to the server itself; the few things that do
+are listed [at the end](#what-still-needs-access-to-the-server).
 
 ---
 
 ## 1. Sign in
 
-Go to the site, sign in. Press **STUDY** (top right). You'll see two
-tabs: **Study** and **Judging**.
+Go to the site, sign in. Press **STUDY** (or **ADMIN**) at the top right
+and open the **Study** tab.
 
 ## 2. Set the study up — once
 
@@ -38,6 +51,7 @@ itself if nothing has been set up yet).
 | Topic A / Topic B — title | What the participant will see as their topic. |
 | Topic A / Topic B — brief | One or two sentences of framing, shown under the title. |
 | Minimum hours between sessions | How long a participant's second link stays shut after their first session ends. `48` = two days. |
+| Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It only drives the clock and its two reminders — nothing is ever cut off. Set it before the first participant starts and don't change it afterwards. |
 
 Press **Save study**.
 
@@ -155,6 +169,7 @@ Reload the page to refresh the list.
 | You enrolled the wrong person / a duplicate. | A participant row can't be deleted. | Leave their links unsent. Tell the study lead so the code can be excluded — and so the randomization record stays honest. |
 | A typo in a topic, found after enrolling people. | Enrolled participants keep the old wording. | Tell the study lead before changing anything. |
 | The list shows nothing / "Researcher privilege required". | You're signed out, or signed in with a non-researcher account. | Sign in again. |
+| **You** (or a judge) forgot a password. | If the site can't send email, "forgot password?" says so rather than pretending. | An admin presses **reset password** next to the person in the **Users** tab and sends them the one-time link it shows. With two admins, each can do this for the other. |
 
 If in doubt: **write down the participant's code, the session number, the
 time, and what they told you**, and pass it on. Never ask a participant to
@@ -174,24 +189,32 @@ submitted texts**.
 - *Panel progress* shows how far each judge has got (`12 / 40`);
   *Submitted texts* shows how many judges have rated each text.
 
-If the judge list is empty, the admin hasn't created the judges' accounts
-yet. You don't see the texts or the ratings here, and judges never see
-who wrote a text or how — keep it that way: don't discuss individual
-participants or sessions with a judge.
+If the judge list is empty, nobody has created the judges' accounts yet —
+an admin does that ([below](#creating-a-judges-account)). Send each judge
+the [Guide for Judges](judge-guide.md) with their invitation. You don't
+see the texts or the ratings here, and judges never see who wrote a text
+or how — keep it that way: don't discuss individual participants or
+sessions with a judge.
 
 ## 9. Exporting
 
-**Study** tab → *Studies* → **Export** next to the study id. It reports
-where the archive was written **on the server**; ask the admin to fetch
-it. You can export at any time — it's a snapshot, and doesn't change
-anything.
+**Study** tab → *Studies* → **Export** next to the study id. You can
+export at any time — it's a snapshot, and doesn't change anything. Then
+press **downloads** beside it: every export made for that study is listed,
+newest first.
 
 Each export makes **two files**:
 
-- `study-PILOT-….tar.gz` — the data. No names in it.
-- `study-PILOT-….pseudonyms.json` — **the key that links codes to
-  names.** It must never travel with the archive or be uploaded to any
-  repository.
+- `study-PILOT-….tar.gz` — **the data. No names in it**: participants
+  appear by code. Click the file name to download it. It is an ordinary
+  compressed folder of JSON files (your computer can open it); the
+  [study guide](study.md) says what each file holds.
+- **names key (keep separate)** — the key that links codes to the names
+  you typed when enrolling. **Only an admin sees this link.** It must
+  never travel with the archive, sit on a shared drive, or be uploaded to
+  any repository. Most days you don't need it at all.
+
+Exports also stay on the server, so you can download one again later.
 
 ## 10. Ground rules
 
@@ -209,11 +232,11 @@ Each export makes **two files**:
 ## Practice run
 
 Do this once, start to finish, before the first real participant. It
-takes about half an hour if the site has been started with a short task
-clock (ask the admin for `ELENCHUS_TASK_MINUTES=5`).
+takes about half an hour, and nothing in it needs anyone else's help.
 
-1. Sign in → **STUDY**. Set up a study called `TRAINING` with two topics
-   and a gap of `0` hours.
+1. Sign in → **STUDY** (or **ADMIN**) → **Study** tab. Set up a study
+   called `TRAINING` with two topics, a gap of `0` hours and a task length
+   of `5` minutes.
 2. Enrol "Practice Person". Note their code, which condition is first,
    and that session 2 says *waiting: session 1 not started*.
 3. Copy **session 2's** link and open it in a **private / incognito
@@ -224,7 +247,8 @@ clock (ask the admin for `ELENCHUS_TASK_MINUTES=5`).
    text is still there and the clock kept going.
 6. Close the window entirely. Open the same link again — you're back in
    the task.
-7. Wait for the first time warning, then the second. Notice nothing locks.
+7. Wait for the two time reminders — with a five-minute task they come at
+   one minute and at five. Notice nothing locks.
 8. Press **Finish session** with a very short text; read the
    confirmation; confirm. Do the questionnaires.
 9. Back in your researcher window, reload: session 1 is `complete`,
@@ -232,7 +256,98 @@ clock (ask the admin for `ELENCHUS_TASK_MINUTES=5`).
 10. Do session 2 the same way. Notice the AI behaves differently.
 11. Enrol "Drop Out", open their session 1 link, stop at the tutorial.
     Back in the list, press **Close as interrupted**.
-12. If a practice judge account exists: **Judging** → assign all texts to
-    them; sign in as the judge in a private window, rate one text, reopen
-    it and revise; check *Panel progress* from your researcher window.
-13. **Export** `TRAINING`. Ask the admin to show you the two files.
+12. A practice judge. If you are an admin, [create one](#creating-a-judges-account)
+    and open its invitation link in a private window to sign up; if you
+    are a researcher, ask an admin for one. Then **Judging** → assign all
+    texts to them; as the judge, in the private window, rate one text,
+    reopen it and revise; check *Panel progress* from your own window.
+    Read the [Guide for Judges](judge-guide.md) as you go — it is what you
+    will send the real panel.
+13. **Export** `TRAINING`, press **downloads**, and download the archive.
+    Open it: find your practice person's text and the judge's rating. If
+    you are an admin, download the **names key** once too, to see what it
+    is — then delete your copy.
+14. If you are an admin: open **System** and press **Back up now**; open
+    **Costs** and find what your practice run cost under *Studies*.
+
+Leave `TRAINING` in place — you can practise in it again, and it never
+mixes with the real study's data.
+
+---
+
+## If you are the admin
+
+Everything above works the same for you. These are the extra things only
+you can do. For more detail on any of them, see
+[Administration](administration.md).
+
+### Creating a judge's account
+
+**Invites** tab → choose the role **judge** → enter the judge's email (so
+you can tell the invitations apart) → **Issue**. The page shows **a
+link**. If the site can send email, the judge gets it by email too;
+otherwise **copy the link and send it yourself**, with the
+[Guide for Judges](judge-guide.md). The link works once and lasts 30 days.
+
+The same goes for a second researcher or another admin: choose that role
+instead. Accounts can't be created any other way.
+
+> **Never change a judge's role once texts are assigned to them**, and
+> don't give a judge a second, more powerful account. A judge who can see
+> the Study tab sees which condition produced each text. The platform
+> refuses the role change; don't work around it.
+
+### People and passwords
+
+**Users** tab. Next to each person: **reset password** (gives you a
+one-time link to send them — it also signs them out), **deactivate**
+(they can no longer sign in; everything they did is kept), and the *kind*
+menu to change someone's role. You can't change your own role or remove
+the last admin — that is what a **second admin** is for. Have one.
+
+### The names key
+
+In **downloads** (section 9) you — and only you — see a second link,
+*names key (keep separate)*. It asks before downloading, and the download
+is recorded. Keep it somewhere the data archive is not.
+
+### Before and after each day of sessions
+
+**System** tab:
+
+- **Status** should be all green: *API key set*, enough disk. If it says
+  **NO API KEY**, participants can't get replies — set the key with the
+  gear icon on the home page before anyone starts.
+- **Alerts** lists what the platform has complained about: an AI outage,
+  a rejected key, a day's spend far above normal. If a participant
+  reports the AI not answering, look here first; note the time.
+- **Back up now** — before the first session of the day and after the
+  last. A backup protects against a mistake or a bad upgrade. It stays on
+  the server; the *export* is what you download to keep the data.
+
+**Don't change the AI model while a study is running** (gear icon → model).
+Every turn records the model it used, so a change would show — but it
+would still muddy the comparison.
+
+### Costs
+
+**Costs** tab: what the AI has cost — by day, by model, and per study
+session under *Studies* — against the budget you enter, with a ledger for
+hosting bills underneath. It raises an alert if a single day's spend
+passes a threshold you can set there. See
+[Cost and usage](administration.md#cost-and-usage).
+
+### What still needs access to the server
+
+Not much, and none of it is part of running a session:
+
+- **upgrading** to a new release, and **restoring** from a backup;
+- **copying backups off the server** (a backup on the server doesn't
+  survive losing the server);
+- **setting up email** (until then: copy links by hand, as above) and
+  having alerts emailed;
+- **fixing the server's clock** to UTC if the System tab says it isn't.
+
+If the site is down altogether, or System shows a problem you can't
+clear, that is for whoever maintains the server — send them what the
+System tab says and the time.
