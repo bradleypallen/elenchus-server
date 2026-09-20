@@ -5,6 +5,34 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Platform schema 13 → 14 (`provider_usage_daily`, `provider_report_imports`);
+applied automatically at startup.
+
+### Added
+
+- **Daily spend alert.** After every recorded LLM call, today's spend
+  (priced from tokens) is compared with a daily threshold — $25 by default,
+  set in the Costs tab or with `ELENCHUS_DAILY_SPEND_ALERT_USD`, `0` = off.
+  Crossing it sends a `high` alert; each further multiple sends a
+  `critical` one, so a runaway (a client in a loop, a script on the message
+  route, a far more expensive model) keeps announcing itself; nothing is
+  repeated within a day or after a restart. Tokens on a model with no rate
+  — spend the check can't see — send their own alert. The Costs tab opens
+  with a banner while a day is over the threshold. Alerting only: nothing
+  is ever cut off.
+- **Reconciliation with the provider's own books.** `elenchus-provider-report`
+  — run on an admin's **own machine**, with an Admin API key that never
+  touches the server — fetches Anthropic's usage and cost reports into a
+  figures-only file; *Import a provider report…* in the Costs tab uploads
+  it. The reconciliation table then compares provider and platform over
+  the days the report covers, per month and (click the month) per model —
+  tokens as well as dollars — with a plain verdict: the books agree, the
+  rate differs, the provider saw more usage than the platform recorded, or
+  the report doesn't cover everything. An imported month supersedes a
+  typed-in figure; a fresher report replaces an older one.
+- `httpx` is now a declared dependency (it was already installed, as a
+  dependency of the Anthropic SDK).
+
 ## [0.6.0] — 2026-09-19
 
 An infrastructure ledger beside the measured LLM spend. Platform schema

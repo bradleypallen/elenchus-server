@@ -3474,6 +3474,24 @@ function CostLedgerPanel({ fs, infra, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [openMonth, setOpenMonth] = useState(null);
+  const [importNote, setImportNote] = useState(null);
+  const [importError, setImportError] = useState(null);
+
+  const uploadProviderReport = async (file) => {
+    if (!file || busy) return;
+    setBusy(true); setImportError(null); setImportNote(null);
+    try {
+      let payload;
+      try { payload = JSON.parse(await file.text()); }
+      catch (e) { throw new Error('That file isn’t JSON — upload the file elenchus-provider-report wrote.'); }
+      const r = await api('/api/admin/costs/provider-report', { method: 'POST', body: JSON.stringify(payload) });
+      setImportNote(`Imported ${r.period_from} → ${r.period_to}: ${usd(r.total_cost_usd)} in ${r.rows} rows` +
+                    (r.rows_replaced ? `, replacing ${r.rows_replaced} from an earlier report.` : '.'));
+      await load(); onChanged && onChanged();
+    } catch (e) { setImportError(e.message); }
+    setBusy(false);
+  };
 
   const load = async () => {
     try { setLedger(await api('/api/admin/costs/ledger')); }
@@ -3598,25 +3616,78 @@ function CostLedgerPanel({ fs, infra, onChanged }) {
           </div>
         </div>
         <div style={card}>
-          <div style={heading}>LLM RECONCILIATION — THE PROVIDER’S FIGURE VS COMPUTED</div>
+          <div style={heading}>LLM RECONCILIATION — THE PROVIDER’S BOOKS VS THE PLATFORM’S</div>
           {infra.reconciliation.length === 0
             ? <div style={note}>
-                None recorded. To check the computed LLM spend, add an entry in the category “{categories[ledger.reconciliation_category]}”
-                with the month’s cost from the provider’s console or invoice. It is compared here and never added to a total.
+                Nothing to compare yet. Import the provider’s own figures (below), or add an entry in the category
+                “{categories[ledger.reconciliation_category]}” with a month’s cost read off the provider’s console.
+                Either is compared here and never added to a total.
               </div>
             : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
                 <thead><tr><th style={th}>month</th><th style={thr}>provider</th><th style={thr}>computed</th><th style={thr}>difference</th></tr></thead>
                 <tbody>{infra.reconciliation.map(r => (
-                  <tr key={r.month} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ ...td, fontFamily: 'var(--mono)' }}>{r.month}</td>
-                    <td style={tdr}>{usd(r.provider_usd)}</td>
-                    <td style={tdr}>{usd(r.computed_usd)}</td>
-                    <td style={{ ...tdr, color: Math.abs(r.difference_pct || 0) > 10 ? 'var(--deny)' : 'var(--text-dim)' }}>
-                      {r.difference_usd >= 0 ? '+' : '−'}{usd(Math.abs(r.difference_usd))}
-                      {r.difference_pct !== null && ` (${r.difference_pct >= 0 ? '+' : '−'}${Math.abs(r.difference_pct).toFixed(0)}%)`}
-                    </td>
-                  </tr>))}</tbody>
+                  <React.Fragment key={r.month}>
+                    <tr style={{ borderTop: '1px solid var(--border)', cursor: r.models.length ? 'pointer' : 'default' }}
+                        onClick={() => r.models.length && setOpenMonth(openMonth === r.month ? null : r.month)}>
+                      <td style={{ ...td, fontFamily: 'var(--mono)' }}>
+                        {r.models.length > 0 && <span style={{ color: 'var(--text-muted)' }}>{openMonth === r.month ? '▾ ' : '▸ '}</span>}
+                        {r.month}
+                        <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+                          {r.source === 'imported' ? ` · imported, ${r.days_covered} of ${r.days_in_month} days` : ' · typed in'}
+                        </span>
+                      </td>
+                      <td style={tdr}>{usd(r.provider_usd)}</td>
+                      <td style={tdr}>{usd(r.computed_usd)}</td>
+                      <td style={{ ...tdr, color: Math.abs(r.difference_pct || 0) > 10 ? 'var(--deny)' : 'var(--text-dim)' }}>
+                        {r.difference_usd >= 0 ? '+' : '−'}{usd(Math.abs(r.difference_usd))}
+                        {r.difference_pct !== null && ` (${r.difference_pct >= 0 ? '+' : '−'}${Math.abs(r.difference_pct).toFixed(0)}%)`}
+                      </td>
+                    </tr>
+                    {openMonth === r.month && r.models.map(m => (
+                      <tr key={r.month + m.model} style={{ background: 'var(--surface2)' }}>
+                        <td style={{ ...td, paddingLeft: 22 }} colSpan={4}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'var(--mono)' }}>{m.model}</span>
+                            <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-dim)' }}>
+                              provider {compactTokens(m.provider_input_tokens)} in / {compactTokens(m.provider_output_tokens)} out · {usd(m.provider_usd)}
+                              {'  ·  '}platform {compactTokens(m.platform_input_tokens)} in / {compactTokens(m.platform_output_tokens)} out · {usd(m.computed_usd)}
+                            </span>
+                          </div>
+                          <div style={{ ...note, color: m.verdict === 'agrees' ? 'var(--commit)' : 'var(--deny)' }}>{m.verdict_text}</div>
+                        </td>
+                      </tr>
+                    ))}
+                    {openMonth === r.month && (r.non_token_usd > 0 || r.cache_tokens > 0 || r.entered_usd !== null) && r.source === 'imported' && (
+                      <tr style={{ background: 'var(--surface2)' }}><td style={{ ...td, paddingLeft: 22 }} colSpan={4}><div style={note}>
+                        {r.non_token_usd > 0 && `${usd(r.non_token_usd)} of the provider’s figure isn’t tokens (web search, code execution) — the platform doesn’t count those. `}
+                        {r.cache_tokens > 0 && `${compactTokens(r.cache_tokens)} of the provider’s input tokens went through the prompt cache, which the platform’s usage table doesn’t distinguish. `}
+                        {r.entered_usd !== null && `A typed-in figure of ${usd(r.entered_usd)} also exists for this month; the imported report is used.`}
+                      </div></td></tr>
+                    )}
+                  </React.Fragment>))}</tbody>
               </table>}
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <label style={{ ...smallButton, display: 'inline-block', opacity: busy ? 0.5 : 1 }}>
+              IMPORT A PROVIDER REPORT…
+              <input type="file" accept="application/json,.json" style={{ display: 'none' }} disabled={busy}
+                     onChange={e => { const f = e.target.files[0]; e.target.value = ''; uploadProviderReport(f); }} />
+            </label>
+            <div style={{ ...note, marginTop: 8 }}>
+              Make the file on your own machine — never on this server — with an Admin API key in
+              {' '}<span style={{ fontFamily: 'var(--mono)' }}>ANTHROPIC_ADMIN_KEY</span>:
+              {' '}<span style={{ fontFamily: 'var(--mono)' }}>elenchus-provider-report --month 2026-10 --workspace-id wrkspc_… --out report.json</span>.
+              A fresher report for the same days replaces the older one.
+            </div>
+            {ledger.provider_imports.length > 0 && (
+              <div style={{ ...note, marginTop: 6 }}>
+                Last import: {ledger.provider_imports[0].period_from} → {ledger.provider_imports[0].period_to},
+                {' '}{usd(ledger.provider_imports[0].total_cost_usd)}, fetched {ledger.provider_imports[0].fetched_at || 'at an unknown time'}
+                {' '}(usage scope: {ledger.provider_imports[0].scope.usage || 'unknown'}; cost scope: {ledger.provider_imports[0].scope.cost || 'unknown'}).
+              </div>
+            )}
+            {importNote && <div style={{ ...note, color: 'var(--commit)', marginTop: 6 }}>{importNote}</div>}
+            {importError && <div style={{ ...note, color: 'var(--deny)', marginTop: 6 }}>{importError}</div>}
+          </div>
         </div>
       </div>
 
@@ -3772,6 +3843,19 @@ function AdminCostsTab({ fs }) {
   const [budgetForm, setBudgetForm] = useState({ llm_usd: '', infra_usd: '', period_start: '', period_end: '', label: '' });
   const [budgetError, setBudgetError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [alertDraft, setAlertDraft] = useState(null);
+  const [alertError, setAlertError] = useState(null);
+
+  const saveAlert = async (value) => {
+    if (busy) return;
+    setBusy(true); setAlertError(null);
+    try {
+      await api('/api/admin/costs/alert', { method: 'PUT', body: JSON.stringify({ daily_usd: value }) });
+      setAlertDraft(null);
+      await load(days);
+    } catch (e) { setAlertError(e.message); }
+    setBusy(false);
+  };
 
   const load = async (d = days) => {
     setError(null);
@@ -3846,6 +3930,19 @@ function AdminCostsTab({ fs }) {
           ))}
         </div>
       </div>
+
+      {report.alert.exceeded && (
+        <div style={{ ...card, borderColor: 'var(--deny)', marginBottom: 16 }}>
+          <div style={{ ...heading, color: 'var(--deny)' }}>
+            TODAY’S LLM SPEND IS {usd(report.alert.today_usd)} — {report.alert.times_threshold.toFixed(1)}× THE {usd(report.alert.daily_usd)} ALERT THRESHOLD
+          </div>
+          <div style={note}>
+            A day costing this much usually means a runaway: a client in a loop, a script on the message route, or a
+            far more expensive model. Set the window to 7 days and look at <i>By model</i>, <i>By purpose</i> and
+            {' '}<i>By account</i> below. Nothing has been cut off.
+          </div>
+        </div>
+      )}
 
       {report.unpriced.length > 0 && (
         <div style={{ ...card, borderColor: 'var(--deny)', marginBottom: 16 }}>
@@ -3947,6 +4044,36 @@ function AdminCostsTab({ fs }) {
             {budgetError && <div style={{ ...note, color: 'var(--deny)', marginTop: 8 }}>{budgetError}</div>}
           </div>
         )}
+      </div>
+
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={heading}>DAILY SPEND ALERT</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={note}>Alert when a day’s LLM spend passes</span>
+          <input aria-label="Daily spend alert threshold in US dollars" inputMode="decimal"
+                 value={alertDraft === null ? String(report.alert.daily_usd) : alertDraft}
+                 onChange={e => setAlertDraft(e.target.value)} style={{ ...input, width: 90 }} />
+          <span style={note}>dollars</span>
+          {alertDraft !== null && (
+            <>
+              <button onClick={() => saveAlert(alertDraft === '' ? null : Number(alertDraft))} disabled={busy} style={smallButton}>SAVE</button>
+              <button onClick={() => { setAlertDraft(null); setAlertError(null); }} style={smallButton}>CANCEL</button>
+            </>
+          )}
+          {alertDraft === null && report.alert.source === 'setting' && (
+            <button onClick={() => saveAlert(null)} disabled={busy} style={smallButton} title="Go back to the server’s default">RESET</button>
+          )}
+        </div>
+        <div style={{ ...note, marginTop: 8 }}>
+          Today so far: {usd(report.alert.today_usd)}.
+          {report.alert.enabled
+            ? ' It fires on crossing the threshold and again at each further multiple, so a runaway keeps announcing itself.'
+            : ' The alert is off (threshold 0).'}
+          {' '}Alerts go to the server log{report.alert.emailed ? ' and by email.' : ' only — set ALERT_EMAIL_TO on the server to have them emailed.'}
+          {' '}Nothing is ever cut off.
+          {report.alert.today_unpriced_tokens > 0 && ` ${compactTokens(report.alert.today_unpriced_tokens)} of today’s tokens are on an unpriced model, which this alert cannot see.`}
+        </div>
+        {alertError && <div style={{ ...note, color: 'var(--deny)', marginTop: 8 }}>{alertError}</div>}
       </div>
 
       <div style={{ ...card, marginBottom: 16 }}>

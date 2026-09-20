@@ -246,18 +246,83 @@ a grant report asks for. It lives at the bottom of the Costs tab.
   check each against the invoice, then edit it — put in the invoiced
   amount and reference, untick *estimated*. A price change is: end the old
   charge, add a new one.
-- **LLM reconciliation.** The category *LLM provider's own figure* records
-  what the provider says a month of usage cost (from its console or
-  invoice). It is shown next to the platform's computed figure for that
-  month, with the difference — and is **not added to any total**, because
-  that spend is already counted from tokens. A gap of more than a few
-  percent usually means a stale rate in the price table, usage on the
-  same API key from outside the platform, or provider-side charges the
-  token counts don't carry.
+- **LLM reconciliation.** The provider's own books beside the platform's
+  — see [Reconciling with the provider](#reconciling-with-the-provider).
+  A figure typed in under the category *LLM provider's own figure* (a
+  month's cost read off the provider's console) works too. Either way it
+  is **never added to a total**: that spend is already counted from tokens.
 
 The infrastructure budget's projection is: what is recorded in the period,
 plus what the recurring charges expected in the period but nobody has
 entered, plus what they expect from tomorrow to the period's end.
+
+### The daily spend alert
+
+A grant's LLM line is large next to what a study costs, so a
+percentage-of-budget alert would fire far too late to matter. What can go
+wrong is a **runaway** — a client stuck in a loop, a script hammering the
+message route, a model swapped for one ten times the price — and that
+shows up as one day costing far more than a day should. So after every
+recorded LLM call the platform compares today's spend (priced from tokens)
+with a daily threshold: crossing it sends a `high` alert, and each further
+multiple (2×, 3×, …) sends a `critical` one, so a runaway keeps announcing
+itself. Nothing is said twice in a day, or again after a restart. The
+first tokens of a day on a model with **no rate** send a `medium` alert,
+because that spend is invisible to the check.
+
+Set the threshold in the Costs tab (`PUT /api/admin/costs/alert`); `0`
+turns it off, *Reset* returns to `ELENCHUS_DAILY_SPEND_ALERT_USD` or the
+$25 default. While a day is over the threshold the tab opens with a red
+banner. Alerts go where all alerts go — the server log always, email when
+`ALERT_EMAIL_TO` is set. **Nothing is ever cut off**: a hard cap would end
+a participant's session mid-task, which costs more than the overspend.
+
+### Reconciling with the provider
+
+The platform counts tokens as calls are made and prices them itself; the
+provider keeps its own books. Setting the two side by side — per month and
+per model, tokens as well as dollars — is how a stale rate, usage from
+outside the platform on the same key, or calls that escaped recording get
+noticed.
+
+Anthropic's usage and cost reports need an **Admin API key**
+(`sk-ant-admin…`). That key can manage the whole organization — members,
+API keys — so **it never goes on the server**. Instead:
+
+1. **On your own machine**, with Elenchus installed and the key in your
+   environment (not on the command line, where it would land in your shell
+   history):
+
+   ```bash
+   export ANTHROPIC_ADMIN_KEY=…            # from Console → Settings → Admin keys
+   elenchus-provider-report --month 2026-10 \
+       --workspace-id wrkspc_… --out anthropic-2026-10.json
+   ```
+
+   `--from` / `--to` take any span of UTC days; a month in progress stops
+   at today. The file holds figures only — never the key.
+2. **In the Costs tab**, *Import a provider report…* and pick the file. A
+   fresher report for the same days replaces the older one; every upload is
+   logged and listed.
+
+The reconciliation table then shows, per month, the provider's dollars
+beside the platform's **for the days the report covers**, and — click the
+month — each model's tokens and dollars on both sides with a plain verdict:
+*the books agree*; *tokens agree but dollars don't* (check that model's
+rate); *the provider saw more tokens* (another client on the key or
+workspace, calls that escaped recording, or prompt caching the usage table
+doesn't count); *the platform recorded more* (the report doesn't cover
+every key or workspace, or was fetched before the provider's data
+settled). Costs that aren't tokens (web search, code execution) are shown
+separately.
+
+Two things to know. **Give the platform a workspace of its own**: the
+provider's cost report can be narrowed by workspace but *not* by API key,
+so on a shared workspace the dollars include everyone's usage
+(`--api-key-id` narrows the token side only, and the file records that).
+And **the Admin API is not available to individual accounts** — set up an
+organization in the Console first, or use the typed-in monthly figure.
+Provider days are UTC, another reason to run the server with `TZ=UTC`.
 
 ## Integrity and audit
 
@@ -284,7 +349,8 @@ forward-only).
 
 ## Alerting
 
-Operational failures (LLM outages, exhausted retries, budget caps) are
+Operational failures (LLM outages, exhausted retries) and an unusually
+expensive day (see [the daily spend alert](#the-daily-spend-alert)) are
 dispatched to alert channels. The **console** channel is always on; set
 `ALERT_EMAIL_TO` to also email them. Tune with:
 
@@ -293,6 +359,7 @@ dispatched to alert channels. The **console** channel is always on; set
 | `ALERT_EMAIL_TO` | recipient; unset = console only | (none) |
 | `ALERT_EMAIL_MIN_SEVERITY` | `critical`/`high`/`medium`/`low` | `high` |
 | `ALERT_DEDUP_MINUTES` | dedup window per severity+category | `5` |
+| `ELENCHUS_DAILY_SPEND_ALERT_USD` | a day's LLM spend that triggers an alert; `0` = off. The Costs tab's setting overrides it | `25` |
 
 `critical` alerts (e.g. revoked API key) are never deduped.
 
@@ -349,6 +416,8 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `PUT /api/admin/costs/ledger/{id}` · `POST …/{id}/void` | Correct an entry / void it (`{"reason": …}`) |
 | `POST /api/admin/costs/ledger/record-recurring` | Enter a month's (`{"month": "2026-10"}`) expected recurring charges as estimated entries |
 | `POST /api/admin/costs/recurring` · `PUT …/{id}/end` | Add a recurring charge / stop expecting it after `ends_on` |
+| `PUT /api/admin/costs/alert` | Set the daily spend alert threshold (`{"daily_usd": 25}`; `0` off; `null` default) |
+| `POST /api/admin/costs/provider-report` | Upload a provider report written by `elenchus-provider-report` |
 | `GET /api/admin/usage?days=N` | Older cost/usage rollup (same read-time pricing) |
 | `GET /api/admin/integrity` · `/{base_id}` | Per-base integrity summary / detail |
 | `GET /api/admin/audit` | Platform ↔ filesystem drift |

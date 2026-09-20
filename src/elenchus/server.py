@@ -30,6 +30,7 @@ from . import backup as backup_mod
 from . import cost_ledger as cost_ledger_mod
 from . import costs as costs_mod
 from . import integrity as integrity_mod
+from . import provider_report as provider_report_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
 from .dialectical_state import DialecticalState
@@ -832,6 +833,27 @@ def admin_set_cost_budget(
     return {"budget": budget}
 
 
+@app.put("/api/admin/costs/alert")
+def admin_set_cost_alert(payload: dict, actor: dict = Depends(auth.require_admin)):
+    """Set the daily LLM spend that triggers an alert (`cost_alerts.py`):
+    `{"daily_usd": 25}`; 0 turns it off; null goes back to the
+    environment variable / default. Alerting only — nothing is cut off."""
+    from . import cost_alerts
+
+    reg = get_registry()
+    with reg.platform_lock:
+        try:
+            threshold, source = cost_alerts.set_threshold(
+                reg.platform_con(), payload.get("daily_usd")
+            )
+        except ValueError as e:
+            raise HTTPException(422, detail={"user_message": str(e)}) from None
+    logger.info(
+        "Daily spend alert threshold set to $%.2f (%s) by actor=%s", threshold, source, actor["id"]
+    )
+    return {"daily_usd": threshold, "source": source}
+
+
 # ── Infrastructure ledger (cost_ledger.py) ──
 #
 # Hosting / domain / email charges can't be measured the way LLM tokens
@@ -866,7 +888,24 @@ def admin_cost_ledger(actor: dict = Depends(auth.require_admin)):
             "categories": cost_ledger_mod.CATEGORIES,
             "infra_categories": list(cost_ledger_mod.INFRA_CATEGORIES),
             "reconciliation_category": cost_ledger_mod.RECONCILIATION_CATEGORY,
+            "provider_imports": provider_report_mod.list_imports(con),
         }
+
+
+@app.post("/api/admin/costs/provider-report")
+def admin_cost_provider_report(payload: dict, actor: dict = Depends(auth.require_admin)):
+    """Upload a provider report — the file `elenchus-provider-report`
+    writes, off the box, from the LLM provider's own usage and cost
+    figures. Replaces the stored rows for the days it covers; the Costs
+    tab then shows them beside the platform's own figures."""
+    reg = get_registry()
+    with reg.platform_lock:
+        try:
+            return provider_report_mod.import_report(
+                reg.platform_con(), payload, actor_id=actor["id"]
+            )
+        except provider_report_mod.ProviderReportError as e:
+            raise HTTPException(422, detail={"user_message": str(e)}) from None
 
 
 @app.post("/api/admin/costs/ledger")

@@ -486,6 +486,14 @@ def _budget_status(con, budget: dict | None, all_groups: list[dict], today: date
     return status
 
 
+def cost_alerts_status(con, today: date) -> dict:
+    """The daily-spend alert's state (`cost_alerts.status`). Imported
+    late: `cost_alerts` prices spend through this module."""
+    from . import cost_alerts
+
+    return cost_alerts.status(con, today)
+
+
 # ─── The report ──────────────────────────────────────────────────────
 
 
@@ -521,12 +529,10 @@ def build_report(con, *, days: int = 30, today: date | None = None) -> dict:
             con,
             since=since,
             today=today,
-            llm_usd_by_month={
-                month: b["cost_usd"]
-                for month, b in rollup(everything, lambda g: g["day"].isoformat()[:7]).items()
-            },
+            llm_groups=everything,
         ),
         "budget": _budget_status(con, get_budget(con), everything, today),
+        "alert": cost_alerts_status(con, today),
     }
     total = report["totals"]["all_time"]
     infra = report["infrastructure"]
