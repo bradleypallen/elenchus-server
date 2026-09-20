@@ -25,6 +25,29 @@ implication dispute lifecycle, and connections to the existing tension cycle.
 Phase B of the ROADMAP implements a subset of these (the first three plus the
 positum simplification); the dispute lifecycle is deferred.
 
+### [A prototype for substructural knowledge bases — gaps from 0.8.2, and an outreach mode](substructural-kb-prototype-and-outreach.md)
+
+What it would take to make Elenchus the interactive prototype for a proposed
+follow-on project on substructural knowledge bases, assessed against 0.8.2
+claim by claim in the code: a base holds exactly one position (so there is
+no "other side" for crux detection, and free-text atoms need alignment
+before two vocabularies can be compared); the reasoner is hard-wired to
+pyNMMS (a small reasoner interface, a Julia engine as a sidecar); querying
+isn't in the web interface at all; the speech-act vocabulary is one
+server-wide flag (protocol profiles per dialectic); no interchange format,
+no sources, opaque atoms.
+
+Its longest section designs an **outreach mode** — inviting people to use
+Elenchus itself, without the study harness — around one new concept, the
+*cohort* (a link that seats forty, an LLM allowance with a hard stop that
+is never applied to study participants, a welcome, a recorded notice and a
+choice about research use), and notes that a public demonstration is an
+open cohort rather than another feature. Also: why dialectic names must
+stop being global, how to run a changing prototype beside a study that
+needs the protocol frozen, and a suggested order.
+
+Not in the ROADMAP.
+
 ### [NMMS_Onto integration](nmms-onto-integration.md)
 
 Design notes on extending Elenchus with the NMMS_Onto ontology schemas —
