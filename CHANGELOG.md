@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-09-25
+
 ### Fixed
 
 - **The server kept every dialectic it had ever opened open until it was
