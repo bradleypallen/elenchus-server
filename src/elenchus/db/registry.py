@@ -5,20 +5,50 @@ The `DBRegistry` is the single point of ownership for all DuckDB
 connections in the process. It exposes:
 
 - a lazily-opened, never-evicted `platform_con` for platform.duckdb
-  (added in Week 2 of Phase A)
-- a bounded LRU cache of `BaseHandle` instances, one per active per-base
-  database file
+- a bounded LRU cache of `BaseHandle` instances, one per open per-base
+  database file, with the eviction policy below
 
-For Week 1 of Phase A, the registry mirrors the previous `_states` dict
-behavior — same lazy load, no eviction, no per-base locks. The LRU bound,
-idle-TTL eviction, and per-base `asyncio.Lock` are added in Week 1 D5 and
-later. The interface here is shaped to absorb those additions without
-churning callers.
+**Why evict.** Each open base costs roughly 10 MB resident (DuckDB's
+per-database buffer pool and catalog, plus the pyNMMS mirror), and a
+study touches a few hundred bases over its life while only a handful
+are in use at any moment. Without eviction the process grows by every
+base it has ever opened until it is restarted — on a 1 GB box that is
+an OOM kill in the middle of somebody's turn.
+
+**Policy.** A handle is *evictable* when nobody holds it: its per-base
+`asyncio.Lock` is free and its pin count is zero. `hold()` pins a
+handle for the length of a block — the message route pins across the
+LLM call, the one place a state is used for a long time *without* the
+lock. Two sweeps close evictable handles, least recently used first:
+
+- *idle*: anything untouched for `idle_ttl` seconds
+  (`ELENCHUS_BASE_IDLE_SECONDS`, default 900) goes, whatever the count;
+- *capacity*: when more than `capacity` handles are open
+  (`ELENCHUS_MAX_OPEN_BASES`, default 32), the least recently used go
+  until the bound holds — but never one touched within the last
+  `EVICT_GRACE_SECONDS`, because a sync route may still be using a
+  state it fetched moments ago without pinning it. If nothing is old
+  enough the bound is exceeded and a warning says so.
+
+Sweeps run after every open (`get` / `put`), when a `hold()` is
+released, and from the server's periodic `evict_idle()` task. A base
+opened only for a one-off read (backup, export, integrity) is released
+with `hold(name, transient=True)`, which marks it cold so the sweep
+closes it at once instead of keeping it warm for fifteen minutes.
+
+**Closing.** Eviction closes the DuckDB connection *under the registry
+lock*, through the same close every other path uses (`remove`, `put`,
+`close_all`), so the file's WAL is checkpointed and a `get()` for the
+same name cannot open a second connection while the first is still
+closing — DuckDB is single-writer-per-file. A caller that kept a state
+object across an eviction gets `duckdb.ConnectionException` on its next
+query, never corruption; the grace period and pinning exist so that
+does not happen in practice.
 
 **Concurrency model.** All registry-dict mutations are guarded by a
-single `threading.Lock`. The per-handle async lock that arrives in D5 is
-a separate primitive held only by request-handling code; the registry
-lock is held only across the OrderedDict mutation, never across
+single `threading.Lock`. The per-handle async lock is a separate
+primitive held only by request-handling code; the registry lock is held
+across the OrderedDict mutation and the close itself, never across
 connection use or LLM calls.
 """
 
@@ -26,10 +56,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -40,14 +73,44 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Configuration. Not currently env-driven; intentional. One value, in code,
-# in this module. Tune with care: each open .duckdb file is at least one
-# file descriptor.
-DEFAULT_CAPACITY = 64
+# Configuration. Read from the environment when the registry is built
+# (tests pass explicit values). Each open .duckdb file is at least one
+# file descriptor and ~10 MB; tune the bound to the box, not the study.
+CAPACITY_ENV = "ELENCHUS_MAX_OPEN_BASES"
+DEFAULT_CAPACITY = 32
+IDLE_TTL_ENV = "ELENCHUS_BASE_IDLE_SECONDS"
+DEFAULT_IDLE_TTL = 900.0
+# A handle touched more recently than this is never closed to make room:
+# a sync route is presumably still using it. Not env-driven — it is a
+# statement about how long a request can take, not about the host.
+EVICT_GRACE_SECONDS = 60.0
+# How often the server's lifespan task runs `evict_idle()`.
+SWEEP_INTERVAL_SECONDS = 60.0
+# The "over capacity and nothing is old enough to close" warning repeats
+# at most this often, so a busy hour doesn't fill the log with it.
+_OVER_CAPACITY_WARN_EVERY = 300.0
 
 # Soft warning threshold for RLIMIT_NOFILE. Below this we log a warning at
 # startup recommending the operator raise the limit. We do not enforce.
 RLIMIT_WARN_THRESHOLD = 256
+
+
+def _env_number(var: str, default, *, kind=float, minimum=0):
+    """`var` parsed as `kind`, or `default` (with a warning) when it is
+    unset, not a number, not finite, or below `minimum`."""
+    raw = os.environ.get(var)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = kind(raw)
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(raw)
+        if value < minimum:
+            raise ValueError(raw)
+    except (TypeError, ValueError):
+        logger.warning("%s=%r is not a number >= %s; using %s", var, raw, minimum, default)
+        return default
+    return value
 
 
 @dataclass
@@ -66,11 +129,15 @@ class BaseHandle:
     rely on DuckDB MVCC for consistent snapshots. The lock should be
     *released* across the LLM call so concurrent tabs don't freeze each
     other for the 5–30 s LLM wait — see the strict-serialize-default-off
-    discussion in ROADMAP.md.
+    discussion in ROADMAP.md. A handle whose lock is held, or whose
+    `pins` count is above zero (`DBRegistry.hold`), is never evicted.
     """
 
     state: DialecticalState
     last_used: float = field(default_factory=time.monotonic)
+    pins: int = 0
+    touches: int = 0
+    cold: bool = False
     _lock: asyncio.Lock | None = field(default=None, repr=False)
 
     @property
@@ -84,6 +151,20 @@ class BaseHandle:
     def touch(self) -> None:
         """Mark this handle as recently used (for LRU ordering)."""
         self.last_used = time.monotonic()
+        self.touches += 1
+        self.cold = False
+
+    def locked(self) -> bool:
+        return self._lock is not None and self._lock.locked()
+
+    @property
+    def held(self) -> bool:
+        """True while a request is known to be using the state: the
+        per-base lock is taken or a `hold()` block is open."""
+        return self.pins > 0 or self.locked()
+
+    def idle_seconds(self, now: float | None = None) -> float:
+        return (time.monotonic() if now is None else now) - self.last_used
 
 
 class _BufferedResult:
@@ -163,26 +244,34 @@ class _SerializedConnection:
 
 
 class DBRegistry:
-    """Process-wide owner of DuckDB connections.
-
-    Week 1 D1-2 scope: single in-process cache, no eviction, no async
-    locks. The class structure exists so subsequent Phase A work can
-    plug LRU bounding, idle-TTL eviction, and per-base locks in without
-    touching call sites.
-    """
+    """Process-wide owner of DuckDB connections: the platform connection
+    for the registry's lifetime, and a bounded LRU of per-base handles
+    (policy in the module docstring)."""
 
     def __init__(
         self,
         data_dir: str,
-        capacity: int = DEFAULT_CAPACITY,
+        capacity: int | None = None,
         platform_path: str | None = None,
+        *,
+        idle_ttl: float | None = None,
+        grace: float = EVICT_GRACE_SECONDS,
     ) -> None:
         self._data_dir = data_dir
-        self._capacity = capacity
+        self._capacity = (
+            capacity
+            if capacity is not None
+            else _env_number(CAPACITY_ENV, DEFAULT_CAPACITY, kind=int, minimum=1)
+        )
+        self._idle_ttl = (
+            idle_ttl if idle_ttl is not None else _env_number(IDLE_TTL_ENV, DEFAULT_IDLE_TTL)
+        )
+        self._grace = grace
+        self._over_capacity_warned_at = -math.inf
         self._platform_path = platform_path or os.path.join(data_dir, "platform.duckdb")
-        # OrderedDict so we can promote-on-access for LRU ordering in D5.
+        # OrderedDict, least recently used first; `touch` moves to the end.
         self._handles: OrderedDict[str, BaseHandle] = OrderedDict()
-        # Guards _handles mutations only. Held briefly during get/put/remove.
+        # Guards _handles mutations and the closing of evicted handles.
         # Never held during connection use, LLM calls, or migrations.
         self._registry_lock = threading.Lock()
         # Platform connection: lazily opened on first access and held
@@ -199,6 +288,12 @@ class DBRegistry:
         self._platform_proxy: _SerializedConnection | None = None
 
         self._check_fd_limit()
+        logger.info(
+            "Base cache: up to %d open, closed after %.0fs idle (grace %.0fs)",
+            self._capacity,
+            max(self._idle_ttl, self._grace),
+            self._grace,
+        )
 
     # ── File handle hygiene ──
 
@@ -341,31 +436,16 @@ class DBRegistry:
 
     # ── Handle access ──
 
-    def get_handle(self, name: str) -> BaseHandle:
-        """Return the `BaseHandle` for `name`, opening it from disk on
-        first access. Same semantics as `get()` but returns the
-        full handle (including the per-base async lock) rather than
-        just the underlying state.
-        """
-        # Reuse `get()` to do the open/cache work; then look up the handle.
-        self.get(name)  # ensures it's loaded
-        with self._registry_lock:
-            handle = self._handles[name]
-            handle.touch()
-            self._handles.move_to_end(name)
-            return handle
-
-    def get(self, name: str) -> DialecticalState:
-        """Return the cached DialecticalState for `name`, opening it from
-        disk on first access. Raises ValueError if the file is missing
-        or corrupt — callers translate to appropriate HTTP responses.
-        """
+    def _acquire(self, name: str) -> tuple[BaseHandle, bool]:
+        """Return `(handle, opened)` for `name`, opening it from disk on
+        first access; `opened` is True only for the call that actually
+        inserted the handle. Raises FileNotFoundError / ValueError."""
         with self._registry_lock:
             handle = self._handles.get(name)
             if handle is not None:
                 handle.touch()
                 self._handles.move_to_end(name)
-                return handle.state
+                return handle, False
 
         # Slow path: open from disk. Do this outside the registry lock so
         # the (potentially slow) DialecticalState.open() doesn't block
@@ -390,14 +470,61 @@ class DBRegistry:
                     )
                 existing.touch()
                 self._handles.move_to_end(name)
-                return existing.state
+                return existing, False
 
             handle = BaseHandle(state=state)
             self._handles[name] = handle
-            self._handles.move_to_end(name)
-            # Note: LRU eviction enforcement arrives in D5. For now the
-            # cache grows unbounded, matching prior `_states` behavior.
-            return state
+            logger.debug("Opened base %r (%d open)", name, len(self._handles))
+            self._sweep_locked(keep=name)
+            return handle, True
+
+    def get_handle(self, name: str) -> BaseHandle:
+        """Return the `BaseHandle` for `name`, opening it from disk on
+        first access. Same semantics as `get()` but returns the
+        full handle (including the per-base async lock) rather than
+        just the underlying state.
+        """
+        return self._acquire(name)[0]
+
+    def get(self, name: str) -> DialecticalState:
+        """Return the cached DialecticalState for `name`, opening it from
+        disk on first access. Raises ValueError if the file is missing
+        or corrupt — callers translate to appropriate HTTP responses.
+        """
+        return self._acquire(name)[0].state
+
+    @contextmanager
+    def hold(self, name: str, *, transient: bool = False) -> Iterator[BaseHandle]:
+        """Pin `name` for the length of the block so no sweep can close
+        it — for code that keeps the state across a long wait without
+        the per-base lock (the message route across its LLM call), or
+        that works through many bases in a row.
+
+        `transient=True` says the block is a one-off read: if this
+        block is what opened the base and nothing else looked it up
+        meanwhile, the release marks it cold and the sweep closes it at
+        once, so a backup or export of a hundred bases keeps one open
+        at a time instead of a hundred for the next fifteen minutes.
+        """
+        handle, opened = self._acquire(name)
+        with self._registry_lock:
+            handle.pins += 1
+            touches_at_start = handle.touches
+        try:
+            yield handle
+        finally:
+            with self._registry_lock:
+                handle.pins -= 1
+                if (
+                    transient
+                    and opened
+                    and handle.pins == 0
+                    and handle.touches == touches_at_start
+                    and self._handles.get(name) is handle
+                ):
+                    handle.cold = True
+                    handle.last_used = -math.inf
+                self._sweep_locked()
 
     def put(self, name: str, state: DialecticalState) -> None:
         """Insert a freshly-created DialecticalState into the registry.
@@ -409,29 +536,19 @@ class DBRegistry:
         with self._registry_lock:
             existing = self._handles.pop(name, None)
             if existing is not None:
-                try:
-                    existing.state.base.con.close()
-                except Exception:
-                    logger.warning(
-                        "Failed to close replaced connection for '%s'", name, exc_info=True
-                    )
+                self._close(name, existing, "replaced")
             self._handles[name] = BaseHandle(state=state)
-            self._handles.move_to_end(name)
+            self._sweep_locked(keep=name)
 
     def remove(self, name: str) -> bool:
         """Evict and close the handle for `name`. Returns True if a
         handle was removed, False if it wasn't in the cache."""
         with self._registry_lock:
             handle = self._handles.pop(name, None)
-        if handle is None:
-            return False
-        try:
-            handle.state.base.con.close()
-        except Exception:
-            logger.warning(
-                "Failed to close connection for '%s' during remove", name, exc_info=True
-            )
-        return True
+            if handle is None:
+                return False
+            self._close(name, handle, "removed")
+            return True
 
     def close_all(self) -> None:
         """Close every cached connection. Called from FastAPI lifespan
@@ -439,12 +556,8 @@ class DBRegistry:
         with self._registry_lock:
             handles = list(self._handles.items())
             self._handles.clear()
-        for name, handle in handles:
-            try:
-                handle.state.base.con.close()
-                logger.info("Closed DuckDB connection for '%s'", name)
-            except Exception:
-                logger.warning("Failed to close DuckDB connection for '%s'", name, exc_info=True)
+            for name, handle in handles:
+                self._close(name, handle, "shutdown")
         # Close the platform connection too.
         with self._platform_lock:
             if self._platform_con is not None:
@@ -455,6 +568,66 @@ class DBRegistry:
                     logger.warning("Failed to close platform DB connection", exc_info=True)
                 self._platform_con = None
                 self._platform_proxy = None
+
+    # ── Eviction ──
+
+    def evict_idle(self) -> list[str]:
+        """Run the sweep (idle handles, then the capacity bound) and
+        return the names closed. Safe to call from any thread; the
+        server's lifespan task calls it every `SWEEP_INTERVAL_SECONDS`."""
+        with self._registry_lock:
+            return self._sweep_locked()
+
+    def _evictable(self, handle: BaseHandle, now: float, min_idle: float) -> bool:
+        return not handle.held and handle.idle_seconds(now) >= min_idle
+
+    def _sweep_locked(self, keep: str | None = None) -> list[str]:
+        """Close what the policy says to close. Caller holds the
+        registry lock. `keep` is a name the caller is about to hand
+        out, which must survive even under a bound of one."""
+        now = time.monotonic()
+        closed: list[str] = []
+        idle_after = max(self._idle_ttl, self._grace)
+        for name, handle in list(self._handles.items()):
+            if name != keep and self._evictable(handle, now, idle_after):
+                self._close(name, handle, "idle", now)
+                closed.append(name)
+        while len(self._handles) > self._capacity:
+            victim = next(
+                (
+                    name
+                    for name, handle in self._handles.items()
+                    if name != keep and self._evictable(handle, now, self._grace)
+                ),
+                None,
+            )
+            if victim is None:
+                if now - self._over_capacity_warned_at >= _OVER_CAPACITY_WARN_EVERY:
+                    self._over_capacity_warned_at = now
+                    logger.warning(
+                        "%d bases open, above the bound of %d, and none is unused "
+                        "for %.0fs — nothing closed. Raise %s if this is normal load.",
+                        len(self._handles),
+                        self._capacity,
+                        self._grace,
+                        CAPACITY_ENV,
+                    )
+                break
+            self._close(victim, self._handles[victim], "capacity", now)
+            closed.append(victim)
+        return closed
+
+    def _close(self, name: str, handle: BaseHandle, reason: str, now: float | None = None) -> None:
+        """Drop `name` from the cache and close its connection. Caller
+        holds the registry lock, so no `get()` can reopen the file
+        until the close has finished."""
+        self._handles.pop(name, None)
+        try:
+            handle.state.base.con.close()
+        except Exception:
+            logger.warning("Failed to close DuckDB connection for '%s'", name, exc_info=True)
+        idle = "after a one-off read" if handle.cold else f"idle {handle.idle_seconds(now):.0f}s"
+        logger.info("Closed base %r (%s, %s; %d open)", name, reason, idle, len(self._handles))
 
     # ── Introspection ──
 
@@ -470,6 +643,10 @@ class DBRegistry:
     def capacity(self) -> int:
         return self._capacity
 
+    @property
+    def idle_ttl(self) -> float:
+        return self._idle_ttl
+
 
 # ── Process-wide singleton ──
 #
@@ -481,7 +658,7 @@ registry: DBRegistry | None = None
 
 def init_registry(
     data_dir: str,
-    capacity: int = DEFAULT_CAPACITY,
+    capacity: int | None = None,
     platform_path: str | None = None,
 ) -> DBRegistry:
     """Initialize the process-wide registry. Idempotent: replacing an

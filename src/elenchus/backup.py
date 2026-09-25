@@ -85,8 +85,13 @@ def make_backup(data_dir: str, output_dir: str | None = None) -> dict:
             base_dst = os.path.join(staging, "bases", base_id)
             try:
                 os.makedirs(base_dst, exist_ok=True)
-                state = reg.get(base_id)
-                state.base.con.execute(f"EXPORT DATABASE '{_safe_sql_literal(base_dst)}'")
+                # A transient hold: a base opened only for the backup is
+                # closed again as soon as its dump is written, so a
+                # hundred bases don't stay open for the next quarter hour.
+                with reg.hold(base_id, transient=True) as handle:
+                    handle.state.base.con.execute(
+                        f"EXPORT DATABASE '{_safe_sql_literal(base_dst)}'"
+                    )
                 bases_dumped.append(base_id)
                 logger.info("Backed up base %r → %s", base_id, base_dst)
             except Exception as e:

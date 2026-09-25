@@ -11,6 +11,7 @@ Run: elenchus
 Or:  uvicorn elenchus.server:app --reload
 """
 
+import asyncio
 import contextlib
 import glob
 import logging
@@ -38,6 +39,7 @@ from . import integrity as integrity_mod
 from . import provider_report as provider_report_mod
 from .db import get_registry, init_registry
 from .db import platform as pdb
+from .db.registry import SWEEP_INTERVAL_SECONDS
 from .dialectical_state import DialecticalState
 from .llm_client import ChatCategory
 from .material_base import QuerySyntaxError
@@ -68,10 +70,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Apply any admin-persisted LLM settings (model / endpoint / key),
     # overriding the env-derived config the opponent booted with.
     _apply_persisted_llm_settings()
+    # Close per-base connections nobody has used for a while, so memory
+    # tracks the bases in use rather than every base ever opened
+    # (policy in db/registry.py).
+    sweeper = asyncio.create_task(_sweep_open_bases())
     yield
+    sweeper.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await sweeper
     # Shutdown: close all open DuckDB connections to release locks and
     # flush WAL files. close_all is idempotent.
     get_registry().close_all()
+
+
+async def _sweep_open_bases() -> None:
+    """Run the registry's eviction sweep every `SWEEP_INTERVAL_SECONDS`
+    for the life of the server. The sweep closes connections, so it
+    runs in a worker thread rather than on the event loop."""
+    while True:
+        await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
+        try:
+            await asyncio.to_thread(get_registry().evict_idle)
+        except Exception:
+            logger.exception("Sweep of open bases failed")
 
 
 app = FastAPI(title="Elenchus", version="0.1.0", lifespan=lifespan)
@@ -2492,7 +2513,7 @@ async def generate_session_report(
     # Load the per-base state.
     base_id = session["base_id"]
     try:
-        state = reg.get(base_id)
+        reg.get(base_id)
     except FileNotFoundError as e:
         raise HTTPException(404, f"Base '{base_id}' file not found") from e
     except ValueError as e:
@@ -2500,16 +2521,18 @@ async def generate_session_report(
 
     # Generate. LLMCallError propagates up; the existing message-route
     # handler converts it to the structured user-facing body for free
-    # — same exception path.
+    # — same exception path. The handle is pinned across the LLM call
+    # so the registry's sweep can't close the base under it.
     try:
-        result = await study_reports_mod.generate_report(
-            state,
-            condition=session["condition"],
-            opponent=opponent,
-            session_id=session_id,
-            actor_id=actor["id"],
-            base_id=base_id,
-        )
+        with reg.hold(base_id) as handle:
+            result = await study_reports_mod.generate_report(
+                handle.state,
+                condition=session["condition"],
+                opponent=opponent,
+                session_id=session_id,
+                actor_id=actor["id"],
+                base_id=base_id,
+            )
     except LLMCallError as e:
         status = _http_status_for_chat_category(e.result.category)
         raise HTTPException(
@@ -3116,13 +3139,7 @@ async def send_message(
     the lock so concurrent tabs don't freeze each other.
     """
     _authorize_base_access(name, actor)
-    try:
-        handle = get_registry().get_handle(name)
-    except FileNotFoundError as e:
-        raise HTTPException(404, f"Dialectic '{name}' not found") from e
-    except ValueError as e:
-        logger.error("Corrupt dialectic file for '%s': %s", name, e)
-        raise HTTPException(422, f"Dialectic '{name}' has a corrupt database file") from e
+    _get_state(name)  # 404 / 422 for a missing or corrupt file
 
     # Sloan-condition routing: if the caller has an active study session
     # in the BASELINE condition bound to *this* base, dispatch to the
@@ -3133,6 +3150,16 @@ async def send_message(
     # consumed, not when the base is created.
     is_baseline = _is_baseline_for_actor_and_base(actor["id"], name)
 
+    # `hold` pins the handle for the whole turn: the state is used
+    # after the LLM call, which runs without the per-base lock, and a
+    # pinned handle is never closed by the registry's sweep.
+    with get_registry().hold(name) as handle:
+        return await _send_message_held(handle, name, req, actor, is_baseline)
+
+
+async def _send_message_held(
+    handle, name: str, req: MessageRequest, actor: dict, is_baseline: bool
+) -> dict:
     try:
         if is_baseline:
             result = await opponent.async_baseline_respond(

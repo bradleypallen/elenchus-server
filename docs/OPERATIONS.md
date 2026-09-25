@@ -77,6 +77,13 @@ SMTP_FROM=elenchus@your-institution.edu
 #    priced from recorded tokens when read, so this fixes history too) ──
 # ELENCHUS_PRICING_JSON={"my-model":{"input_per_1m":1.0,"output_per_1m":2.0}}
 
+# ── Memory (optional): open dialectic files kept at once (~10 MB each)
+#    and how long an unused one stays open. A 1 GB host is fine with
+#    the defaults; raise the first on a bigger one if the log says the
+#    bound is exceeded under normal load ──
+# ELENCHUS_MAX_OPEN_BASES=32
+# ELENCHUS_BASE_IDLE_SECONDS=900
+
 # ── Backup cron auth ──
 ELENCHUS_BACKUP_EMAIL=admin@local
 ELENCHUS_BACKUP_PASSWORD=...
