@@ -417,6 +417,8 @@ an admin sees alerts with no log access and no mail set up. Set
 | `ALERT_EMAIL_MIN_SEVERITY` | `critical`/`high`/`medium`/`low` | `high` |
 | `ALERT_DEDUP_MINUTES` | dedup window per severity+category | `5` |
 | `ELENCHUS_DAILY_SPEND_ALERT_USD` | a day's LLM spend that triggers an alert; `0` = off. The Costs tab's setting overrides it | `25` |
+| `ELENCHUS_MAX_OPEN_BASES` | how many dialectics' database files the server keeps open at once; each costs ~10 MB of memory, and one nobody is using is closed to make room (never one with a turn in progress) | `32` |
+| `ELENCHUS_BASE_IDLE_SECONDS` | how long an unused dialectic stays open before it is closed; it reopens on its next use | `900` |
 
 `critical` alerts (e.g. revoked API key) are never deduped.
 

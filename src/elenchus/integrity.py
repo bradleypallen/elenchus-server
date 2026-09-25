@@ -91,8 +91,12 @@ def _content_metrics(reg, base_id: str) -> dict:
     Catches any error from the registry / migration / corrupt-file path
     and reports it under `error` so the rest of the integrity report
     is still useful even if the per-base file is broken."""
+    # A transient hold: a base opened only for this report is closed
+    # again on the way out, so a report over every base doesn't leave
+    # every base open.
     try:
-        state = reg.get(base_id)
+        with reg.hold(base_id, transient=True) as handle:
+            return _content_metrics_from(handle.state.base.con, base_id)
     except FileNotFoundError:
         return {"error": "base file not found"}
     except ValueError as e:
@@ -101,7 +105,8 @@ def _content_metrics(reg, base_id: str) -> dict:
         logger.exception("integrity: unexpected error opening base %r", base_id)
         return {"error": f"open failed: {e}"}
 
-    con = state.base.con
+
+def _content_metrics_from(con, base_id: str) -> dict:
     try:
         # |C|, |D|, retracted positions.
         c_open, d_open, retracted = con.execute(

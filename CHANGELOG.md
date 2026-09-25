@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The server kept every dialectic it had ever opened open until it was
+  restarted.** The registry (`db/registry.py`) documented a bounded LRU of
+  per-base DuckDB connections but never evicted anything; each open base
+  holds ~10 MB, so a study that touches a hundred bases would have grown
+  the process past what a 1 GB host has and been killed mid-turn. Bases
+  are now closed when nobody is using them: after `ELENCHUS_BASE_IDLE_SECONDS`
+  idle (default 15 minutes) and, beyond `ELENCHUS_MAX_OPEN_BASES` (default
+  32), least recently used first — never one with a turn or a text save
+  in progress, one pinned by the message route across its LLM call, or
+  one looked up in the last minute. A closed base reopens transparently
+  on its next use. Backups, study exports and integrity reports open each
+  base only for as long as they read it. Every close is logged with its
+  reason and idle time.
+
+
 ## [0.8.2] — 2026-09-19
 
 ### Security

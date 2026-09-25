@@ -394,7 +394,16 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
         _pseudonymize(compute_base_integrity(base_id), pseudonyms),
     )
 
-    state = reg.get(base_id)  # raises FileNotFoundError / ValueError on broken bases
+    # Raises FileNotFoundError / ValueError on broken bases. A transient
+    # hold: a base opened only for the export is closed again once its
+    # files are written, so a cohort's export keeps one base open at a
+    # time rather than all of them.
+    with reg.hold(base_id, transient=True) as handle:
+        _export_base(handle.state, dest, sid, pseudonyms)
+
+
+def _export_base(state, dest: str, sid: int, pseudonyms: dict) -> None:
+    """Everything in a session's export that reads the per-base DB."""
     _write_json(os.path.join(dest, "state.json"), state.to_dict())
     _write_json(os.path.join(dest, "transcript.json"), state.get_conversation())
     # The capture log — the input to offline formal analysis. Also
