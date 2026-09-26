@@ -77,6 +77,10 @@ pytest -v
 - `ALERT_DEDUP_MINUTES` — dedup window for repeated alerts (default `5`).
 - `ELENCHUS_DAILY_SPEND_ALERT_USD` — a day's LLM spend that triggers an
   alert (default `25`; `0` = off). The Costs tab's setting overrides it.
+- `ELENCHUS_LOG_LEVEL` — level for the app's own loggers (`INFO` when
+  serving, `WARNING` for the one-off subcommands). `main()` calls
+  `logging.basicConfig` because uvicorn configures only its own loggers;
+  before 0.8.4 every `logger.info` in the app was silently dropped.
 - `ELENCHUS_MAX_OPEN_BASES` / `ELENCHUS_BASE_IDLE_SECONDS` — how many
   per-base DuckDB files the server keeps open (default `32`) and how long
   an unused one stays open (default `900`); see `db/registry.py`. Each

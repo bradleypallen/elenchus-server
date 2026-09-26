@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The server's own log lines never reached the journal.** uvicorn
+  configures only its own loggers and nothing configured the app's, so
+  every `logger.info` — the infrastructure ledger's old → new audit trail,
+  each LLM call's tokens and latency, every alert, changes to a study's
+  settings, the startup schema version — was dropped; only warnings got
+  out, through Python's last-resort handler. `elenchus` now configures
+  logging at startup: `INFO` when serving, `WARNING` for the one-off
+  subcommands, `ELENCHUS_LOG_LEVEL` to override. The two `print`ed
+  startup lines are gone (they are logged).
+
 ## [0.8.3] — 2026-09-25
 
 ### Fixed
