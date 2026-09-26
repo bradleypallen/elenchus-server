@@ -273,6 +273,9 @@ takes about half an hour, and nothing in it needs anyone else's help.
 Leave `TRAINING` in place — you can practise in it again, and it never
 mixes with the real study's data.
 
+When the practice run has gone through cleanly, the next thing to do is
+the opposite: [Trying to Break It](robustness-probes.md).
+
 ---
 
 ## If you are the admin
