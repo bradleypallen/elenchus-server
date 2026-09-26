@@ -288,6 +288,11 @@ class DBRegistry:
         self._platform_proxy: _SerializedConnection | None = None
 
         self._check_fd_limit()
+
+    def log_policy(self) -> None:
+        """One INFO line saying what this registry will keep open. The
+        server calls it from the lifespan, once logging is configured —
+        the registry itself is built at import time, before that."""
         logger.info(
             "Base cache: up to %d open, closed after %.0fs idle (grace %.0fs)",
             self._capacity,

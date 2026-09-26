@@ -16,6 +16,7 @@ import contextlib
 import glob
 import logging
 import os
+import sys
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # exist before any request hits an auth check.
     version = get_registry().migrate_platform()
     logger.info("Platform DB at schema version %d", version)
+    get_registry().log_policy()
     # Apply any admin-persisted LLM settings (model / endpoint / key),
     # overriding the env-derived config the opponent booted with.
     _apply_persisted_llm_settings()
@@ -3555,6 +3557,35 @@ def _add_serve_args(parser) -> None:
     parser.add_argument("--data-dir", default=None, help="Directory for .duckdb files")
 
 
+LOG_LEVEL_ENV = "ELENCHUS_LOG_LEVEL"
+
+
+def _configure_logging(command: str | None) -> None:
+    """Give the app's own loggers somewhere to go.
+
+    uvicorn configures only its own loggers. Without this the root
+    logger has no handler, so every `logger.info` in `elenchus.*` — the
+    ledger's old → new audit trail, each LLM call's tokens and latency,
+    every alert, the base cache's closes, the startup schema version —
+    was dropped before it reached the journal; only WARNING and above
+    escaped, through Python's last-resort handler. The server logs at
+    INFO by default; the one-off subcommands (`costs`, `audit`, …) at
+    WARNING so their reports stay clean. `ELENCHUS_LOG_LEVEL` overrides
+    either. A no-op if something (a test harness) already configured
+    the root logger.
+    """
+    default = "INFO" if command in (None, "serve") else "WARNING"
+    raw = os.environ.get(LOG_LEVEL_ENV, "").strip() or default
+    level = logging.getLevelNamesMapping().get(raw.upper())
+    if level is None:
+        level = logging.getLevelNamesMapping()[default]
+    logging.basicConfig(
+        level=level, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr
+    )
+    if logging.getLevelNamesMapping().get(raw.upper()) is None:
+        logger.warning("%s=%r is not a log level; using %s", LOG_LEVEL_ENV, raw, default)
+
+
 def _run_serve(args) -> None:
     import uvicorn
 
@@ -3574,8 +3605,6 @@ def _run_serve(args) -> None:
     port = args.port or int(os.environ.get("PORT", 8741))
     logger.info("Elenchus server starting on http://localhost:%d", port)
     logger.info("Data directory: %s", os.path.abspath(DATA_DIR))
-    print(f"Elenchus server starting on http://localhost:{port}")
-    print(f"Data directory: {os.path.abspath(DATA_DIR)}")
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
@@ -3780,14 +3809,13 @@ def main():
 
     # Default to `serve` when invoked without a subcommand. Re-parse
     # under the serve subparser so its args are available.
-    import sys
-
     if len(sys.argv) == 1 or (sys.argv[1].startswith("-") and sys.argv[1] != "-h"):
         # No subcommand given, or first arg is a flag (e.g. --port) →
         # treat as serve.
         sys.argv.insert(1, "serve")
 
     args = parser.parse_args()
+    _configure_logging(args.command)
 
     if args.command in (None, "serve"):
         _run_serve(args)

@@ -289,9 +289,19 @@ class TestConfig:
         assert reg.idle_ttl == registry_mod.DEFAULT_IDLE_TTL
 
     def test_the_policy_is_logged_at_startup(self, tmp_path, caplog):
+        reg = _make(tmp_path, capacity=7, idle_ttl=300, grace=60)
         with caplog.at_level(logging.INFO, logger=LOGGER):
-            _make(tmp_path, capacity=7, idle_ttl=300, grace=60)
+            reg.log_policy()
         assert "up to 7 open, closed after 300s idle" in caplog.text
+
+    def test_the_server_logs_the_policy_on_startup(self, caplog):
+        from fastapi.testclient import TestClient
+
+        import elenchus.server as srv
+
+        with caplog.at_level(logging.INFO, logger=LOGGER), TestClient(srv.app):
+            pass
+        assert "Base cache: up to" in caplog.text
 
 
 class TestLogging:

@@ -77,6 +77,10 @@ SMTP_FROM=elenchus@your-institution.edu
 #    priced from recorded tokens when read, so this fixes history too) ──
 # ELENCHUS_PRICING_JSON={"my-model":{"input_per_1m":1.0,"output_per_1m":2.0}}
 
+# ── Logging: INFO records every LLM call, alert, ledger and study-setting
+#    change in the journal (the audit trail); WARNING only problems ──
+# ELENCHUS_LOG_LEVEL=INFO
+
 # ── Memory (optional): open dialectic files kept at once (~10 MB each)
 #    and how long an unused one stays open. A 1 GB host is fine with
 #    the defaults; raise the first on a bigger one if the log says the
