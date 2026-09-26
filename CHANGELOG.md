@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-09-26
+
 ### Fixed
 
 - **The server's own log lines never reached the journal.** uvicorn
