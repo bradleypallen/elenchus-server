@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-27
+
+The platform brought into line with the study's Stage 1 Registered Report
+(`design-notes/registered-report-conformance.md`), ahead of the training of
+2026-10-01. Five additive platform migrations (17–21) and one base migration
+(5); no data is dropped.
+
 ### Changed
 
 - **Judging is by pairs** (Registered Report §2.5–2.6). A judge now sees a
