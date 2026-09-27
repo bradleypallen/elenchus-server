@@ -72,8 +72,10 @@ The sentences matter: they are read when the ratings are analysed, and
 they are what lets the study team see whether the panel is reacting to
 substance or to style. A sentence per dimension is required.
 
-Then, at the bottom, **the pair**: taken as a whole, which of the two is
-the better introduction to its topic? The two texts are on different
+Then **the pair**, in the bar at the bottom of the page — it stays in
+view while you scroll either text, so you can re-read both before you
+choose: taken as a whole, which of the two is the better introduction to
+its topic? The two texts are on different
 topics, so judge each against what a good introduction to *its own*
 topic would be, then say which comes closer. **Choose even if it is
 close.**
