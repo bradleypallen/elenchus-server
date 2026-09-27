@@ -1065,6 +1065,14 @@ function App() {
   const [rightVisible, setRightVisible] = useState(() => {
     try { return localStorage.getItem('elenchus-right-visible') === '1'; } catch(e) { return false; }
   });
+  // What is actually shown. The stored preference is the person's own
+  // (they may use the site outside a study), but the baseline condition
+  // has no formal panes at all: no badges to open them, and none shown
+  // even if this browser opened them in an earlier Elenchus session —
+  // a crossover participant on the same laptop must never see
+  // "Commitments" or "No sequents yet" in the condition without them.
+  const showLeft = leftVisible && !isBaseline;
+  const showRight = rightVisible && !isBaseline;
   const dragging = useRef(null); // 'left' | 'right' | null
 
   useEffect(() => {
@@ -1966,11 +1974,11 @@ function App() {
 
   // Build grid template: omit hidden columns and their drag handles.
   const gridCols = [
-    leftVisible ? `${leftWidth}px` : null,
-    leftVisible ? '4px' : null,
+    showLeft ? `${leftWidth}px` : null,
+    showLeft ? '4px' : null,
     '1fr',
-    rightVisible ? '4px' : null,
-    rightVisible ? `${rightWidth}px` : null,
+    showRight ? '4px' : null,
+    showRight ? `${rightWidth}px` : null,
     showWritingPane ? '1px' : null,
     showWritingPane ? 'minmax(340px, 40%)' : null,
   ].filter(Boolean).join(' ');
@@ -2136,7 +2144,7 @@ function App() {
       </div>
 
       {/* Left: Position */}
-      {leftVisible && (
+      {showLeft && (
         <div style={{ padding: 14, overflowY: 'auto' }}>
           <PositionList title="Commitments" color="var(--commit)" bgColor="var(--commit-bg)" items={s.commitments} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
           <PositionList title="Denials" color="var(--deny)" bgColor="var(--deny-bg)" items={s.denials} onRetract={retractProp} loading={loading} fs={fs} atomIds={s.atom_ids} />
@@ -2164,7 +2172,7 @@ function App() {
       )}
 
       {/* Left drag handle */}
-      {leftVisible && (
+      {showLeft && (
         <div onMouseDown={startDrag('left')} style={{
           cursor: 'col-resize', background: 'var(--border)', width: 4,
           transition: 'background 0.15s',
@@ -2184,7 +2192,7 @@ function App() {
       </div>
 
       {/* Right drag handle */}
-      {rightVisible && (
+      {showRight && (
         <div onMouseDown={startDrag('right')} style={{
           cursor: 'col-resize', background: 'var(--border)', width: 4,
           transition: 'background 0.15s',
@@ -2193,7 +2201,7 @@ function App() {
       )}
 
       {/* Right: Sequents (focal tension only; rest are queued) */}
-      {rightVisible && (
+      {showRight && (
         <div style={{ padding: 14, overflowY: 'auto' }}>
           <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
             Sequents
