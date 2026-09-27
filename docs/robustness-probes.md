@@ -65,7 +65,9 @@ Enrol a practice person and work through session 1 as them.
 | Open the same session in **two tabs** and type in both | No error, and the later save wins; nothing corrupts | `text_snapshots.json` shows both |
 | Paste a long block of text into the box | Accepted (or a clear message if there is a size limit); the paste is recorded by length only | `editor_events.json` has a `paste` with a length, no content |
 | Send an empty message; send a very long message; send `{"speech_acts":[]}` | A sensible refusal or a normal reply — never a crash | — |
-| Let the clock **run past the task length** with a five-minute task | The two reminders appear; nothing locks; you can keep writing and finish later | `editor_events.json` has two `soft_warning_shown` rows |
+| Let the clock **run out** on a five-minute task, with the tab open | The reminder appears; at five minutes the editor locks and the screen says *Time is up*; the text as it stood is submitted | `text_snapshots.json` ends with a `timeout` row; the session is `post_session` in the list |
+| Let the clock run out with the **tab closed**, then reopen the link | The same: you land past the task, not in it. The clock is the server's, not the browser's | Same |
+| Send a message, or type, in the **last seconds** before the limit | Either it lands before the limit or it is refused with *Time is up*; nothing lands after | `turn_log.json`, `text_snapshots.json` timestamps |
 | Press **Finish session** with the box empty | Refused with a message; the session stays `active` | — |
 | Press **Finish**, cancel at the confirmation, keep working | Nothing was submitted | Text still editable |
 | Press **Finish** while the AI is mid-reply | The text is submitted and the session moves on; the in-flight turn either completes or is logged as failed | `turn_log.json` |

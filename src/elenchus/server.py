@@ -2633,14 +2633,17 @@ class AdvanceSessionRequest(BaseModel):
 
 
 @app.get("/api/study/session")
-def study_session_current(actor: dict = Depends(auth.current_actor)):
+async def study_session_current(actor: dict = Depends(auth.current_actor)):
     """Return the participant's currently-live session, or 404 if
     they don't have one. The frontend hits this on every page load
     to decide whether to show the briefing / tutorial / dialectic
-    interface / post-session summary / questionnaire."""
+    interface / post-session summary / questionnaire. An `active`
+    session past its task length is ended here, by the clock."""
     session = pdb.find_live_session_for_actor(get_registry().platform_con(), actor["id"])
     if session is None:
         raise HTTPException(404, "No active study session for this participant")
+    if _time_is_up(session):
+        return _study_session_payload(await _end_task_by_timeout(session), timed_out=True)
     return _study_session_payload(session)
 
 
@@ -2669,7 +2672,7 @@ PRACTICE_TOPIC_BRIEF = (
 )
 
 
-def _study_session_payload(session: dict) -> dict:
+def _study_session_payload(session: dict, *, timed_out: bool = False) -> dict:
     """The participant-facing view of a study session: the lifecycle
     row plus what the working screen needs — the writing task, the
     timer, and whether the text is already in. Every route that hands
@@ -2688,10 +2691,119 @@ def _study_session_payload(session: dict) -> dict:
         "soft_warning_minutes": sorted({max(1, task_minutes - 10), task_minutes}),
         "state_elapsed_seconds": pdb.session_state_elapsed_seconds(con, session["id"]),
         "text_submitted": pdb.find_study_text_for_session(con, session["id"]) is not None,
+        # True only on the response that ended the task by the clock,
+        # so the next screen can say so; a reload shows the usual page.
+        "timed_out": timed_out,
     }
     # The token is the participant's credential; the page doesn't need it back.
     payload.pop("study_token", None)
     return payload
+
+
+# ── The hard stop (Registered Report §2.4) ───────────────────────────
+#
+# The main task ends at the study's task length whether or not the
+# participant has pressed FINISH: the text is submitted as it stands —
+# even empty — and the session moves on. The clock is the database's
+# (`state_changed_at` → now), so a closed laptop or a reloaded page
+# changes nothing. Enforcement is server-side: `GET /api/study/session`
+# finalizes an overdue session, and every route that would change a
+# task base or its text refuses once the limit has passed (409 with
+# `task_ended`), which sends the page back to that GET. The reminders
+# before the limit are unchanged.
+
+
+def _task_limit_seconds(session: dict) -> int:
+    con = get_registry().platform_con()
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    return _task_minutes(token.get("study_id")) * 60
+
+
+def _time_is_up(session: dict) -> bool:
+    """Whether an `active` session has reached its task length."""
+    if session.get("state") != "active" or not session.get("base_id"):
+        return False
+    elapsed = pdb.session_state_elapsed_seconds(get_registry().platform_con(), session["id"])
+    return elapsed is not None and elapsed >= _task_limit_seconds(session)
+
+
+_TASK_ENDED = {
+    "task_ended": True,
+    "user_message": "Time is up — your text has been submitted as it stood.",
+}
+_RECORD_CLOSED = {
+    "task_ended": True,
+    "user_message": "This session's task has ended; its record is closed.",
+}
+
+
+async def _end_task_by_timeout(session: dict) -> dict:
+    """Submit the latest draft as the text and move `active →
+    post_session`. Idempotent: the state guard in `advance_session_state`
+    means a concurrent FINISH or a second timeout call changes nothing,
+    and the session is returned as it then is."""
+    reg = get_registry()
+    con = reg.platform_con()
+    with reg.platform_lock:
+        updated = pdb.advance_session_state(con, session["id"], "post_session")
+    if updated is None:
+        return pdb.find_study_session(con, session["id"]) or session
+
+    handle = reg.get_handle(session["base_id"])
+    async with handle.lock:
+        latest = study_text.latest_snapshot(handle.state.base.con)
+        content = latest["content"] if latest else ""
+        snapshot = study_text.save_snapshot(
+            handle.state.base.con, content, trigger="timeout", actor_id=session["actor_id"]
+        )
+    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+    with reg.platform_lock:
+        if pdb.find_study_text_for_session(con, session["id"]) is None:
+            text_id = pdb.create_study_text(
+                con,
+                session_id=session["id"],
+                actor_id=session["actor_id"],
+                condition=session["condition"],
+                topic_title=token.get("topic_title", ""),
+                content=content,
+                word_count=snapshot["word_count"],
+                active_elapsed_seconds=_task_limit_seconds(session),
+            )
+        else:
+            text_id = None
+    logger.warning(
+        "Study task ended by the clock: session=%d condition=%s topic=%r words=%d text_id=%s%s",
+        session["id"],
+        session["condition"],
+        token.get("topic_title", ""),
+        snapshot["word_count"],
+        text_id,
+        " — THE TEXT IS EMPTY" if not content.strip() else "",
+    )
+    return updated
+
+
+def _refuse_if_closed(name: str) -> None:
+    """A study base accepts changes only while its session is on it:
+    the practice base during the tutorial, the task base during the
+    task and before the task length. After that the record is closed —
+    the archived base is the state at submission and is never edited."""
+    con = get_registry().platform_con()
+    if name.startswith("practice-"):
+        try:
+            session = pdb.find_study_session(con, int(name.split("-", 1)[1]))
+        except ValueError:
+            return
+        open_state = "tutorial"
+    else:
+        session = pdb.find_session_by_base(con, name)
+        open_state = "active"
+    if session is None:
+        return
+    if session["state"] != open_state:
+        raise HTTPException(409, _RECORD_CLOSED)
+    if open_state == "active" and _time_is_up(session):
+        raise HTTPException(409, _TASK_ENDED)
 
 
 def _study_working_base(session: dict) -> str:
@@ -2743,6 +2855,8 @@ async def study_text_save(req: StudyTextRequest, actor: dict = Depends(auth.curr
     if req.trigger not in ("autosave", "blur", "paste"):
         raise HTTPException(400, "trigger must be 'autosave', 'blur' or 'paste'")
     session = _live_study_session(actor)
+    if _time_is_up(session):
+        raise HTTPException(409, _TASK_ENDED)
     handle = get_registry().get_handle(_study_working_base(session))
     try:
         async with handle.lock:
@@ -2759,6 +2873,8 @@ async def study_text_events(req: EditorEventsRequest, actor: dict = Depends(auth
     """Editor events the snapshots can't show — a paste (length only),
     a soft timer warning being displayed."""
     session = _live_study_session(actor)
+    if _time_is_up(session):
+        raise HTTPException(409, _TASK_ENDED)
     handle = get_registry().get_handle(_study_working_base(session))
     async with handle.lock:
         stored = study_text.record_editor_events(
@@ -2783,6 +2899,10 @@ async def study_finish(req: StudyTextRequest, actor: dict = Depends(auth.current
                 "user_message": "The task can only be finished while it is in progress.",
             },
         )
+    if _time_is_up(session):
+        # The clock ended the task before this arrived: what counts is the
+        # last saved draft, not what the page sent afterwards.
+        return _study_session_payload(await _end_task_by_timeout(session), timed_out=True)
     content = req.content.strip()
     if not content:
         raise HTTPException(
@@ -3148,6 +3268,7 @@ async def send_message(
     """
     _authorize_base_access(name, actor)
     _get_state(name)  # 404 / 422 for a missing or corrupt file
+    _refuse_if_closed(name)
 
     # Sloan-condition routing: if the caller has an active study session
     # in the BASELINE condition bound to *this* base, dispatch to the
@@ -3222,6 +3343,7 @@ def resolve_tension(
 ):
     """Accept or contest a tension directly (bypassing the oracle)."""
     state = _authorize_and_get_state(name, actor)
+    _refuse_if_closed(name)
     logger.info("Tension action: dialectic=%s, tension=#%d, action=%s", name, tid, req.action)
     # Phase 1 of the two-phase UI flow mutates state without the LLM;
     # the event context is what marks the change as a button press in
@@ -3246,6 +3368,7 @@ def resolve_tension(
 def retract(name: str, req: RetractRequest, actor: dict = Depends(auth.current_actor)):
     """Retract a proposition directly."""
     state = _authorize_and_get_state(name, actor)
+    _refuse_if_closed(name)
     logger.info("Retract: dialectic=%s, proposition=%r", name, req.proposition)
     state.retract_prop(req.proposition, event=EventContext(source="ui", actor_id=actor["id"]))
     return {"retracted": req.proposition, "state": state.to_dict()}

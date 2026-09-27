@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The main task now ends at its task length** (Registered Report §2.4).
+  Until now the clock and its two reminders were guidance and the
+  participant ended the task themselves. Now, at the limit, the editor
+  locks, the last saved draft is submitted as the text (even if empty,
+  which is logged) and the session moves to the questionnaires; the
+  server enforces it — an overdue session is ended when its page asks for
+  it, and any attempt to change the task or its text after the limit is
+  refused. **A study base is frozen once its session moves on**: the
+  practice base after the tutorial, the task base after the task, so the
+  archived base is the state at submission and is never edited afterwards.
+
 ### Added
 
 - **Every inference call now records its identity** — the model the provider

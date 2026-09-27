@@ -570,6 +570,21 @@ def find_study_session(con, session_id: int) -> dict | None:
     return _row_to_study_session(row)
 
 
+def find_session_by_base(con, base_id: str) -> dict | None:
+    """The study session whose task base is `base_id`, newest first, with
+    the state-machine columns — how a mutation route learns whether the
+    base it is about to change still belongs to a task in progress."""
+    row = con.execute(
+        "SELECT id, actor_id, base_id, opened_at, closed_at, status, "
+        "state, state_changed_at, study_token, condition "
+        "FROM sessions WHERE base_id = ? ORDER BY id DESC LIMIT 1",
+        [base_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_study_session(row)
+
+
 def find_live_session_for_actor(con, actor_id: int) -> dict | None:
     """Return the actor's currently-live session (state IN briefing,
     tutorial, active, post_session, surveyed), newest first. Returns

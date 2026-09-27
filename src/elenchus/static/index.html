@@ -193,6 +193,13 @@ async function api(path, opts = {}) {
       e.category = err.detail.category;
       e.attempts = err.detail.attempts;
       e.detail = err.detail;
+      // The study's hard stop: the server has ended (or refuses to
+      // change) the task. The app refetches the session, which moves the
+      // participant to the next screen.
+      if (err.detail.task_ended) {
+        e.taskEnded = true;
+        window.dispatchEvent(new CustomEvent('elenchus:task-ended'));
+      }
       throw e;
     }
     throw new Error(err.detail || res.statusText);
@@ -1148,6 +1155,11 @@ function App() {
     try {
       const s = await api('/api/study/session');
       setStudySession(s);
+      if (s.state !== 'tutorial' && s.state !== 'active') {
+        // The task is over (finished, or ended by the clock): leave the
+        // working base so nothing on this page can still change it.
+        setCurrent(null); setCurrentSessionId(null); setState(null);
+      }
       // Tutorial/active sessions re-open their working base on refresh.
       if (s.state === 'tutorial') {
         await openDialectic(`practice-${s.id}`).catch(() => {});
@@ -1182,6 +1194,17 @@ function App() {
     } catch (e) { setError(e.message); }
     setStudyBusy(false);
   };
+
+  // The hard stop reaches the app two ways: the pane's clock, and a
+  // 409 `task_ended` from any route that changes the task or its text.
+  // Both end here, in a refetch of the session.
+  const refreshRef = useRef(null);
+  refreshRef.current = refreshStudySession;
+  useEffect(() => {
+    const onEnded = () => refreshRef.current && refreshRef.current();
+    window.addEventListener('elenchus:task-ended', onEnded);
+    return () => window.removeEventListener('elenchus:task-ended', onEnded);
+  }, []);
 
   const studyFinish = async () => {
     if (studyBusy) return;
@@ -1681,7 +1704,7 @@ function App() {
             <p style={{ marginBottom: 12 }}>The session has three parts:</p>
             <ol style={{ paddingLeft: 22, marginBottom: 12 }}>
               <li style={{ marginBottom: 6 }}><b>Tutorial</b> (~15 minutes) — practice with the interface on a warm-up topic.</li>
-              <li style={{ marginBottom: 6 }}><b>Main task</b> (about {studySession.task_minutes || 60} minutes) — write your introduction in the panel on the right, beside your conversation with the AI. A clock shows your time; nothing is cut off, and you end the task yourself.</li>
+              <li style={{ marginBottom: 6 }}><b>Main task</b> (about {studySession.task_minutes || 60} minutes) — write your introduction in the panel on the right, beside your conversation with the AI. A clock shows your time. You can end the task yourself once your text is ready; when the time is up, it is submitted as it stands.</li>
               <li style={{ marginBottom: 6 }}><b>Questionnaires</b> (~10–15 minutes) — four short instruments about your experience.</li>
             </ol>
             <p style={{ marginBottom: 12 }}>
@@ -1703,9 +1726,11 @@ function App() {
     }
     if (sState === 'post_session') {
       return (
-        <StudyShell fs={fs} title="Main task complete">
+        <StudyShell fs={fs} title={studySession.timed_out ? 'Time is up' : 'Main task complete'}>
           <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8, marginBottom: 12 }}>
-            Thank you — the main task is finished and your text has been submitted.
+            {studySession.timed_out
+              ? `The ${studySession.task_minutes || 60} minutes are up, so your text has been submitted as it stood. Thank you — `
+              : 'Thank you — the main task is finished and your text has been submitted. '}
             The last step is a short set of questionnaires about your
             experience (about 10–15 minutes).
           </p>
@@ -2963,7 +2988,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
             </label>
             <div style={{ fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>
               Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrolments only.
-              The task length only drives the clock and its two reminders; nothing is ever cut off. Set it before the first
+              The task length is a hard stop: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant’s text is submitted as it stands. Set it before the first
               participant starts and leave it alone afterwards.
             </div>
             <button onClick={saveConfig} disabled={busy} style={{
@@ -4726,8 +4751,10 @@ function WritingPane({ fs, studySession, text, setText }) {
     nextTrigger.current = 'paste';
   };
 
-  // Soft time guidance. Nothing is cut off: the participant ends the
-  // task themselves. Each warning is logged the first time it is shown.
+  // Time guidance, then the hard stop. The two reminders are logged the
+  // first time each is shown; at the task length the editor locks and
+  // the app refetches the session, which the server has ended by the
+  // clock with the text as it stood.
   const warnAt = studySession.soft_warning_minutes || [];
   const taskMinutes = studySession.task_minutes || 60;
   const elapsedMin = elapsed == null ? null : elapsed / 60;
@@ -4743,12 +4770,15 @@ function WritingPane({ fs, studySession, text, setText }) {
       logEvents([{ type: 'soft_warning_shown', threshold_minutes: m }]);
     });
   }, [crossedKey]);
-  const timeUp = elapsedMin != null && elapsedMin >= taskMinutes;
+  const timeUp = !isTutorial && elapsedMin != null && elapsedMin >= taskMinutes;
+  useEffect(() => {
+    if (timeUp) window.dispatchEvent(new CustomEvent('elenchus:task-ended'));
+  }, [timeUp]);
   const minutesLeft = elapsedMin == null ? null : Math.max(1, Math.ceil(taskMinutes - elapsedMin));
   const warning = timeUp
-    ? `The ${taskMinutes} minutes are up. Please bring your text to a close and press FINISH SESSION when you are ready.`
+    ? `The ${taskMinutes} minutes are up — your text is being submitted as it stands.`
     : crossed.length > 0
-      ? `About ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} left — a good moment to start wrapping up your text.`
+      ? `About ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} left — the task ends when the clock runs out.`
       : null;
 
   const title = isTutorial ? studySession.practice_topic_title : studySession.topic_title;
@@ -4811,7 +4841,7 @@ function WritingPane({ fs, studySession, text, setText }) {
         onChange={e => setText(e.target.value)}
         onPaste={onPaste}
         onBlur={() => save('blur')}
-        disabled={!loaded}
+        disabled={!loaded || timeUp}
         placeholder={loaded ? 'Write your introduction here. It saves automatically.' : 'Loading your text…'}
         spellCheck={true}
         style={{

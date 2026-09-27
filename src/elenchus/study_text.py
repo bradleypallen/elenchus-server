@@ -29,7 +29,11 @@ EDITOR_EVENT_SEQ = "editor_event_seq"
 # key or a pasted document can't bloat the base file.
 MAX_TEXT_CHARS = 20_000
 
-SNAPSHOT_TRIGGERS = frozenset({"autosave", "blur", "paste", "submit"})
+SNAPSHOT_TRIGGERS = frozenset({"autosave", "blur", "paste", "submit", "timeout"})
+# The two that end the task: pressed by the participant, or reached by
+# the clock. Both are always stored, even when identical to the last
+# draft, so the submitted text is a row of its own.
+FINAL_TRIGGERS = frozenset({"submit", "timeout"})
 
 # What the editor may report, and the payload keys kept for each. The
 # allow-list is what enforces "length and time only" for pastes: a
@@ -79,7 +83,7 @@ def save_snapshot(con, content: str, *, trigger: str, actor_id: int | None = Non
         raise ValueError(f"Text is longer than {MAX_TEXT_CHARS} characters")
 
     previous = latest_snapshot(con)
-    if trigger != "submit" and previous is not None and previous["content"] == content:
+    if trigger not in FINAL_TRIGGERS and previous is not None and previous["content"] == content:
         previous.pop("content")
         return {**previous, "stored": False}
 

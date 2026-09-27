@@ -66,7 +66,8 @@ pytest -v
 - `ELENCHUS_TASK_MINUTES` — the **default** intended length of a study's
   main task (default `60`); a study's own *Length of the main task*
   (`study_configs.task_minutes`, Study tab) overrides it. Drives the writing pane's clock and its two **soft**
-  warnings (ten minutes before, and at, the limit); nothing is cut off.
+  warnings (ten minutes before, and at, the limit) and its **hard stop**:
+  at the limit the text is submitted as it stands and the session moves on.
   Set low (e.g. `10`) for training runs and demos.
 - `ELENCHUS_PRICING_JSON` — JSON object mapping model → `{input_per_1m,
   output_per_1m}` USD rates, or a list of such rates each with an
@@ -196,7 +197,7 @@ Each study participant writes a short prose introduction to a topic, in their ow
 - **Topic** — `participant_session_tokens.topic_title` / `topic_brief` (platform migration `0009`). The task base is named after `topic_title`; `baseline_system_prompt(topic)` tells the baseline assistant.
 - **Writing pane** — `<WritingPane>` in `static/index.html`, shown to participants in `tutorial` (practice base) and `active` (task base), same in both conditions. Autosaves via `PUT /api/study/session/text`; drafts are append-only `text_snapshots`, editor events (`paste` = length only, `soft_warning_shown`) are `editor_events` (base migration `0004`, `study_text.py`). The text routes are `async` and take the per-base lock so a save can't land inside an opponent turn's transaction.
 - **Finish** — `POST /api/study/session/finish` stores a `submit` snapshot, writes the platform `study_texts` row (once per session) and moves `active → post_session`. The generic `advance` route refuses `post_session` without a submitted text.
-- **Clock** — `_study_session_payload` returns `state_elapsed_seconds` (database clock both ends), `task_minutes` and `soft_warning_minutes`; the pane ticks locally from that anchor. Guidance only — there is no hard cutoff.
+- **Clock and hard stop** — `_study_session_payload` returns `state_elapsed_seconds` (database clock both ends), `task_minutes` and `soft_warning_minutes`; the pane ticks locally from that anchor. At the task length the task **ends by the clock** (Registered Report §2.4): `GET /api/study/session` finalizes an overdue `active` session (`_end_task_by_timeout`: a `timeout` snapshot of the last saved draft — possibly empty, logged at WARNING — the `study_texts` row, `active → post_session`, `timed_out: true` on that one response), and every route that would change the task or its text refuses after the limit with 409 `task_ended`, which sends the page back to that GET. **A study base is frozen once its session leaves the state that uses it** (`_refuse_if_closed`: the practice base outside `tutorial`, the task base outside `active`) — the archived base is the state at submission and is never edited afterwards.
 
 ## Text Judging
 
