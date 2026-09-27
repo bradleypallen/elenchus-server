@@ -2,36 +2,44 @@
 
 What the platform implements of the experimental design in the study's
 **Stage 1 Registered Report** manuscript (draft dated 2026-09-27), what it
-implements differently, and what it doesn't implement — assessed against
-**Elenchus 0.8.4** plus the three unreleased fix branches of 2026-09-27,
-by reading the manuscript section by section against the code. Section
-numbers below are the manuscript's.
+implemented differently when the comparison was made, and what was done
+about each difference. The comparison was made against **Elenchus 0.8.4**
+on 2026-09-27, section by section against the code; the differences were
+then built out, on the manuscript's terms, and released as **0.9.0 and
+0.9.1 the same day**, ahead of the training of 2026-10-01. Section numbers
+below are the manuscript's.
 
 The point of the exercise: a Registered Report freezes the method before
 data are collected, and the platform *is* most of the method. Every place
-where the two disagree has to be settled one way or the other before
+where the two disagreed had to be settled one way or the other before
 registration — by changing the code, or by changing the text so that it
-describes what the code does. Nothing here decides which; §6 proposes.
+describes what the code does. §7 records how each was settled, and what
+the manuscript should now say.
 
 Like everything in this directory this is reference material, not a plan
-of record. Two things in the manuscript are still marked `[Set: …]` and
-bear on the platform directly (the session cutoff and the maximum gap);
-they are called out where they arise and collected in §7.
+of record.
 
-## Status (2026-09-27)
+## Status (as of 0.9.1, 2026-09-27)
 
-Everything in §3 and §4 except G4 and G6 has since been built, on the
-manuscript's terms, ahead of the training of 2026-10-01: D1–D3 (pairs,
-a justification per dimension, the guess after the queue), D4 (seeded,
-concealed allocation — the PI chose to build it), D5 (inference
-identity, versions), D6 (a hard stop at the task length, bases frozen
-after the task — the PI settled the cutoff as a hard stop), G1 (maximum
-gap, flagged), G2 (deviation log), G3 (screening covariates in the
-platform), G5 (the condition-specific sentence), G7 (versions in the
-manifest). G4 (the EEQ's five scales) waits for the pilot's revision of
-the instrument; G6 (A/B-coded analysis set) is the analysis script's.
-The manuscript's `[Set:]` values the platform now assumes: a hard
-cutoff at the task length; a maximum gap of 21 days.
+| | Item | Resolution |
+|---|---|---|
+| D1 | Judges see pairs and rank them | **Built.** Pair assignment, A/B per (participant, judge), ranking. Platform migration 0020. |
+| D2 | A justification per dimension | **Built.** Four required sentences per text; rubric version 2. |
+| D3 | Condition guess after all assessments | **Built.** A separate guessing pass, open only when the judge's queue is done. |
+| D4 | Seeded, deposited, concealed allocation | **Built** (the PI chose to build rather than amend). Platform migration 0021. |
+| D5 | What each inference call records | **Built.** Returned model id, request id, temperature, `max_tokens`; versions in the manifest; models seen per session. Base migration 0005, platform 0017. |
+| D6 | End of session | **Built**, with the cutoff settled as a **hard stop** at the task length; bases frozen once their session moves on. Platform migration 0018. |
+| G1 | Maximum gap | **Built**, as a flag (roster and export), not a gate. Platform migration 0019. |
+| G2 | Protocol deviation log | **Built.** Researcher- and platform-logged; in the roster and the export. Migration 0019. |
+| G3 | Screening covariates | **Built**, in the platform (the PI's choice). Migration 0019. |
+| G4 | EEQ's five scales | **Open** — waits for the pilot's revision of the instrument. |
+| G5 | Condition-specific briefing sentence | **Built.** |
+| G6 | Analyst's A/B-coded labels | **Open** — the analysis script's job; the export stays unblinded. |
+| G7 | Versions in the manifest | **Built** (with D5). |
+
+§2–§4 below are kept as the record of what the comparison found in
+0.8.4; each item in §3 ends with what was built. The layout fix of 0.9.1
+(both texts reachable while ranking a pair) belongs to D1.
 
 ## 1. Where the manuscript's design lives in the platform
 
@@ -74,12 +82,13 @@ walk-through of both conditions on 2026-09-26.
 | §2.8 Access path: the provider's first-party API | Default endpoint is the provider's; no intermediary unless configured | code |
 | §3 Pilot: "each archived export and move log reproduces the session's final dialogue state" | `state_events` is written inside the same transaction as the turn; `integrity.json` reports `uncaptured_assistant_turns` | code, tests |
 
-## 3. Deviations that bear on the analysis
+## 3. Deviations that bear on the analysis (as found in 0.8.4)
 
-Where the manuscript and the platform disagree and the disagreement
-touches a registered analysis. For each: what the manuscript says, what
-the platform does, and the options. **D1–D3 are one decision**: the
-judging procedure.
+Where the manuscript and the platform disagreed and the disagreement
+touched a registered analysis. For each: what the manuscript says, what
+the platform did at 0.8.4, the options that were open, and — in
+*Resolved* — what 0.9.0 built. **D1–D3 were one decision**: the judging
+procedure.
 
 ### D1 — Judges see pairs and rank them (§2.5, §2.6)
 
@@ -106,6 +115,16 @@ to drop the ranking; the fallback then ends at the reduced composite.
 Since the ranking is the safety net for the primary outcome, (a) is the
 faithful choice.
 
+*Resolved (0.9.0).* Option (a). `text_pair_assignments` (one per
+participant × judge, random queue position, `label_a_text_id` /
+`label_b_text_id` drawn per pair), the per-text ratings under each pair,
+`text_pair_rankings` (every submission kept, the newest counts); routes
+under `/api/judge/pairs`; a pair is assignable once both of a
+participant's texts are in; `text_judging.json` carries `pairs` with the
+label map and the rankings. The ranking has no confidence of its own —
+the manuscript attaches confidence to the guess, not the ranking. 0.9.1
+relaid the page so both texts stay reachable while ranking.
+
 ### D2 — A justification per dimension (§2.5, §2.6)
 
 *Manuscript.* Each of the four ratings comes with a one-sentence
@@ -120,6 +139,11 @@ ratings; `RUBRIC_VERSION` bumped and `docs/judge-guide.md` updated.
 Small. Or amend the text to "a justification for the text as a whole",
 which weakens the pilot's style check.
 
+*Resolved (0.9.0).* Four justification fields, required, one sentence
+each (`text_ratings.justifications`, `validate_justifications`);
+`RUBRIC_VERSION` is `2`; the Guide for Judges says why the sentences
+matter.
+
 ### D3 — When the condition guess is asked (§2.6)
 
 *Manuscript.* "After all assessments are complete", per text, with a
@@ -132,6 +156,11 @@ confidence.
 the guess is collected per text at rating time. The manuscript's order
 is the safer one for the ratings; the platform's is simpler. Decide
 with D1, since a pairs view changes what "all assessments" means.
+
+*Resolved (0.9.0).* The manuscript's order. The rating form carries no
+guess; `GET|POST /api/judge/guesses` opens only once every pair in the
+judge's queue is rated and ranked, and asks per text (as pair + label)
+with a confidence 1–7; `text_condition_guesses` keeps every submission.
 
 ### D4 — Allocation: seeded list, deposited, concealed (§2.1)
 
@@ -158,6 +187,19 @@ by the non-administering member), keep each participant's cell hidden
 from the Study tab until a *schedule session 1* action, and export the
 list's hash. Moderate; also changes the runbook's enrolment steps.
 
+*Resolved (0.9.0).* Option (b), built as described: a seed set once per
+study (`POST /api/admin/study/{id}/allocation-seed`, before the first
+block enrolment, meant for a team member who won't administer sessions;
+the platform records who), the list `allocation_list(seed, n)` —
+permuted blocks of four from `random.Random(seed)`, hashed over the
+sequence letters A–D — each participant's cell `cell_at(seed,
+block_index)`, concealed (no cell, no links, not in the balance) until
+`POST …/participants/{pid}/schedule` reveals it and issues both links.
+The seed never leaves the server through the API; the export's
+`allocation.json` carries the seed's hash, the list's hash and each
+participant's sequence letter; the names-key side file carries the seed.
+Without a seed (the practice study) enrolment draws and reveals at once.
+
 ### D5 — What each inference call records (§2.8)
 
 *Manuscript.* Every call records the **returned** model identifier, the
@@ -182,6 +224,13 @@ record temperature and `max_tokens`; write `elenchus.__version__` and
 Small, and it is what makes §2.8's straddled-pair rule and "frozen as"
 table checkable at all. No sensible amendment on the manuscript side.
 
+*Resolved (0.9.0).* Built as proposed: `turn_log` and `usage` carry
+`response_model`, `request_id`, `temperature` and `max_tokens`; the
+temperature is sent explicitly on every call (`ELENCHUS_TEMPERATURE`,
+default 1.0); `integrity.json` lists a session's `requested_models` and
+`models_seen`; the export manifest's `versions` block is the "frozen as"
+table (Elenchus, pyNMMS, DuckDB, platform schema, rubric, export format).
+
 ### D6 — End of session: automatic export, no later edits, cutoff (§2.4)
 
 *Manuscript.* The exported base is the dialogue state "at the moment the
@@ -204,17 +253,29 @@ task base at finish — refuse turns and text saves on a base whose
 session is past `active` — so "not edited afterwards" is enforced rather
 than assumed. Small.
 
-## 4. Smaller gaps
+*Resolved (0.9.0).* The PI settled the cutoff as a **hard stop**: at the
+task length the editor locks, the last saved draft is submitted as the
+text (even empty — logged, and recorded as a `timed_out` deviation) and
+the session moves on; `GET /api/study/session` ends an overdue session,
+FINISH after the limit is a timeout, and every route that changes the
+task or its text refuses after the limit. A study base is frozen once its
+session leaves the state that uses it, so the archived base is the state
+at submission and is never edited afterwards. `study_texts.submitted_by`
+records whether the participant or the clock submitted. The export is
+still taken by the researcher rather than at the moment of submission —
+which the freeze makes equivalent (see §7).
 
-| | Manuscript | Platform | Suggested |
-|---|---|---|---|
-| **G1** | §2.1 sessions at most `[Set: 21]` days apart; pairs outside the window excluded in a sensitivity analysis | Only the minimum gap exists | A `max_gap_days` on the study, shown as a warning in the roster and a flag in the export — not a gate |
-| **G2** | §2.4 protocol deviations logged by the administrator at the time, before judging; §2.7 excluded in a named sensitivity analysis | `Close as interrupted` and a free-text `notes` per participant | A per-session deviation record (kind, note, timestamp, who) in the Study tab and the export |
-| **G3** | §2.2 screening covariates: ontology-engineering experience, prior LLM-tool use, topic nomination | Not captured | Either outside the platform, joined on the participant code (which the export carries), or three fields on the participant row |
-| **G4** | §2.3, §2.7 EEQ with five named scales (epistemic agency, novelty, completeness, traceability, cognitive flow), Holm-corrected across the five | Eight items, no subscale mapping in the code | The instrument is expected to change after the pilot; whatever it becomes needs its scale structure in `questionnaires.py` so the export can carry it |
-| **G5** | §2.3 briefs identical apart from the description of how the model behaves | The welcome page is identical and describes neither mode; participants learn the mode in the tutorial | Acceptable as is, or one condition-specific sentence on the welcome page — a text change |
-| **G6** | §2.7 the analyst works from A/B condition labels until the confirmatory test has run | `text_judging.json` is unblinded by design | Do the coding in the analysis script, or add a coded variant of the file with the key beside the names key |
-| **G7** | §2.8 "frozen as": release tag, pyNMMS version | Not in the manifest | Part of D5 |
+## 4. Smaller gaps (as found in 0.8.4, with what was done)
+
+| | Manuscript | Platform at 0.8.4 | Suggested | Done (0.9.0) |
+|---|---|---|---|---|
+| **G1** | §2.1 sessions at most `[Set: 21]` days apart; pairs outside the window excluded in a sensitivity analysis | Only the minimum gap exists | A `max_gap_days` on the study, shown as a warning in the roster and a flag in the export — not a gate | **Yes**: `study_configs.max_gap_days` (default 21, 0 = none); `_pair_window` reports *straddled* / *closed* in the roster; in the export |
+| **G2** | §2.4 protocol deviations logged by the administrator at the time, before judging; §2.7 excluded in a named sensitivity analysis | `Close as interrupted` and a free-text `notes` per participant | A per-session deviation record (kind, note, timestamp, who) in the Study tab and the export | **Yes**: `session_deviations`; *Log deviation* in the Study tab; *Close as interrupted* and the clock's hard stop log their own; `deviations.json` study-wide and per session |
+| **G3** | §2.2 screening covariates: ontology-engineering experience, prior LLM-tool use, topic nomination | Not captured | Either outside the platform, joined on the participant code (which the export carries), or three fields on the participant row | **Yes**, in the platform: coded levels for ontology-engineering experience and prior LLM-tool use, a flag for topic nomination, entered at enrolment, exported beside the code |
+| **G4** | §2.3, §2.7 EEQ with five named scales (epistemic agency, novelty, completeness, traceability, cognitive flow), Holm-corrected across the five | Eight items, no subscale mapping in the code | The instrument is expected to change after the pilot; whatever it becomes needs its scale structure in `questionnaires.py` so the export can carry it | **Open** — after the pilot |
+| **G5** | §2.3 briefs identical apart from the description of how the model behaves | The welcome page is identical and describes neither mode; participants learn the mode in the tutorial | Acceptable as is, or one condition-specific sentence on the welcome page — a text change | **Yes**: one sentence, by condition |
+| **G6** | §2.7 the analyst works from A/B condition labels until the confirmatory test has run | `text_judging.json` is unblinded by design | Do the coding in the analysis script, or add a coded variant of the file with the key beside the names key | **Open** — the analysis script's |
+| **G7** | §2.8 "frozen as": release tag, pyNMMS version | Not in the manifest | Part of D5 | **Yes**, with D5 |
 
 ## 5. Outside the platform, by design
 
@@ -227,31 +288,57 @@ recording; the comparative interview; the model-authored share
 (computable from `text.json` and `transcript.json`); the analysis
 scripts; ethics, consent and compensation.
 
-## 6. Proposed order
+## 6. What was done, in the order it was done
 
-Everything here is after the training of 2026-10-01 (see the freeze) and
-before the pilot, except where noted.
+All on 2026-09-27, each as its own pull request, merged on green and
+released as 0.9.0 (then 0.9.1 for the pair-page layout):
 
-1. **D5** (logging) — smallest, no UI, and the pilot's exports should
-   already carry it so that the pilot can confirm the "frozen as" table.
-2. **D6** freeze-at-finish, and the cutoff sentence settled in the text.
-3. **D1–D3** as one piece of judging work, once the PI has chosen (a) or
-   (b) for D1 — the pilot's judges are the first to use it, and the pilot
-   is where the rubric gets revised, so it must exist before the pilot.
-4. **G1, G2** — small, Study tab and export.
-5. **G4** — after the pilot, when the EEQ is final.
-6. **D4** — a manuscript amendment unless the deposited-seed design is
-   wanted, in which case it is the largest item and should be decided
-   early.
+1. **D5** — inference identity and versions (#19).
+2. **D6** — the hard stop, bases frozen after the task, `submitted_by`
+   (#20).
+3. **G1, G2, G3, G5** — maximum gap, deviation log, screening covariates,
+   the briefing sentence (#21).
+4. **D1–D3** — pair judging, justifications, the guessing pass; the
+   Guide for Judges rewritten (#22); the layout of the pair page (#25).
+5. **D4** — seeded, concealed allocation (#23).
 
-G3, G5 and G6 are text or analysis-script matters unless the PI prefers
-them in the platform.
+Every migration involved is additive (platform 17–21, base 5); the
+deploy rehearsed them on a copy of the live data first.
 
-## 7. Decisions the platform is waiting on
+## 7. Decisions taken, and what the manuscript should now say
 
-- The session cutoff `[Set: confirm cutoff]` in §2.4 (D6).
-- The maximum gap `[Set: 21]` days in §2.1 (G1).
-- Pairs and ranking: build or drop (D1); with it, the guess timing (D3).
-- Allocation: describe the platform's draw, or build the deposited-seed
-  list (D4).
-- Whether screening covariates live in the platform (G3).
+The three choices the platform could not make itself were put to the PI
+on 2026-09-27; all three went the way the note recommended:
+
+- **Cutoff (§2.4).** A hard stop at the task length. The manuscript's
+  `[Set: confirm cutoff]` can read: *the session ends at the time limit:
+  the text is submitted as it stands and the dialogue state at that
+  moment is the archived state.* The sentence "The export will be taken
+  automatically at that moment and not edited afterwards" is true in
+  substance — the base is frozen at that moment and cannot be edited
+  afterwards — but the export file itself is produced by the researcher
+  later; a wording such as *frozen at that moment and exported without
+  alteration* describes what the platform does.
+- **Allocation (§2.1).** The deposited-seed design, built. The
+  manuscript's description now matches the platform, with one detail to
+  add: the "team member who does not administer sessions" enters the
+  seed **into the platform**, which generates the list and shows the two
+  hashes to deposit; the list itself is regenerable from the seed
+  (`study_enrolment.allocation_list`).
+- **Screening covariates (§2.2).** Recorded in the platform, as coded
+  levels (ontology-engineering experience: none / some / extensive;
+  prior LLM-tool use: none / occasional / regular; nominated a topic:
+  yes / no). If the manuscript's screening questionnaire uses other
+  levels, either the questionnaire or `pdb.SCREENING_LEVELS` should be
+  brought into line before the pilot.
+
+Values the platform now assumes for the manuscript's other `[Set:]`
+fields that touch it: maximum gap **21 days** (§2.1, flagged not
+enforced); judges' justifications **one sentence per dimension**
+(§2.5); the guess confidence on a **1–7** scale (§2.6).
+
+Still open: **G4**, the EEQ's five scales — whatever the pilot makes of
+the instrument needs its scale structure in `questionnaires.py` so the
+export carries it; and **G6**, the analyst's A/B coding — the export is
+deliberately unblinded, and the coding belongs in the analysis script
+that §2.7 says will be deposited before ratings are unblinded.
