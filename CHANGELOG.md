@@ -17,6 +17,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refused. **A study base is frozen once its session moves on**: the
   practice base after the tutorial, the task base after the task, so the
   archived base is the state at submission and is never edited afterwards.
+  `study_texts.submitted_by` (platform migration `0018`) records whether a
+  text was submitted by the participant or by the clock; it is in the
+  export.
 
 ### Added
 

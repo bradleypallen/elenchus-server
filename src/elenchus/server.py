@@ -2643,7 +2643,7 @@ async def study_session_current(actor: dict = Depends(auth.current_actor)):
     if session is None:
         raise HTTPException(404, "No active study session for this participant")
     if _time_is_up(session):
-        return _study_session_payload(await _end_task_by_timeout(session), timed_out=True)
+        return _study_session_payload(await _end_task_by_timeout(session))
     return _study_session_payload(session)
 
 
@@ -2672,7 +2672,7 @@ PRACTICE_TOPIC_BRIEF = (
 )
 
 
-def _study_session_payload(session: dict, *, timed_out: bool = False) -> dict:
+def _study_session_payload(session: dict) -> dict:
     """The participant-facing view of a study session: the lifecycle
     row plus what the working screen needs — the writing task, the
     timer, and whether the text is already in. Every route that hands
@@ -2681,6 +2681,7 @@ def _study_session_payload(session: dict, *, timed_out: bool = False) -> dict:
     con = get_registry().platform_con()
     token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
     task_minutes = _task_minutes(token.get("study_id"))
+    text = pdb.find_study_text_for_session(con, session["id"])
     payload = {
         **session,
         "topic_title": token.get("topic_title", ""),
@@ -2690,10 +2691,10 @@ def _study_session_payload(session: dict, *, timed_out: bool = False) -> dict:
         "task_minutes": task_minutes,
         "soft_warning_minutes": sorted({max(1, task_minutes - 10), task_minutes}),
         "state_elapsed_seconds": pdb.session_state_elapsed_seconds(con, session["id"]),
-        "text_submitted": pdb.find_study_text_for_session(con, session["id"]) is not None,
-        # True only on the response that ended the task by the clock,
-        # so the next screen can say so; a reload shows the usual page.
-        "timed_out": timed_out,
+        "text_submitted": text is not None,
+        # The task was ended by the clock (the hard stop), so every screen
+        # after it can say so — read from the record, not remembered.
+        "timed_out": bool(text and text.get("submitted_by") == "timeout"),
     }
     # The token is the participant's credential; the page doesn't need it back.
     payload.pop("study_token", None)
@@ -2768,6 +2769,7 @@ async def _end_task_by_timeout(session: dict) -> dict:
                 content=content,
                 word_count=snapshot["word_count"],
                 active_elapsed_seconds=_task_limit_seconds(session),
+                submitted_by="timeout",
             )
         else:
             text_id = None
@@ -2902,7 +2904,7 @@ async def study_finish(req: StudyTextRequest, actor: dict = Depends(auth.current
     if _time_is_up(session):
         # The clock ended the task before this arrived: what counts is the
         # last saved draft, not what the page sent afterwards.
-        return _study_session_payload(await _end_task_by_timeout(session), timed_out=True)
+        return _study_session_payload(await _end_task_by_timeout(session))
     content = req.content.strip()
     if not content:
         raise HTTPException(

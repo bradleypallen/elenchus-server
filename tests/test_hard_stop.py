@@ -119,9 +119,11 @@ class TestTheClockEndsTheTask:
         assert text["content"] == "Tides rise." and text["active_elapsed_seconds"] == 300
         assert _snapshots(s["base_id"])[-1]["trigger"] == "timeout"
         assert "ended by the clock" in caplog.text
-        # A reload shows the ordinary page, and nothing is submitted twice.
+        assert text["submitted_by"] == "timeout"
+        # A reload still says so (it is read from the record), and nothing
+        # is submitted twice.
         again = p.get("/api/study/session").json()
-        assert again["state"] == "post_session" and again["timed_out"] is False
+        assert again["state"] == "post_session" and again["timed_out"] is True
         assert len([t for t in _snapshots(s["base_id"]) if t["trigger"] == "timeout"]) == 1
 
     def test_an_empty_text_is_submitted_and_shouted_about(self, caplog):
@@ -176,7 +178,8 @@ class TestTheClockEndsTheTask:
         _backdate(s["id"], 6)
         r = p.post("/api/study/session/finish", json={"content": "Typed after the bell."})
         assert r.status_code == 200 and r.json()["timed_out"] is True
-        assert pdb.find_study_text_for_session(_con(), s["id"])["content"] == "Saved in time."
+        text = pdb.find_study_text_for_session(_con(), s["id"])
+        assert text["content"] == "Saved in time." and text["submitted_by"] == "timeout"
 
     def test_saves_and_events_are_refused_after_the_limit(self):
         p, s = _at_task()
@@ -205,7 +208,9 @@ class TestTheRecordIsClosed:
     def test_the_task_base_is_frozen_once_the_session_moves_on(self):
         p, s = _at_task()
         p.put("/api/study/session/text", json={"content": "Done.", "trigger": "autosave"})
-        assert p.post("/api/study/session/finish", json={"content": "Done."}).status_code == 200
+        r = p.post("/api/study/session/finish", json={"content": "Done."})
+        assert r.status_code == 200 and r.json()["timed_out"] is False
+        assert pdb.find_study_text_for_session(_con(), s["id"])["submitted_by"] == "participant"
         base = s["base_id"]
         for path, body in (
             (f"/api/dialectics/{base}/message", {"message": "hello"}),

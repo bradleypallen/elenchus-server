@@ -1729,7 +1729,7 @@ function App() {
         <StudyShell fs={fs} title={studySession.timed_out ? 'Time is up' : 'Main task complete'}>
           <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8, marginBottom: 12 }}>
             {studySession.timed_out
-              ? `The ${studySession.task_minutes || 60} minutes are up, so your text has been submitted as it stood. Thank you — `
+              ? `${minutesPhrase(studySession.task_minutes || 60)} up, so your text has been submitted as it stood. Thank you — `
               : 'Thank you — the main task is finished and your text has been submitted. '}
             The last step is a short set of questionnaires about your
             experience (about 10–15 minutes).
@@ -4644,6 +4644,11 @@ function fmtClock(totalSeconds) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+// "The 60 minutes are" / "The 1 minute is" — for the hard-stop wording.
+function minutesPhrase(n) {
+  return n === 1 ? 'The 1 minute is' : `The ${n} minutes are`;
+}
+
 function countWords(text) {
   const m = text.match(/\S+/g);
   return m ? m.length : 0;
@@ -4776,7 +4781,7 @@ function WritingPane({ fs, studySession, text, setText }) {
   }, [timeUp]);
   const minutesLeft = elapsedMin == null ? null : Math.max(1, Math.ceil(taskMinutes - elapsedMin));
   const warning = timeUp
-    ? `The ${taskMinutes} minutes are up — your text is being submitted as it stands.`
+    ? `${minutesPhrase(taskMinutes)} up — your text is being submitted as it stands.`
     : crossed.length > 0
       ? `About ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} left — the task ends when the clock runs out.`
       : null;
