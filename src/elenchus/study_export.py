@@ -69,7 +69,32 @@ logger = logging.getLogger(__name__)
 # "2": sessions carry the participant code, period and allocation
 # (crossover linkage), the submitted text and its draft history, and the
 # capture log; `participants.json` added; session tokens no longer exported.
-EXPORT_FORMAT_VERSION = "2"
+EXPORT_FORMAT_VERSION = "3"
+
+
+def _versions(con) -> dict:
+    """What produced this archive — the "frozen as" table of the study's
+    registration, checkable from the archive alone."""
+    import importlib.metadata
+
+    import duckdb
+
+    from . import __version__ as elenchus_version
+    from .migrations.runner import current_schema_version
+    from .text_judging import RUBRIC_VERSION
+
+    try:
+        pynmms = importlib.metadata.version("pynmms")
+    except importlib.metadata.PackageNotFoundError:
+        pynmms = "unknown"
+    return {
+        "elenchus": elenchus_version,
+        "pynmms": pynmms,
+        "duckdb": duckdb.__version__,
+        "platform_schema": current_schema_version(con),
+        "rubric": RUBRIC_VERSION,
+        "export_format": EXPORT_FORMAT_VERSION,
+    }
 
 
 def _safe_sql_literal(path: str) -> str:
@@ -214,6 +239,7 @@ def export_study(
         manifest = {
             "study_id": study_id,
             "export_format_version": EXPORT_FORMAT_VERSION,
+            "versions": _versions(con),
             "exported_at": ts,
             # Columns named `*_at` in the platform tables (opened_at,
             # submitted_at, …) are naive timestamps in THIS zone — DuckDB

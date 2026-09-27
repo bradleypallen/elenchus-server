@@ -76,6 +76,12 @@ RETRYABLE = frozenset(
 )
 
 
+# Sent on every call unless the client is built with another value. The
+# providers' own default is 1.0; sending it explicitly is what lets the
+# study freeze and record it (`ELENCHUS_TEMPERATURE`).
+DEFAULT_TEMPERATURE = 1.0
+
+
 @dataclass
 class ChatResult:
     """Outcome of a single (possibly-retried) LLM chat call."""
@@ -89,6 +95,14 @@ class ChatResult:
     model: str = ""
     error_message: str | None = None
     exception_type: str | None = None
+    # The call's identity, for the study's model-stability protocol: the
+    # model the provider *says* answered (it may carry a release date the
+    # requested name doesn't), the provider's request id, and the
+    # sampling parameters that were sent. Empty / None when unknown.
+    response_model: str = ""
+    request_id: str = ""
+    temperature: float | None = None
+    max_tokens: int | None = None
     # Free-form metadata that subscribers may attach (e.g. trace id).
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -229,22 +243,37 @@ class _ProviderAdapter:
         messages: list[dict],
         system: str | None,
         max_tokens: int,
+        temperature: float | None = None,
     ) -> dict:
         if self.protocol == "openai":
             oai_messages = []
             if system:
                 oai_messages.append({"role": "system", "content": system})
             oai_messages.extend(messages)
-            return {
+            kwargs = {
                 "model": model,
                 "max_tokens": max_tokens,
                 "messages": oai_messages,
             }
-        # Anthropic
-        kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
-        if system:
-            kwargs["system"] = system
+        else:  # Anthropic
+            kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
+            if system:
+                kwargs["system"] = system
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         return kwargs
+
+    @staticmethod
+    def extract_identity(response) -> tuple[str, str]:
+        """(model the provider reports, request id) — both SDKs expose
+        them as `response.model` / `response.id`. Empty when absent or
+        not a string (a stub, an unusual response)."""
+        model = getattr(response, "model", None)
+        rid = getattr(response, "id", None)
+        return (
+            model if isinstance(model, str) else "",
+            rid if isinstance(rid, str) else "",
+        )
 
     def extract_text(self, response) -> str:
         if self.protocol == "openai":
@@ -294,6 +323,7 @@ class LLMClient:
         max_attempts: int = 3,
         base_backoff_s: float = 1.0,
         max_backoff_s: float = 8.0,
+        temperature: float | None = DEFAULT_TEMPERATURE,
     ):
         if max_attempts < 1:
             raise ValueError("max_attempts must be >= 1")
@@ -306,6 +336,7 @@ class LLMClient:
         self.max_attempts = max_attempts
         self.base_backoff_s = base_backoff_s
         self.max_backoff_s = max_backoff_s
+        self.temperature = temperature
         self._adapter = _ProviderAdapter(protocol=protocol)
 
     # ── Sync entry point ─────────────────────────────────────────────
@@ -330,7 +361,11 @@ class LLMClient:
 
         use_model = model or self.model
         kwargs = self._adapter.build_kwargs(
-            model=use_model, messages=messages, system=system, max_tokens=max_tokens
+            model=use_model,
+            messages=messages,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=self.temperature,
         )
 
         started = time.monotonic()
@@ -341,12 +376,15 @@ class LLMClient:
             try:
                 response = self._sync_send(kwargs)
                 text = self._adapter.extract_text(response)
+                resp_model, req_id = self._adapter.extract_identity(response)
                 p_tok, c_tok = self._adapter.extract_usage(response)
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 logger.info(
-                    "LLM call ok: model=%s attempts=%d latency_ms=%d "
-                    "prompt_tokens=%d completion_tokens=%d",
+                    "LLM call ok: model=%s response_model=%s request_id=%s attempts=%d "
+                    "latency_ms=%d prompt_tokens=%d completion_tokens=%d",
                     use_model,
+                    resp_model,
+                    req_id,
                     attempt,
                     elapsed_ms,
                     p_tok,
@@ -360,6 +398,10 @@ class LLMClient:
                     prompt_tokens=p_tok,
                     completion_tokens=c_tok,
                     model=use_model,
+                    temperature=self.temperature,
+                    max_tokens=max_tokens,
+                    response_model=resp_model,
+                    request_id=req_id,
                 )
             except Exception as exc:  # noqa: BLE001 — we classify it
                 last_error = exc
@@ -394,6 +436,8 @@ class LLMClient:
             attempts=self.max_attempts if category in RETRYABLE else 1,
             latency_ms=elapsed_ms,
             model=use_model,
+            temperature=self.temperature,
+            max_tokens=max_tokens,
             error_message=str(last_error) if last_error else None,
             exception_type=type(last_error).__name__ if last_error else None,
         )
@@ -421,7 +465,11 @@ class LLMClient:
 
         use_model = model or self.model
         kwargs = self._adapter.build_kwargs(
-            model=use_model, messages=messages, system=system, max_tokens=max_tokens
+            model=use_model,
+            messages=messages,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=self.temperature,
         )
 
         started = time.monotonic()
@@ -432,12 +480,15 @@ class LLMClient:
             try:
                 response = await self._async_send(kwargs)
                 text = self._adapter.extract_text(response)
+                resp_model, req_id = self._adapter.extract_identity(response)
                 p_tok, c_tok = self._adapter.extract_usage(response)
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 logger.info(
-                    "LLM call ok: model=%s attempts=%d latency_ms=%d "
-                    "prompt_tokens=%d completion_tokens=%d",
+                    "LLM call ok: model=%s response_model=%s request_id=%s attempts=%d "
+                    "latency_ms=%d prompt_tokens=%d completion_tokens=%d",
                     use_model,
+                    resp_model,
+                    req_id,
                     attempt,
                     elapsed_ms,
                     p_tok,
@@ -451,6 +502,10 @@ class LLMClient:
                     prompt_tokens=p_tok,
                     completion_tokens=c_tok,
                     model=use_model,
+                    temperature=self.temperature,
+                    max_tokens=max_tokens,
+                    response_model=resp_model,
+                    request_id=req_id,
                 )
             except Exception as exc:  # noqa: BLE001 — we classify it
                 last_error = exc
@@ -484,6 +539,8 @@ class LLMClient:
             attempts=self.max_attempts if category in RETRYABLE else 1,
             latency_ms=elapsed_ms,
             model=use_model,
+            temperature=self.temperature,
+            max_tokens=max_tokens,
             error_message=str(last_error) if last_error else None,
             exception_type=type(last_error).__name__ if last_error else None,
         )

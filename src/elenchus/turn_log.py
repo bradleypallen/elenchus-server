@@ -104,7 +104,10 @@ def record_turn(
     """Insert one `turn_log` row and return its id.
 
     `chat_result` is the `llm_client.ChatResult` of the call, when the
-    caller has it; model / latency / tokens / error fields come from it.
+    caller has it; model / latency / tokens / error fields come from it,
+    and so do the call's identity (`response_model`, `request_id`) and
+    sampling parameters (`temperature`, `max_tokens`) — base migration
+    0005 — which the study's model-stability protocol needs per call.
     """
     if turn_id is None:
         turn_id = next_turn_id(con)
@@ -115,8 +118,9 @@ def record_turn(
         "system_prompt_name, system_prompt_sha256, state_before, state_after, "
         "raw_text, parse_strategy, parsed, user_conversation_id, "
         "assistant_conversation_id, model, attempts, latency_ms, prompt_tokens, "
-        "completion_tokens, error_category, error_message) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "completion_tokens, error_category, error_message, "
+        "response_model, request_id, temperature, max_tokens) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             turn_id,
             now_utc(),
@@ -144,6 +148,10 @@ def record_turn(
             getattr(chat_result, "completion_tokens", None),
             chat_result.category.value if failed else None,
             chat_result.error_message if failed else None,
+            getattr(chat_result, "response_model", None) or None,
+            getattr(chat_result, "request_id", None) or None,
+            getattr(chat_result, "temperature", None),
+            getattr(chat_result, "max_tokens", None),
         ],
     )
     logger.info(

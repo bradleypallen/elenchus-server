@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Every inference call now records its identity** — the model the provider
+  *reports* having used (`response_model`; the requested name may lack the
+  release date), the provider's `request_id`, and the `temperature` and
+  `max_tokens` that were sent — in `turn_log` (base migration `0005`) and
+  `usage` (platform migration `0017`). The temperature is now sent
+  explicitly on every call (`ELENCHUS_TEMPERATURE`, default `1.0`) rather
+  than left to the provider. A session's `integrity.json` lists its
+  `requested_models` and `models_seen`, so a participant whose two sessions
+  ran on different model versions can be found. The export manifest records
+  `versions` — Elenchus, pyNMMS, DuckDB, platform schema, rubric and export
+  format (now `3`). All of this is what the study's registration calls the
+  model-stability protocol and its "frozen as" table.
+
 ### Fixed
 
 - **The baseline condition could show the formal panes.** Whether the

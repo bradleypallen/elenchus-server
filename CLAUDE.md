@@ -77,6 +77,9 @@ pytest -v
 - `ALERT_DEDUP_MINUTES` — dedup window for repeated alerts (default `5`).
 - `ELENCHUS_DAILY_SPEND_ALERT_USD` — a day's LLM spend that triggers an
   alert (default `25`; `0` = off). The Costs tab's setting overrides it.
+- `ELENCHUS_TEMPERATURE` — sampling temperature sent on **every** LLM call
+  (default `1.0`, the providers' own default) and recorded with it; the
+  study freezes it. Unset/empty/nonsense = default.
 - `ELENCHUS_LOG_LEVEL` — level for the app's own loggers (`INFO` when
   serving, `WARNING` for the one-off subcommands). `main()` calls
   `logging.basicConfig` because uvicorn configures only its own loggers;
@@ -177,7 +180,7 @@ Cross-DB integrity (per-base `contributor_id` / `actor_id` referencing `platform
 
 The study's formal analysis (NMMS, RDF translation) is done **offline from captured data**, so anything not recorded during a session is unrecoverable. `turn_log.py` owns two append-only per-base tables (migration `base/0003`):
 
-- **`turn_log`** — one row per LLM exchange in either condition, *including failed calls* (`outcome='llm_error'`): the respondent's message, exactly what the LLM was shown (`request_content`, `state_before`), its verbatim output (`raw_text` — `conversation` only keeps the cleaned prose), which recovery path parsed it (`parse_strategy`), the parsed payload, `state_after`, the system prompt's name + SHA-256, and model / latency / tokens / attempts.
+- **`turn_log`** — one row per LLM exchange in either condition, *including failed calls* (`outcome='llm_error'`): the respondent's message, exactly what the LLM was shown (`request_content`, `state_before`), its verbatim output (`raw_text` — `conversation` only keeps the cleaned prose), which recovery path parsed it (`parse_strategy`), the parsed payload, `state_after`, the system prompt's name + SHA-256, model / latency / tokens / attempts, and — base migration `0005`, for the study's model-stability protocol — the call's **identity**: `response_model` (what the provider says it used; the requested name may lack the release date), `request_id`, and the `temperature` / `max_tokens` sent. `usage` carries `response_model` / `request_id` too (platform migration `0017`). `integrity.json` lists a session's `requested_models` and `models_seen`; a participant whose two sessions differ is a straddled pair. The export manifest records `versions` (elenchus, pyNMMS, DuckDB, platform schema, rubric, export format) — the registration's "frozen as" table.
 - **`state_events`** — one row per state transition or attempted transition, with `source` (`opponent` / `ui` / `direct`), `turn_id`, `actor_id`, and `outcome` (`applied` / `noop` / `dropped`). `positions` is an upsert and retractions carry no timestamp, so this is the only history of the position.
 
 Events are written **inside the `DialecticalState` mutators**, not by their callers, so no code path can bypass capture. A new mutator must call `self._log_event(...)`; a new caller should pass `event=EventContext(...)` to say who is behind the change (the UI action routes pass `source="ui"`; the opponent passes `source="opponent"` with the turn id). A speech act that `_apply` drops (Phase B firewall, malformed) is logged there as `dropped`. Turn rows and their events are written inside the turn's transaction — a rolled-back turn leaves no log. Both tables are in the study export (`turn_log.json`, `state_events.json`, pseudonymized) and summarized under `capture` in the integrity report, where `uncaptured_assistant_turns` should be 0 for any session run after the migration.
