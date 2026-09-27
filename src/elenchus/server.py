@@ -1434,10 +1434,90 @@ def admin_void_participant_token(
     return {"status": "voided", "token": token}
 
 
+def _public_config(config: dict | None) -> dict | None:
+    """A study's setup as the API hands it out: the seed itself never
+    leaves the server (with it, the session administrator could compute
+    every participant's sequence); its hash, the list's hash and who set
+    it do."""
+    if config is None:
+        return None
+    hidden = {"allocation_seed", "allocation_seed_set_by", "allocation_seed_set_at", "planned_n"}
+    out = {k: v for k, v in config.items() if k not in hidden}
+    seed = config.get("allocation_seed") or ""
+    n = int(config.get("planned_n") or 48)
+    out["allocation"] = {
+        "seeded": bool(seed),
+        "planned_n": n,
+        "seed_sha256": study_enrolment.seed_hash(seed) if seed else None,
+        "list_sha256": (
+            study_enrolment.allocation_hash(study_enrolment.allocation_list(seed, n))
+            if seed
+            else None
+        ),
+        "set_by": config.get("allocation_seed_set_by"),
+        "set_at": config.get("allocation_seed_set_at"),
+    }
+    return out
+
+
+class AllocationSeedRequest(BaseModel):
+    """Body for `POST /api/admin/study/{study_id}/allocation-seed`."""
+
+    seed: str
+    planned_n: int = 48
+
+
+@app.post("/api/admin/study/{study_id}/allocation-seed")
+def admin_set_allocation_seed(
+    study_id: str, req: AllocationSeedRequest, actor: dict = Depends(auth.require_researcher)
+):
+    """Set a study's allocation seed, once, before anyone is enrolled by
+    block (Registered Report §2.1). Meant to be done by a team member who
+    will not administer sessions; the platform records who. From then on
+    enrolment allocates from the seeded list and keeps each participant's
+    sequence hidden until *Schedule session 1*. Returns the two hashes to
+    deposit."""
+    reg = get_registry()
+    con = reg.platform_con()
+    if any(p["allocation"] == "block" for p in pdb.list_study_participants(con, study_id)):
+        raise HTTPException(
+            409,
+            {
+                "user_message": "Participants have already been allocated in this study; "
+                "the seed has to be set before the first enrolment."
+            },
+        )
+    try:
+        with reg.platform_lock:
+            config = pdb.set_allocation_seed(
+                con,
+                study_id=study_id,
+                seed=req.seed,
+                planned_n=req.planned_n,
+                actor_id=actor["id"],
+            )
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(409, {"user_message": str(e)}) from None
+    public = _public_config(config)
+    logger.info(
+        "Allocation seed set: study=%s planned_n=%d seed_sha256=%s list_sha256=%s (by %d)",
+        study_id,
+        req.planned_n,
+        public["allocation"]["seed_sha256"],
+        public["allocation"]["list_sha256"],
+        actor["id"],
+    )
+    return public["allocation"]
+
+
 @app.get("/api/admin/study/configs")
 def admin_list_study_configs(actor: dict = Depends(auth.require_researcher)):
     return {
-        "studies": pdb.list_study_configs(get_registry().platform_con()),
+        "studies": [
+            _public_config(c) for c in pdb.list_study_configs(get_registry().platform_con())
+        ],
         # What a study with no task length of its own gets.
         "default_task_minutes": _task_minutes(),
     }
@@ -1495,12 +1575,12 @@ def admin_set_study_config(
         before["task_minutes"] if before else "—",
         actor["id"],
     )
-    return {**config, "default_task_minutes": _task_minutes()}
+    return {**_public_config(config), "default_task_minutes": _task_minutes()}
 
 
 @app.get("/api/admin/study/{study_id}/config")
 def admin_get_study_config(study_id: str, actor: dict = Depends(auth.require_researcher)):
-    config = pdb.find_study_config(get_registry().platform_con(), study_id)
+    config = _public_config(pdb.find_study_config(get_registry().platform_con(), study_id))
     if config is None:
         raise HTTPException(404, f"Study '{study_id}' has not been set up")
     return config
@@ -1528,11 +1608,23 @@ def _pair_window(
     }
 
 
+_CONCEALED_KEYS = ("first_condition", "first_topic", "block_index")
+
+
 def _participant_view(con, participant: dict) -> dict:
     """A roster row: the participant, their allocation and screening
     covariates, their two sessions with link, status, whether a text has
     been submitted and any deviations logged, and where the pair stands
-    against the study's maximum gap."""
+    against the study's maximum gap. While a participant's sequence is
+    hidden (seeded study, session 1 not yet scheduled) the row carries
+    neither the cell nor any link."""
+    if participant.get("revealed_at") is None:
+        return {
+            **{k: v for k, v in participant.items() if k not in _CONCEALED_KEYS},
+            "concealed": True,
+            "sessions": [],
+            "window": None,
+        }
     sessions = []
     rows: dict[int, dict | None] = {1: None, 2: None}
     for period in (1, 2):
@@ -1562,7 +1654,73 @@ def _participant_view(con, participant: dict) -> dict:
         )
     config = pdb.find_study_config(con, participant["study_id"]) or {}
     window = _pair_window(con, rows[1], rows[2], config.get("max_gap_days"))
-    return {**participant, "sessions": sessions, "window": window}
+    return {**participant, "concealed": False, "sessions": sessions, "window": window}
+
+
+def _issue_participant_links(con, config: dict, participant: dict, cell, issued_by: int) -> None:
+    """Both of a participant's session links, from their cell. One
+    passwordless actor per link, as for hand-issued tokens: the actor is
+    the session's identity, the participant row the person's."""
+    study_id = participant["study_id"]
+    code = participant["participant_code"]
+    for plan in study_enrolment.session_plan(cell):
+        topic = config["topics"][plan["topic"]]
+        session_actor = pdb.create_actor(
+            con,
+            kind="participant",
+            email=None,
+            display_name=f"{code} · session {plan['period']}",
+            password_hash=None,
+        )
+        pdb.create_participant_token(
+            con,
+            token=auth.generate_token(),
+            actor_id=session_actor,
+            study_id=study_id,
+            condition=plan["condition"],
+            issued_by=issued_by,
+            topic_title=topic["title"],
+            topic_brief=topic["brief"],
+            participant_id=participant["id"],
+            period=plan["period"],
+        )
+
+
+@app.post("/api/admin/study/{study_id}/participants/{participant_id}/schedule")
+def admin_schedule_participant(
+    study_id: str, participant_id: int, actor: dict = Depends(auth.require_researcher)
+):
+    """Schedule a participant's first session: reveal their sequence and
+    issue both links (Registered Report §2.1 — the sequence is revealed
+    to the session administrator only now). Only for a participant whose
+    sequence is still hidden."""
+    reg = get_registry()
+    con = reg.platform_con()
+    participant = pdb.find_study_participant(con, participant_id)
+    if participant is None or participant["study_id"] != study_id:
+        raise HTTPException(404, "Participant not found")
+    if participant["revealed_at"] is not None:
+        raise HTTPException(
+            409, {"user_message": "This participant's session 1 is already scheduled"}
+        )
+    config = pdb.find_study_config(con, study_id)
+    cell = study_enrolment.Cell(participant["first_condition"], participant["first_topic"])
+    with reg.platform_lock:
+        revealed = pdb.reveal_participant(con, participant_id, actor["id"])
+        if revealed is None:
+            raise HTTPException(
+                409, {"user_message": "This participant's session 1 is already scheduled"}
+            )
+        _issue_participant_links(con, config, revealed, cell, actor["id"])
+    logger.info(
+        "Session 1 scheduled: study=%s code=%s sequence=%s cell=%s (revealed by %d)",
+        study_id,
+        participant["participant_code"],
+        study_enrolment.sequence_letter(cell),
+        cell.key,
+        actor["id"],
+    )
+    return _participant_view(con, revealed)
 
 
 @app.post("/api/admin/study/{study_id}/participants")
@@ -1601,21 +1759,27 @@ def admin_enrol_participant(
             409, f"Set up study '{study_id}' (its two topics) before enrolling participants"
         )
 
+    seed = config.get("allocation_seed") or ""
     with reg.platform_lock:
         existing = pdb.list_study_participants(con, study_id)
+        by_block = [p for p in existing if p["allocation"] == "block"]
+        block_index = None
         if manual:
             try:
                 cell = study_enrolment.Cell(req.first_condition, req.first_topic)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from None
+        elif seed:
+            # The seeded list: this participant's place is the number of
+            # block-allocated enrolments before them. Their sequence
+            # stays hidden until session 1 is scheduled.
+            block_index = len(by_block)
+            cell = study_enrolment.cell_at(seed, block_index)
         else:
             cell = study_enrolment.next_cell(
-                [
-                    study_enrolment.Cell(p["first_condition"], p["first_topic"])
-                    for p in existing
-                    if p["allocation"] == "block"
-                ]
+                [study_enrolment.Cell(p["first_condition"], p["first_topic"]) for p in by_block]
             )
+        concealed = bool(seed) and not manual
         code = study_enrolment.participant_code(len(existing) + 1)
         participant_id = pdb.create_study_participant(
             con,
@@ -1630,37 +1794,18 @@ def admin_enrol_participant(
             nominated_topic=req.nominated_topic,
             enrolled_by=actor["id"],
             notes=(req.notes or "").strip(),
+            block_index=block_index,
+            revealed=not concealed,
         )
-        for plan in study_enrolment.session_plan(cell):
-            topic = config["topics"][plan["topic"]]
-            # One passwordless actor per link, as for hand-issued tokens:
-            # the actor is the session's identity, the participant row
-            # the person's.
-            session_actor = pdb.create_actor(
-                con,
-                kind="participant",
-                email=None,
-                display_name=f"{code} · session {plan['period']}",
-                password_hash=None,
-            )
-            pdb.create_participant_token(
-                con,
-                token=auth.generate_token(),
-                actor_id=session_actor,
-                study_id=study_id,
-                condition=plan["condition"],
-                issued_by=actor["id"],
-                topic_title=topic["title"],
-                topic_brief=topic["brief"],
-                participant_id=participant_id,
-                period=plan["period"],
-            )
+        if not concealed:
+            participant = pdb.find_study_participant(con, participant_id)
+            _issue_participant_links(con, config, participant, cell, actor["id"])
     logger.info(
-        "Enrolled participant: study=%s code=%s cell=%s allocation=%s (by %d)",
+        "Enrolled participant: study=%s code=%s allocation=%s %s (by %d)",
         study_id,
         code,
-        cell.key,
         "manual" if manual else "block",
+        "sequence hidden until scheduled" if concealed else f"cell={cell.key}",
         actor["id"],
     )
     return _participant_view(con, pdb.find_study_participant(con, participant_id))
@@ -1674,6 +1819,8 @@ def admin_list_study_participants(study_id: str, actor: dict = Depends(auth.requ
     participants = pdb.list_study_participants(con, study_id)
     cells = {c.key: 0 for c in study_enrolment.ALL_CELLS}
     for p in participants:
+        if p["revealed_at"] is None:
+            continue  # a hidden sequence must not show in the balance either
         cells[study_enrolment.Cell(p["first_condition"], p["first_topic"]).key] += 1
     return {
         "study_id": study_id,

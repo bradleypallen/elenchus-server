@@ -52,6 +52,7 @@ itself if nothing has been set up yet).
 | Topic A / Topic B — brief | One or two sentences of framing, shown under the title. |
 | Minimum hours between sessions | How long a participant's second link stays shut after their first session ends. `48` = two days. |
 | Maximum days between a participant's two sessions | `21` unless the study lead says otherwise. **Not enforced** — the second link still opens — but a pair outside it is flagged in the list and in the export, for the analysis. `0` = no maximum. |
+| Allocation seed | **For the real study only**, and **not by you** if you will run sessions: a team member who won't administer sessions enters any phrase here, once, before the first enrolment, writes it down, and deposits the two hashes the page then shows (of the seed, and of the list it fixes) with the registration. From then on each participant's order and topics are fixed by the list and **hidden from you until you press Schedule session 1**. Leave it empty for a practice study. |
 | Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It is a **hard stop**: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant's text is submitted as it stands and their session moves on. Set it before the first participant starts and don't change it afterwards. |
 
 Press **Save study**.
@@ -90,6 +91,14 @@ P03  Test Person Three    elenchus first · topic A first
 
 The name you typed is **never exported** — it is only for you. The code is
 what appears in the data. Keep your own record of who is which code.
+
+**In a study with an allocation seed** (the real study), enrolling does not
+show the order or issue the links: the row says *sequence hidden until
+session 1 is scheduled*. When you have agreed a date for the person's
+first session, press **Schedule session 1** on their row — that is the
+moment their sequence is revealed to you and both links appear. Not
+before: the registration promises the administrator learns the sequence
+only then.
 
 **Replacing a drop-out.** Tick **Place by hand** and choose the same
 "first condition" and "first topic" as the person being replaced, then

@@ -36,6 +36,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Seeded, concealed allocation** (Registered Report §2.1). A study can
+  be given an allocation seed, once, before the first enrolment — meant for
+  a team member who won't run sessions; the platform records who. The
+  whole allocation list is then fixed by the seed (permuted blocks of four,
+  regenerable and checkable against the list hash the page shows), and each
+  participant's sequence stays **hidden from the session administrator
+  until *Schedule session 1*** reveals it and issues both links. The seed
+  never leaves the server through the API; the export's `allocation.json`
+  carries the seed's hash, the list's hash and each participant's sequence
+  letter, and the names-key side file carries the seed. Without a seed,
+  enrolment works as before. Platform migration `0021`.
 - **A study's maximum gap** between a participant's two sessions
   (`max_gap_days`, default 21, `0` = none). Not enforced: a pair outside it
   is flagged in the roster (*sessions more than N days apart*, *window

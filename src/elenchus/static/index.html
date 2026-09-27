@@ -2855,6 +2855,9 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
   const [cell, setCell] = useState({ first_condition: 'elenchus', first_topic: 'A' });
   // Screening covariates, recorded at enrolment and exported beside the code.
   const blankScreening = { ontology_experience: '', prior_llm_use: '', nominated_topic: false };
+  // The allocation seed (set once per study; the seed never comes back from the server).
+  const [seedForm, setSeedForm] = useState({ seed: '', planned_n: 48 });
+  const selected = (studies || []).find(st => st.study_id === studyId) || null;
   const [screening, setScreening] = useState(blankScreening);
   // Protocol deviations: which session's form is open, and its draft.
   const [devFor, setDevFor] = useState(null);
@@ -2918,6 +2921,30 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
       });
       setName(''); setManual(false); setScreening(blankScreening);
       await loadRoster(studyId); onChanged && onChanged();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const setSeed = async () => {
+    if (busy || !cfg.study_id || !seedForm.seed.trim()) return;
+    if (!confirm(`Set the allocation seed for ${cfg.study_id}? It can't be changed afterwards, and from now on every participant's sequence stays hidden until you press Schedule session 1.`)) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/admin/study/${encodeURIComponent(cfg.study_id)}/allocation-seed`, {
+        method: 'POST', body: JSON.stringify({ seed: seedForm.seed, planned_n: parseInt(seedForm.planned_n, 10) || 48 }),
+      });
+      setSeedForm({ seed: '', planned_n: 48 });
+      await loadStudies(); onChanged && onChanged();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const schedule = async (participantId) => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/admin/study/${encodeURIComponent(studyId)}/participants/${participantId}/schedule`, { method: 'POST' });
+      await loadRoster(studyId);
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
@@ -3015,6 +3042,42 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                 onChange={e => setCfg(c => ({ ...c, task_minutes: e.target.value }))} style={{ ...input, width: 80 }} />
               <span style={{ color: 'var(--text-muted)' }}> — leave empty for the usual {defaultTaskMinutes}. Use 5 for a practice study.</span>
             </label>
+            <div style={{ marginTop: 6, padding: '10px 12px', borderRadius: 4, background: 'var(--surface2)', border: '1px solid var(--border)',
+                          fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6 }}>
+              <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6 }}>ALLOCATION</div>
+              {selected && selected.allocation && selected.allocation.seeded ? (
+                <div>
+                  Seeded: each participant's sequence comes from a list fixed by the seed, and stays <b>hidden until you press
+                  Schedule session 1</b>. Planned N {selected.allocation.planned_n} · set by account #{selected.allocation.set_by}
+                  {selected.allocation.set_at && ` on ${new Date(selected.allocation.set_at).toLocaleDateString()}`}.
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: fs(10), marginTop: 4, wordBreak: 'break-all' }}>
+                    seed sha256 {selected.allocation.seed_sha256}<br />list sha256 {selected.allocation.list_sha256}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>These two hashes are what is deposited with the registration.</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ marginBottom: 6 }}>
+                    <b>For the real study:</b> a team member who will <b>not</b> run sessions enters a seed here, once, before
+                    the first enrolment. The platform fixes every participant's sequence from it and keeps each one hidden
+                    until <i>Schedule session 1</i> is pressed; the two hashes it shows are deposited with the registration.
+                    Leave this empty for a practice study.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input value={seedForm.seed} onChange={e => setSeedForm(f => ({ ...f, seed: e.target.value }))}
+                      placeholder="seed — any phrase; write it down for the deposit" style={{ ...input, flex: '1 1 260px' }} />
+                    <label>planned N{' '}
+                      <input type="number" min="1" value={seedForm.planned_n}
+                        onChange={e => setSeedForm(f => ({ ...f, planned_n: e.target.value }))} style={{ ...input, width: 70 }} />
+                    </label>
+                    <button onClick={setSeed} disabled={busy || !cfg.study_id || !seedForm.seed.trim()} style={{
+                      padding: '8px 14px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+                      fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer',
+                      opacity: busy || !cfg.study_id || !seedForm.seed.trim() ? 0.5 : 1 }}>SET SEED</button>
+                  </div>
+                </div>
+              )}
+            </div>
             <div style={{ fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>
               Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrolments only.
               The task length is a hard stop: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant’s text is submitted as it stands. Set it before the first
@@ -3084,9 +3147,18 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
               <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: 6 }}>
                 <span style={{ fontFamily: 'var(--mono)', fontSize: fs(12) }}>{pt.participant_code}</span>
                 <span style={{ fontFamily: 'var(--sans)', fontSize: fs(12) }}>{pt.display_name}</span>
-                <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
-                  {pt.first_condition} first · topic {pt.first_topic} first{pt.allocation === 'manual' ? ' · placed by hand' : ''}
-                </span>
+                {pt.concealed ? (
+                  <span style={{ fontSize: fs(10), color: 'var(--tension)', fontFamily: 'var(--sans)' }}>
+                    allocated — sequence hidden until session 1 is scheduled
+                  </span>
+                ) : (
+                  <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+                    {pt.first_condition} first · topic {pt.first_topic} first{pt.allocation === 'manual' ? ' · placed by hand' : ''}
+                  </span>
+                )}
+                {pt.concealed && (
+                  <button onClick={() => schedule(pt.id)} disabled={busy} style={{ ...smallBtn, color: 'var(--accent)' }}>SCHEDULE SESSION 1</button>
+                )}
                 {(pt.ontology_experience || pt.prior_llm_use || pt.nominated_topic) && (
                   <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
                     {[pt.ontology_experience && `ontology: ${pt.ontology_experience}`,

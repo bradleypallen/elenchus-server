@@ -1370,7 +1370,8 @@ def upsert_study_config(
 def find_study_config(con, study_id: str) -> dict | None:
     row = con.execute(
         "SELECT study_id, topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, "
-        "min_gap_hours, created_by, created_at, updated_at, task_minutes, max_gap_days "
+        "min_gap_hours, created_by, created_at, updated_at, task_minutes, max_gap_days, "
+        "allocation_seed, allocation_seed_set_by, allocation_seed_set_at, planned_n "
         "FROM study_configs WHERE study_id = ?",
         [study_id],
     ).fetchone()
@@ -1386,10 +1387,37 @@ def find_study_config(con, study_id: str) -> dict | None:
         "task_minutes": row[9],
         # The longest a participant's two sessions may be apart; 0 = none.
         "max_gap_days": row[10],
+        # The allocation seed (migration 0021). '' = none: enrolment draws
+        # and reveals at once. Never handed to the API — see
+        # `server._public_config`.
+        "allocation_seed": row[11] or "",
+        "allocation_seed_set_by": row[12],
+        "allocation_seed_set_at": row[13],
+        "planned_n": row[14],
         "created_by": row[6],
         "created_at": row[7],
         "updated_at": row[8],
     }
+
+
+def set_allocation_seed(con, *, study_id: str, seed: str, planned_n: int, actor_id: int) -> dict:
+    """Record a study's allocation seed, once. Raises ValueError if the
+    study already has one or the seed is empty."""
+    config = find_study_config(con, study_id)
+    if config is None:
+        raise LookupError(f"No study '{study_id}'")
+    if config["allocation_seed"]:
+        raise ValueError("This study's allocation seed is already set; it can't be changed")
+    if not seed.strip():
+        raise ValueError("The seed can't be empty")
+    if planned_n < 1:
+        raise ValueError("planned_n must be at least 1")
+    con.execute(
+        "UPDATE study_configs SET allocation_seed = ?, allocation_seed_set_by = ?, "
+        "allocation_seed_set_at = CURRENT_TIMESTAMP, planned_n = ? WHERE study_id = ?",
+        [seed.strip(), actor_id, planned_n, study_id],
+    )
+    return find_study_config(con, study_id)
 
 
 def list_study_configs(con) -> list[dict]:
@@ -1400,7 +1428,7 @@ def list_study_configs(con) -> list[dict]:
 _PARTICIPANT_COLUMNS = (
     "id, study_id, participant_code, display_name, first_condition, first_topic, "
     "allocation, enrolled_by, enrolled_at, notes, ontology_experience, prior_llm_use, "
-    "nominated_topic"
+    "nominated_topic, block_index, revealed_at, revealed_by"
 )
 
 # Screening covariates (Registered Report §2.2), recorded at enrolment.
@@ -1427,6 +1455,12 @@ def _row_to_participant(row) -> dict:
         "ontology_experience": row[10] or "",
         "prior_llm_use": row[11] or "",
         "nominated_topic": bool(row[12]),
+        # Migration 0021: place in the seeded list (None for manual
+        # placements), and when/by whom the sequence was revealed (None
+        # while it is still hidden from the session administrator).
+        "block_index": row[13],
+        "revealed_at": row[14],
+        "revealed_by": row[15],
     }
 
 
@@ -1444,6 +1478,8 @@ def create_study_participant(
     ontology_experience: str = "",
     prior_llm_use: str = "",
     nominated_topic: bool = False,
+    block_index: int | None = None,
+    revealed: bool = True,
 ) -> int:
     for field, value in (
         ("ontology_experience", ontology_experience),
@@ -1456,8 +1492,11 @@ def create_study_participant(
     row = con.execute(
         "INSERT INTO study_participants (study_id, participant_code, display_name, "
         "first_condition, first_topic, allocation, enrolled_by, notes, "
-        "ontology_experience, prior_llm_use, nominated_topic) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "ontology_experience, prior_llm_use, nominated_topic, block_index, "
+        "revealed_at, revealed_by) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END, "
+        "CASE WHEN ? THEN ? ELSE NULL END) RETURNING id",
         [
             study_id,
             participant_code,
@@ -1470,9 +1509,24 @@ def create_study_participant(
             ontology_experience,
             prior_llm_use,
             bool(nominated_topic),
+            block_index,
+            bool(revealed),
+            bool(revealed),
+            enrolled_by,
         ],
     ).fetchone()
     return int(row[0])
+
+
+def reveal_participant(con, participant_id: int, actor_id: int) -> dict | None:
+    """Mark a participant's sequence revealed (session 1 scheduled).
+    Returns the row, or None if it was already revealed."""
+    row = con.execute(
+        "UPDATE study_participants SET revealed_at = CURRENT_TIMESTAMP, revealed_by = ? "
+        "WHERE id = ? AND revealed_at IS NULL RETURNING id",
+        [actor_id, participant_id],
+    ).fetchone()
+    return find_study_participant(con, participant_id) if row else None
 
 
 # ── Protocol deviations ──────────────────────────────────────────────
