@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- The runbook's practice run now says to sign the practice judge up under
+  an email address that isn't already an account's (one address can't
+  hold two accounts), with a plus-address as the example; the practice-run
+  test checks that the admin's own address is refused in plain words and
+  that the invite survives the refusal.
+
 ## [0.9.1] — 2026-09-27
 
 ### Fixed
