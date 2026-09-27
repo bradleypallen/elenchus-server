@@ -1695,7 +1695,9 @@ function App() {
               In this session you will be given a topic from your field and
               asked to write a short introduction to it — the kind a
               well-informed colleague would want to read before working in
-              the area — while working with an AI. Two or three paragraphs,
+              the area — while working with an AI.{studySession.condition === 'baseline'
+                ? ' The AI is an ordinary assistant: ask it what you need.'
+                : ' The AI will read what you say as claims and point out where two of them may not both hold; you accept, refine or contest.'} Two or three paragraphs,
               in your own words. There is nothing to prepare and no reference
               material: what we want on the page is what you actually believe
               about how the concepts fit together. The AI is a working
@@ -2842,7 +2844,7 @@ function AdminUsersTab({ fs }) {
 // and topic come first (permuted blocks), which keeps the four cells
 // balanced and the two sessions linked in the data.
 function AdminEnrolmentPanel({ fs, onChanged }) {
-  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48, task_minutes: '' };
+  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48, max_gap_days: 21, task_minutes: '' };
   const [studies, setStudies] = useState([]);
   const [studyId, setStudyId] = useState('');
   const [cfg, setCfg] = useState(blank);
@@ -2851,6 +2853,12 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
   const [name, setName] = useState('');
   const [manual, setManual] = useState(false);
   const [cell, setCell] = useState({ first_condition: 'elenchus', first_topic: 'A' });
+  // Screening covariates, recorded at enrolment and exported beside the code.
+  const blankScreening = { ontology_experience: '', prior_llm_use: '', nominated_topic: false };
+  const [screening, setScreening] = useState(blankScreening);
+  // Protocol deviations: which session's form is open, and its draft.
+  const [devFor, setDevFor] = useState(null);
+  const [dev, setDev] = useState({ kind: 'technical_failure', note: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(null);
@@ -2876,6 +2884,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
     const st = studies.find(x => x.study_id === studyId);
     if (st) setCfg({
       study_id: st.study_id, min_gap_hours: st.min_gap_hours,
+      max_gap_days: st.max_gap_days === null || st.max_gap_days === undefined ? 21 : st.max_gap_days,
       task_minutes: st.task_minutes === null || st.task_minutes === undefined ? '' : String(st.task_minutes),
       topic_a_title: st.topics.A.title, topic_a_brief: st.topics.A.brief,
       topic_b_title: st.topics.B.title, topic_b_brief: st.topics.B.brief,
@@ -2890,6 +2899,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
       await api(`/api/admin/study/${encodeURIComponent(study_id.trim())}/config`, {
         method: 'PUT', body: JSON.stringify({
           ...body, min_gap_hours: parseInt(body.min_gap_hours, 10) || 0,
+          max_gap_days: parseInt(body.max_gap_days, 10) || 0,
           task_minutes: String(body.task_minutes).trim() === '' ? null : parseInt(body.task_minutes, 10),
         }),
       });
@@ -2904,10 +2914,23 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
     setBusy(true); setError(null);
     try {
       await api(`/api/admin/study/${encodeURIComponent(studyId)}/participants`, {
-        method: 'POST', body: JSON.stringify({ display_name: name.trim(), ...(manual ? cell : {}) }),
+        method: 'POST', body: JSON.stringify({ display_name: name.trim(), ...screening, ...(manual ? cell : {}) }),
       });
-      setName(''); setManual(false);
+      setName(''); setManual(false); setScreening(blankScreening);
       await loadRoster(studyId); onChanged && onChanged();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  const logDeviation = async (sessionId) => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      await api(`/api/admin/study/sessions/${sessionId}/deviations`, {
+        method: 'POST', body: JSON.stringify(dev),
+      });
+      setDevFor(null); setDev({ kind: 'technical_failure', note: '' });
+      await loadRoster(studyId);
     } catch (e) { setError(e.message); }
     setBusy(false);
   };
@@ -2981,6 +3004,12 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                 onChange={e => setCfg(c => ({ ...c, min_gap_hours: e.target.value }))} style={{ ...input, width: 80 }} />
             </label>
             <label style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+              Maximum days between a participant's two sessions{' '}
+              <input type="number" min="0" value={cfg.max_gap_days}
+                onChange={e => setCfg(c => ({ ...c, max_gap_days: e.target.value }))} style={{ ...input, width: 80 }} />
+              <span style={{ color: 'var(--text-muted)' }}> — not enforced: a pair outside it is flagged in the list and the export. 0 = no maximum.</span>
+            </label>
+            <label style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
               Length of the main task, in minutes{' '}
               <input type="number" min="1" max="600" value={cfg.task_minutes} placeholder={String(defaultTaskMinutes)}
                 onChange={e => setCfg(c => ({ ...c, task_minutes: e.target.value }))} style={{ ...input, width: 80 }} />
@@ -3011,6 +3040,21 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
               padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
               fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer',
               opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? '…' : 'ENROL'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8,
+                        fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
+            <span style={{ color: 'var(--text-muted)' }}>From screening:</span>
+            <label>ontology engineering{' '}
+              <select value={screening.ontology_experience} onChange={e => setScreening(sc => ({ ...sc, ontology_experience: e.target.value }))} style={input}>
+                <option value="">not recorded</option><option value="none">none</option><option value="some">some</option><option value="extensive">extensive</option>
+              </select>
+            </label>
+            <label>LLM-tool use{' '}
+              <select value={screening.prior_llm_use} onChange={e => setScreening(sc => ({ ...sc, prior_llm_use: e.target.value }))} style={input}>
+                <option value="">not recorded</option><option value="none">none</option><option value="occasional">occasional</option><option value="regular">regular</option>
+              </select>
+            </label>
+            <label><input type="checkbox" checked={screening.nominated_topic} onChange={e => setScreening(sc => ({ ...sc, nominated_topic: e.target.checked }))} />{' '}nominated a topic</label>
           </div>
           <label style={{ display: 'block', marginTop: 8, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
             <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} />{' '}
@@ -3043,6 +3087,23 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                 <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
                   {pt.first_condition} first · topic {pt.first_topic} first{pt.allocation === 'manual' ? ' · placed by hand' : ''}
                 </span>
+                {(pt.ontology_experience || pt.prior_llm_use || pt.nominated_topic) && (
+                  <span style={{ fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+                    {[pt.ontology_experience && `ontology: ${pt.ontology_experience}`,
+                      pt.prior_llm_use && `LLM use: ${pt.prior_llm_use}`,
+                      pt.nominated_topic && 'nominated a topic'].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+                {pt.window && pt.window.straddled && (
+                  <span style={{ fontSize: fs(10), color: 'var(--deny)', fontFamily: 'var(--sans)' }}>
+                    sessions more than {pt.window.max_gap_days} days apart
+                  </span>
+                )}
+                {pt.window && pt.window.closed && (
+                  <span style={{ fontSize: fs(10), color: 'var(--tension)', fontFamily: 'var(--sans)' }}>
+                    {pt.window.max_gap_days}-day window closed {new Date(pt.window.closes_at).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
               </div>
               {pt.sessions.map(se => {
                 const live = se.session_state && LIVE.includes(se.session_state);
@@ -3060,6 +3121,30 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                       <button onClick={() => copy(se.token)} style={smallBtn}>{copied === se.token ? 'COPIED' : 'COPY LINK'}</button>
                     )}
                     {live && <button onClick={() => interrupt(se.session_id)} style={{ ...smallBtn, color: 'var(--deny)' }}>CLOSE AS INTERRUPTED</button>}
+                    {se.deviations && se.deviations.length > 0 && (
+                      <span title={se.deviations.map(d => `${d.kind.replace(/_/g, ' ')}: ${d.note}`).join('\n')}
+                            style={{ color: 'var(--deny)' }}>
+                        {se.deviations.map(d => d.kind.replace(/_/g, ' ')).join(', ')}
+                      </span>
+                    )}
+                    {se.session_id && (
+                      <button onClick={() => setDevFor(devFor === se.session_id ? null : se.session_id)} style={smallBtn}>
+                        {devFor === se.session_id ? 'CANCEL' : 'LOG DEVIATION'}
+                      </button>
+                    )}
+                    {devFor === se.session_id && (
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select value={dev.kind} onChange={e => setDev(d => ({ ...d, kind: e.target.value }))} style={input}>
+                          <option value="technical_failure">technical failure</option>
+                          <option value="interruption">interruption</option>
+                          <option value="ended_early">ended early</option>
+                          <option value="other">other</option>
+                        </select>
+                        <input value={dev.note} onChange={e => setDev(d => ({ ...d, note: e.target.value }))}
+                          placeholder="what happened, and when" style={{ ...input, width: 240 }} />
+                        <button onClick={() => logDeviation(se.session_id)} disabled={busy} style={{ ...smallBtn, color: 'var(--deny)' }}>LOG</button>
+                      </span>
+                    )}
                   </div>
                 );
               })}

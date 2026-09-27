@@ -473,8 +473,11 @@ class StudyConfigRequest(BaseModel):
     topic_b_brief: str = ""
     min_gap_hours: int = 48
     # How long this study's main task is meant to take (the writing
-    # pane's clock). None = the server's default. Guidance only.
+    # pane's clock and its hard stop). None = the server's default.
     task_minutes: int | None = None
+    # The longest a participant's two sessions may be apart. Not a gate:
+    # a pair outside it is flagged for the sensitivity analysis. 0 = none.
+    max_gap_days: int | None = 21
 
 
 class EnrolParticipantRequest(BaseModel):
@@ -488,6 +491,11 @@ class EnrolParticipantRequest(BaseModel):
     first_condition: str | None = None  # 'elenchus' | 'baseline'
     first_topic: str | None = None  # 'A' | 'B'
     notes: str | None = ""
+    # Screening covariates (Registered Report §2.2): coded levels from
+    # `pdb.SCREENING_LEVELS`, '' = not recorded.
+    ontology_experience: str = ""
+    prior_llm_use: str = ""
+    nominated_topic: bool = False
 
 
 class StudyTextRequest(BaseModel):
@@ -1441,6 +1449,8 @@ def admin_set_study_config(
         raise HTTPException(400, "min_gap_hours can't be negative")
     if req.task_minutes is not None and not 1 <= req.task_minutes <= 600:
         raise HTTPException(400, "task_minutes must be between 1 and 600 (or empty)")
+    if req.max_gap_days is not None and req.max_gap_days < 0:
+        raise HTTPException(400, "max_gap_days must be 0 (no maximum) or more")
     reg = get_registry()
     before = pdb.find_study_config(reg.platform_con(), study_id)
     with reg.platform_lock:
@@ -1453,6 +1463,7 @@ def admin_set_study_config(
             topic_b_brief=req.topic_b_brief.strip(),
             min_gap_hours=req.min_gap_hours,
             task_minutes=req.task_minutes,
+            max_gap_days=req.max_gap_days if req.max_gap_days is not None else 21,
             actor_id=actor["id"],
         )
     logger.info(
@@ -1477,15 +1488,41 @@ def admin_get_study_config(study_id: str, actor: dict = Depends(auth.require_res
     return config
 
 
+def _pair_window(
+    con, first: dict | None, second: dict | None, max_gap_days: int | None
+) -> dict | None:
+    """Where a participant's pair stands against the study's maximum gap
+    (Registered Report §2.1): when the window closes, and whether the
+    second session opened after it (`straddled`). None until the first
+    session has ended, or when the study sets no maximum."""
+    if not max_gap_days or not first or not first.get("closed_at"):
+        return None
+    from datetime import timedelta
+
+    closes_at = first["closed_at"] + timedelta(days=int(max_gap_days))
+    opened_at = second.get("opened_at") if second else None
+    now = con.execute("SELECT CAST(CURRENT_TIMESTAMP AS TIMESTAMP)").fetchone()[0]
+    return {
+        "max_gap_days": int(max_gap_days),
+        "closes_at": closes_at,
+        "straddled": bool(opened_at and opened_at > closes_at),
+        "closed": opened_at is None and now > closes_at,
+    }
+
+
 def _participant_view(con, participant: dict) -> dict:
-    """A roster row: the participant, their allocation, and their two
-    sessions with link, status and whether a text has been submitted."""
+    """A roster row: the participant, their allocation and screening
+    covariates, their two sessions with link, status, whether a text has
+    been submitted and any deviations logged, and where the pair stands
+    against the study's maximum gap."""
     sessions = []
+    rows: dict[int, dict | None] = {1: None, 2: None}
     for period in (1, 2):
         token = pdb.find_participant_period_token(con, participant["id"], period)
         if token is None:
             continue
         session = pdb.find_study_session(con, token["session_id"]) if token["session_id"] else None
+        rows[period] = session
         gate = pdb.second_session_gate(con, token) if token["status"] == "scheduled" else None
         sessions.append(
             {
@@ -1500,9 +1537,14 @@ def _participant_view(con, participant: dict) -> dict:
                     session and pdb.find_study_text_for_session(con, session["id"]) is not None
                 ),
                 "gate": gate,
+                "deviations": (
+                    pdb.list_session_deviations(con, session_id=session["id"]) if session else []
+                ),
             }
         )
-    return {**participant, "sessions": sessions}
+    config = pdb.find_study_config(con, participant["study_id"]) or {}
+    window = _pair_window(con, rows[1], rows[2], config.get("max_gap_days"))
+    return {**participant, "sessions": sessions, "window": window}
 
 
 @app.post("/api/admin/study/{study_id}/participants")
@@ -1525,6 +1567,13 @@ def admin_enrol_participant(
     manual = req.first_condition is not None or req.first_topic is not None
     if manual and (req.first_condition is None or req.first_topic is None):
         raise HTTPException(400, "Set both first_condition and first_topic, or neither")
+    for field in ("ontology_experience", "prior_llm_use"):
+        if getattr(req, field) not in pdb.SCREENING_LEVELS[field]:
+            raise HTTPException(
+                400,
+                f"{field} must be one of "
+                f"{', '.join(v or 'empty' for v in pdb.SCREENING_LEVELS[field])}",
+            )
 
     reg = get_registry()
     con = reg.platform_con()
@@ -1558,6 +1607,9 @@ def admin_enrol_participant(
             first_condition=cell.first_condition,
             first_topic=cell.first_topic,
             allocation="manual" if manual else "block",
+            ontology_experience=req.ontology_experience,
+            prior_llm_use=req.prior_llm_use,
+            nominated_topic=req.nominated_topic,
             enrolled_by=actor["id"],
             notes=(req.notes or "").strip(),
         )
@@ -1626,6 +1678,14 @@ def admin_interrupt_session(session_id: int, actor: dict = Depends(auth.require_
         raise HTTPException(404, "Study session not found")
     with reg.platform_lock:
         updated = pdb.advance_session_state(con, session_id, "interrupted")
+        if updated is not None:
+            pdb.create_session_deviation(
+                con,
+                session_id=session_id,
+                kind="interruption",
+                note=f"closed as interrupted by a researcher while {session['state']}",
+                logged_by=actor["id"],
+            )
     if updated is None:
         raise HTTPException(
             409, f"Session is already closed (state: {session['state']}) — nothing to interrupt"
@@ -1637,6 +1697,52 @@ def admin_interrupt_session(session_id: int, actor: dict = Depends(auth.require_
         actor["id"],
     )
     return {"session_id": session_id, "state": updated["state"], "was_state": session["state"]}
+
+
+class DeviationRequest(BaseModel):
+    """Body for `POST /api/admin/study/sessions/{session_id}/deviations`."""
+
+    kind: str
+    note: str = ""
+
+
+@app.post("/api/admin/study/sessions/{session_id}/deviations")
+def admin_log_deviation(
+    session_id: int, req: DeviationRequest, actor: dict = Depends(auth.require_researcher)
+):
+    """Log a protocol deviation against a session, at the time
+    (Registered Report §2.4): a technical failure, an interruption longer
+    than the protocol allows, a session ended early, anything else. It
+    goes in the roster and the export; it is never deleted."""
+    reg = get_registry()
+    con = reg.platform_con()
+    session = pdb.find_study_session(con, session_id)
+    if session is None or not session.get("study_token"):
+        raise HTTPException(404, "Study session not found")
+    try:
+        with reg.platform_lock:
+            record = pdb.create_session_deviation(
+                con, session_id=session_id, kind=req.kind, note=req.note, logged_by=actor["id"]
+            )
+    except ValueError as e:
+        raise HTTPException(400, {"user_message": str(e)}) from None
+    logger.info(
+        "Protocol deviation logged: session=%d kind=%s note=%r (by %d)",
+        session_id,
+        req.kind,
+        record["note"],
+        actor["id"],
+    )
+    return record
+
+
+@app.get("/api/admin/study/{study_id}/deviations")
+def admin_list_deviations(study_id: str, actor: dict = Depends(auth.require_researcher)):
+    con = get_registry().platform_con()
+    return {
+        "deviations": pdb.list_session_deviations(con, study_id=study_id),
+        "kinds": list(pdb.DEVIATION_KINDS),
+    }
 
 
 def _second_session_message(gate: dict) -> str:
@@ -2773,6 +2879,15 @@ async def _end_task_by_timeout(session: dict) -> dict:
             )
         else:
             text_id = None
+    with reg.platform_lock:
+        pdb.create_session_deviation(
+            con,
+            session_id=session["id"],
+            kind="timed_out",
+            note="ended by the clock at the task length"
+            + ("; the text was empty" if not content.strip() else ""),
+            logged_by=None,
+        )
     logger.warning(
         "Study task ended by the clock: session=%d condition=%s topic=%r words=%d text_id=%s%s",
         session["id"],

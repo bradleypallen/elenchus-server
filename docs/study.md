@@ -249,7 +249,8 @@ This writes two things:
   |---|---|
   | `manifest.json` | What was exported, and any sessions that failed |
   | `study_config.json` | The study's topics and gap |
-  | `participants.json` | Codes and allocations — **no names** |
+  | `participants.json` | Codes, allocations and screening covariates — **no names** |
+  | `deviations.json` | Every protocol deviation logged, with who logged it (pseudonymized; the platform itself for a task ended by the clock) and when |
   | `text_judging.json` | **Unblinded** analysis set: each text's condition / participant / period beside every judge's ratings (full revision history), plus the rubric wording |
   | `sessions/<id>-<condition>/` | One directory per session: |
   | &nbsp;&nbsp;`session.json` | Lifecycle, topic, `participant_code`, `period`, allocation |

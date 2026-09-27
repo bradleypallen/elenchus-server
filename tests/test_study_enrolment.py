@@ -498,6 +498,9 @@ class TestExportLinkage:
                 "first_condition": person["first_condition"],
                 "first_topic": person["first_topic"],
                 "allocation": "block",
+                "ontology_experience": "",
+                "prior_llm_use": "",
+                "nominated_topic": False,
                 "enrolled_at": roster[0]["enrolled_at"],
                 "enrolled_by": "R-001",
             }
