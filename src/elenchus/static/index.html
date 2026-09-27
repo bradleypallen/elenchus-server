@@ -3132,7 +3132,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                         {devFor === se.session_id ? 'CANCEL' : 'LOG DEVIATION'}
                       </button>
                     )}
-                    {devFor === se.session_id && (
+                    {se.session_id && devFor === se.session_id && (
                       <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <select value={dev.kind} onChange={e => setDev(d => ({ ...d, kind: e.target.value }))} style={input}>
                           <option value="technical_failure">technical failure</option>
