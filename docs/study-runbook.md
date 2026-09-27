@@ -188,17 +188,27 @@ send you their link "to check it" over a shared channel.
 
 ## 8. Getting the texts rated
 
-When sessions have finished (you don't have to wait for all of them):
+The panel rates **pairs**: a participant's two texts, one per session.
+A pair can be handed out once **both** of a participant's texts are in.
 
 **Judging** tab → choose the study → choose a judge → **Assign all
-submitted texts**.
+complete pairs**.
 
-- Do this **once per judge**. Every judge should get every text, unless
+- Do this **once per judge**. Every judge should get every pair, unless
   the study lead says otherwise.
-- **Press it again later** to hand over texts that came in since — it only
-  adds new ones, and tells you how many.
-- *Panel progress* shows how far each judge has got (`12 / 40`);
-  *Submitted texts* shows how many judges have rated each text.
+- **Press it again later** to hand over pairs that completed since — it
+  only adds new ones, and tells you how many. The tab says how many pairs
+  are ready.
+- *Panel progress* shows how far each judge has got: pairs done
+  (`12 / 40`) and, once their queue is finished, how many of their
+  condition guesses are in; *Submitted texts* shows how many judges have
+  rated each text.
+
+Each judge sees each pair in their own random order, with their own
+labelling of which text is *A* — so no ordering or labelling is shared
+across the panel. They rate each text on four dimensions with a sentence
+on each, rank the pair, and — only when every pair in their queue is
+done — guess how each writer worked. That guess is asked last on purpose.
 
 If the judge list is empty, nobody has created the judges' accounts yet —
 an admin does that ([below](#creating-a-judges-account)). Send each judge
@@ -272,10 +282,13 @@ takes about half an hour, and nothing in it needs anyone else's help.
 12. A practice judge. If you are an admin, [create one](#creating-a-judges-account)
     and open its invitation link in a private window to sign up; if you
     are a researcher, ask an admin for one. Then **Judging** → assign all
-    texts to them; as the judge, in the private window, rate one text,
-    reopen it and revise; check *Panel progress* from your own window.
-    Read the [Guide for Judges](judge-guide.md) as you go — it is what you
-    will send the real panel.
+    complete pairs to them (your practice person's two texts are one
+    pair); as the judge, in the private window, open the pair, rate both
+    texts with a sentence on each dimension, choose the better one and
+    submit; reopen it and revise; then do the *one last step* — the guess
+    at how each writer worked. Check *Panel progress* from your own
+    window. Read the [Guide for Judges](judge-guide.md) as you go — it is
+    what you will send the real panel.
 13. **Export** `TRAINING`, press **downloads**, and download the archive.
     Open it: find your practice person's text and the judge's rating. If
     you are an admin, download the **names key** once too, to see what it

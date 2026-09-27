@@ -126,16 +126,19 @@ able to).
 
 ## The judge
 
-Sign up as the judge from an invitation, assign texts, and:
+Sign up as the judge from an invitation, assign the complete pairs, and:
 
 | Do | Expect |
 |---|---|
-| Look at everything on the judge's screens for a clue to **who wrote a text, in which condition, or when** | Nothing: only the topic, the text and the form. Ids in the queue are handed out in submission order — does the order tell you anything? |
-| Rate a text, **reload mid-form** | The unsaved form is gone (a rating is saved only on the button); nothing else changes |
-| Submit, reopen, **revise** | Both ratings are kept; the newest counts. `text_judging.json` in the export shows the history |
+| Look at everything on the judge's screens for a clue to **who wrote a text, in which condition, or when** | Nothing: only the two topics, the two texts and the forms. The pair ids are your own; do the *A*/*B* labels or the order tell you anything? |
+| Assign pairs to a judge **before** a participant has finished session 2 | That participant isn't offered yet; they appear once both texts are in, and pressing the button again adds exactly them |
+| Rate one text of a pair, **reload mid-form** | The unsaved form is gone (a pair is saved only on the button); nothing else changes |
+| Try to submit with a dimension unrated, a sentence missing, or no choice of the better text | The button stays grey until all of it is there |
+| Submit a pair, reopen, **revise** a rating and the ranking | Both versions are kept; the newest counts. `text_judging.json` in the export shows the history for the ratings and the rankings |
 | Press **assign** twice for the same judge | No duplicates — the second press adds nothing |
-| A second judge on the same texts | Their queue is in a **different order** from the first judge's |
-| Submit with a dimension missing | The button stays grey until all four have a number |
+| A second judge on the same pairs | Their queue is in a **different order**, and the same two texts may carry the **other** labels |
+| Look for the *one last step* box before the queue is done | It isn't there; it appears when every pair is done, and the guesses it asks for are per text with a confidence |
+| Give a guess, come back, change it | The newest counts; both are in `condition_guesses` in the export |
 | As the judge, look for any way into the study side — a button, a menu, a URL | There is none; anything you find is a finding |
 
 ## What was captured
@@ -157,6 +160,7 @@ against what you did:
   must be 0**. Any other number means an exchange whose raw output
   can't be recovered, which is a finding in itself.
 - `surveys.json` — the questionnaires you filled in.
+- `text_judging.json` (at the top of the archive) — every rating with its four sentences, every ranking with which text each judge saw as *A*, every guess; all unblinded.
 
 Then, as admin, download the **names key** once, confirm it maps the
 pseudonyms in the archive to the accounts you used, and **delete your

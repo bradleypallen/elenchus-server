@@ -208,31 +208,37 @@ the log.
 
 ## 6. Blinded rating
 
-The panel gives each text **absolute** ratings — texts on different topics
-can't sensibly be compared head to head, so there is no pairing.
+The panel judges **pairs**: a participant's two texts, one from each
+session, presented as *Text A* and *Text B*.
 
 1. An **admin** creates the judges' accounts (Invites tab, kind `judge`).
    A researcher can assign work to judges but not create them.
 2. The researcher opens **STUDY → Judging**, picks a judge, and presses
-   **Assign all submitted texts**. It is safe to press again as more
-   sessions finish — only texts the judge doesn't already have are added.
-   Assign every text to several judges for inter-rater reliability.
-3. Each **judge** logs in (email + password) to a queue of texts **in
-   their own random order**. For each they see the topic the writer was
-   given, its brief, and the text — and **nothing about the condition,
-   the participant, the session, or even the text's id**. They rate
+   **Assign all complete pairs**. A pair exists once both of a
+   participant's texts are in; it is safe to press again as more complete
+   — only pairs the judge doesn't already have are added. Assign every
+   pair to every judge for inter-rater reliability.
+3. Each **judge** logs in (email + password) to a queue of pairs **in
+   their own random order**, each pair with **its own A/B labelling** for
+   that judge. For each text they see the topic the writer was given, its
+   brief, and the text — and **nothing about the condition, the
+   participant, the session, or even the text's id**. They rate each text
    1–7 on:
 
    > Coverage · Correctness · Concision · Reasoning holds together
 
-   with an optional note, and — to validate the blind — a guess at which
-   way of working produced the text, with a confidence rating. If the
-   panel guesses at chance, blinding held.
+   with a **one-sentence justification per dimension** (required), and
+   then say **which of the two** is the better introduction to its topic.
+4. Only when every pair in their queue is rated and ranked does the
+   **guessing pass** open: for each text, which way of working produced
+   it, with a confidence. If the panel guesses at chance, blinding held.
+   It comes last so the guess can't colour the ratings.
 
-A judge may reopen a text and revise; every submission is kept and the
-newest counts. The rubric is versioned (`text_judging.py`) and its version
-is stamped on every rating — **don't change its wording mid-study**, and
-bump `RUBRIC_VERSION` if you change it between studies.
+A judge may reopen a pair and revise anything; every submission is kept
+and the newest counts. The rubric is versioned (`text_judging.py`,
+currently `2`) and its version is stamped on every rating, ranking and
+guess — **don't change its wording mid-study**, and bump `RUBRIC_VERSION`
+if you change it between studies.
 
 Researchers deliberately can't rate, and the researcher's view of
 submitted texts is metadata only: reading the texts is the panel's job.

@@ -9,11 +9,16 @@ G-2026-79650).
 
 ## What you are being asked to do
 
-You will read a number of **short texts** — each a two- or
+You will read a number of **pairs of short texts**. Each text is a two- or
 three-paragraph introduction to a topic, written by a researcher in the
-field — and rate each one **on its own merits** on four dimensions.
+field; the two texts of a pair are by the **same writer**, on two
+occasions and on two different topics. For each pair you will:
 
-Every writer worked with an AI while writing. You are rating the text
+1. rate **each text on its own merits** on four dimensions, with a
+   sentence on each;
+2. say **which of the two** is the better introduction to its topic.
+
+Every writer worked with an AI while writing. You are rating the texts
 they produced, not the AI and not the writer.
 
 You are **not told** who wrote a text or how they worked, and you should
@@ -30,27 +35,31 @@ usable.
    (The "forgot password?" option on the sign-in page only works on sites
    that send email; if this one doesn't, the page will say so.)
 
-You land on **Texts to rate**. There is nothing else in the site for you
+You land on **Pairs to rate**. There is nothing else in the site for you
 to find your way around.
 
 ## Your queue
 
-The list shows the texts assigned to you, **TO DO** first and **RATED**
-below. Each line shows only the topic.
+The list shows the pairs assigned to you, **TO DO** first and **DONE**
+below. Each line shows only the two topics, labelled **A** and **B**.
 
 - The order is random and is **your own** — other judges see the same
-  texts in a different order. Please work **from the top**, not by topic.
-- More texts may appear later, as more sessions finish. You don't need to
+  pairs in a different order, and may see the same two texts labelled
+  the other way round. Please work **from the top**, not by topic.
+- More pairs may appear later, as more writers finish. You don't need to
   wait for them.
-- You can stop at any time and come back. Nothing is lost: a rating is
-  saved when you press the button on the rating page, not before.
+- You can stop at any time and come back. Nothing is lost: a pair is
+  saved when you press the button on its page, not before.
 
-## Rating a text
+## Rating a pair
 
-Open a text. You see **the topic the writer was given** (its title and a
-short brief), then **the text**, then the form.
+Open a pair. You see the two texts side by side, each with **the topic the
+writer was given** (its title and a short brief) and, under each, the
+rating form.
 
-Rate each dimension from **1 (very poor) to 7 (excellent)**:
+For **each text**, rate each dimension from **1 (very poor) to 7
+(excellent)** and write **one sentence** saying what most shaped that
+rating:
 
 | Dimension | The question to ask yourself |
 |---|---|
@@ -59,22 +68,23 @@ Rate each dimension from **1 (very poor) to 7 (excellent)**:
 | **Concision** | Does it say what it needs to say without redundancy, padding or digression? |
 | **Reasoning holds together** | Are the distinctions it draws motivated, its claims consistent with one another, and the consequences of drawing the boundaries where it does followed through? |
 
-Then, optionally:
+The sentences matter: they are read when the ratings are analysed, and
+they are what lets the study team see whether the panel is reacting to
+substance or to style. A sentence per dimension is required.
 
-- **What most shaped your ratings?** A sentence or two helps a great deal
-  when the ratings are analysed.
-- **One last question** — your guess at how the writer worked with the AI
-  (*structured disagreement with the AI*, *ordinary chat with the AI*, or
-  *can't tell*), and how sure you are. There is no right answer to aim
-  for, and "can't tell" is a perfectly good one. **Rate the text first**;
-  don't let the guess colour the ratings.
+Then, at the bottom, **the pair**: taken as a whole, which of the two is
+the better introduction to its topic? The two texts are on different
+topics, so judge each against what a good introduction to *its own*
+topic would be, then say which comes closer. **Choose even if it is
+close.**
 
-Press **Submit rating**. You go back to your queue.
+Press **Submit pair**. You go back to your queue.
 
 ### How to use the scale
 
-- Rate **this text**, against what a good short introduction to this
-  topic would be — not against the other texts you have read.
+- Rate **each text** against what a good short introduction to *its*
+  topic would be — not against the other text of the pair, and not
+  against other pairs you have read.
 - The four dimensions are **separate**. A text can be entirely correct and
   badly padded; rate it high on one and low on the other.
 - Use the whole scale. If everything you read is a 4 or a 5, the ratings
@@ -85,10 +95,23 @@ Press **Submit rating**. You go back to your queue.
 
 ### Changing a rating
 
-Open a rated text (**✓ rated — open to revise**), change what you want and
-press **Save revised rating**. Your latest rating is the one that counts;
-earlier ones are kept on record, so revising is never "covering up" a
-mistake — it is expected.
+Open a done pair (**✓ done — open to revise**), change what you want and
+press **Save revised pair**. Your latest ratings and ranking are the ones
+that count; earlier ones are kept on record, so revising is never
+"covering up" a mistake — it is expected.
+
+## One last question
+
+When **every pair in your queue is done**, a box appears above the list:
+*one last step*. Open it. For each text you rated, you are asked how you
+think its writer worked with the AI — *structured disagreement with the
+AI*, *ordinary chat with the AI*, or *can't tell* — and, unless you chose
+*can't tell*, how sure you are (1 = a guess, 7 = certain).
+
+There is no right answer to aim for, and "can't tell" is a perfectly good
+one. It is asked **last**, and only once your ratings are in, so that it
+can't colour them. Press **Save guesses**; you can come back and change
+them.
 
 ## Ground rules
 
@@ -110,5 +133,6 @@ mistake — it is expected.
 |---|---|
 | "Judge privilege required", or a sign-in page you didn't expect | You're signed out, or signed in with a different account. Sign in again. |
 | An empty queue | Nothing has been assigned to you yet. Tell the study team. |
-| The **Submit rating** button stays grey | It wakes up once all four dimensions have a number. If it then fails to save, note the time and tell the study team; your earlier ratings are safe. |
-| You rated the wrong text, or pressed save too early | Open it again and revise. |
+| The **Submit pair** button stays grey | It wakes up once both texts have all four numbers and a sentence for each, and you have chosen the better one. If it then fails to save, note the time and tell the study team; your earlier work is safe. |
+| The *one last step* box doesn't appear | A pair is still to do — look for one without the ✓. |
+| You rated the wrong text, or pressed save too early | Open the pair again and revise. |

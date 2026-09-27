@@ -7,6 +7,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Judging is by pairs** (Registered Report §2.5–2.6). A judge now sees a
+  participant's two texts together as *Text A* and *Text B* — labels drawn
+  per participant and per judge — rates each on the four dimensions with a
+  **one-sentence justification per dimension** (required), **ranks the
+  pair**, and, only once every pair in their queue is done, **guesses each
+  text's condition** with a confidence. The ranking is the analysis plan's
+  fallback primary outcome; the guess moved off the rating form so it can't
+  colour the ratings. Pairs are assigned per participant once both texts
+  are in (*Assign all complete pairs*); rubric version `2`; new judge
+  routes under `/api/judge/pairs` and `/api/judge/guesses`; the export's
+  `text_judging.json` carries `pairs` (labels, rankings) and
+  `condition_guesses` beside the per-text ratings. Platform migration
+  `0020`. The Guide for Judges is rewritten to match.
 - **The main task now ends at its task length** (Registered Report §2.4).
   Until now the clock and its two reminders were guidance and the
   participant ended the task themselves. Now, at the limit, the editor

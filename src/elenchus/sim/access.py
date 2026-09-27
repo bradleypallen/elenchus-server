@@ -298,24 +298,29 @@ def run_access_probes(harness) -> None:
 
 
 def _judge_probes(harness, con, fresh) -> None:
-    rows = con.execute("SELECT id, judge_actor_id FROM text_assignments ORDER BY id").fetchall()
+    rows = con.execute(
+        "SELECT id, judge_actor_id FROM text_pair_assignments ORDER BY id"
+    ).fetchall()
     if not rows:
-        logger.info("No judge assignments to probe; skipping judge access checks")
+        logger.info("No judge pair assignments to probe; skipping judge access checks")
         return
     aid, owner_judge = rows[0]
 
-    # The owning judge can view it (200) — and the response must not leak
-    # which condition produced either slot.
+    # The owning judge can view the pair (200) — and the response must
+    # not leak which condition produced either label.
     jc = fresh(f"judge-{owner_judge}")
     jc.set_session_cookie(auth.create_session(owner_judge))
-    st, body = jc.probe("GET", f"/api/judge/texts/{aid}", action="judge_view_own", expect=200)
+    st, body = jc.probe("GET", f"/api/judge/pairs/{aid}", action="judge_view_own", expect=200)
     if st == 200 and body is not None:
-        # The rubric block is identical for every text; what must stay
+        # The rubric block is identical for every pair; what must stay
         # silent about a text's origin is everything else in the view.
         leak = _condition_leak({k: v for k, v in body.items() if k != "rubric"})
         if not leak:
+            flat = dict(body)
+            for label, text in (body.get("texts") or {}).items():
+                flat.update({f"{label}.{k}": v for k, v in (text or {}).items()})
             for key in ("text_id", "session_id", "participant_code", "period", "actor_id"):
-                if key in body:
+                if key in body or any(k.endswith("." + key) for k in flat):
                     leak = f"key '{key}'"
                     break
         _record_check(
@@ -336,10 +341,10 @@ def _judge_probes(harness, con, fresh) -> None:
         oc.set_session_cookie(auth.create_session(other))
         oc.probe(
             "GET",
-            f"/api/judge/texts/{aid}",
+            f"/api/judge/pairs/{aid}",
             action="judge_view_foreign",
             expect=403,
-            note="not your assignment",
+            note="not your pair",
         )
     else:
         logger.info("Only one judge actor; skipping cross-judge isolation probe")

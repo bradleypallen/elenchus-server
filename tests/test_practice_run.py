@@ -190,24 +190,36 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
     assigned = _ok(
         admin.post("/api/admin/study/TRAINING/text-assignments", json={"judge_actor_id": judge_id})
     )
-    assert assigned["created"] == 2
-    queue = _ok(judge.get("/api/judge/texts"))["assignments"]
-    view = _ok(judge.get(f"/api/judge/texts/{queue[0]['assignment_id']}"))
+    assert assigned["created"] == 1  # one participant with both texts = one pair
+    (pair,) = _ok(judge.get("/api/judge/pairs"))["pairs"]
+    view = _ok(judge.get(f"/api/judge/pairs/{pair['pair_id']}"))
     assert not {"condition", "participant_code", "period", "session_id", "text_id"} & set(view)
-    for score in (4, 5):  # rate, then revise
+    why = {d["key"]: "a practice justification" for d in view["rubric"]["dimensions"]}
+    for score in (4, 5):  # rate both texts, then revise A
+        for label in ("A", "B") if score == 4 else ("A",):
+            _ok(
+                judge.post(
+                    f"/api/judge/pairs/{pair['pair_id']}/rate",
+                    json={
+                        "label": label,
+                        "ratings": {d["key"]: score for d in view["rubric"]["dimensions"]},
+                        "justifications": why,
+                    },
+                )
+            )
+    _ok(judge.post(f"/api/judge/pairs/{pair['pair_id']}/rank", json={"preferred": "A"}))
+    # The guessing pass opens only now, with the queue done.
+    todo = _ok(judge.get("/api/judge/guesses"))
+    assert todo["open"] is True and len(todo["items"]) == 2
+    for item in todo["items"]:
         _ok(
             judge.post(
-                f"/api/judge/texts/{queue[0]['assignment_id']}/rate",
-                json={
-                    "ratings": {d["key"]: score for d in view["rubric"]["dimensions"]},
-                    "justification": "a practice rating",
-                    "condition_guess": "unsure",
-                    "confidence": 2,
-                },
+                "/api/judge/guesses",
+                json={"pair_id": item["pair_id"], "label": item["label"], "guess": "unsure"},
             )
         )
     progress = _ok(admin.get("/api/admin/study/TRAINING/texts"))["judges"][0]
-    assert (progress["rated"], progress["assigned"]) == (1, 2)
+    assert (progress["completed"], progress["assigned"], progress["guesses"]) == (1, 1, 2)
 
     # 13. Export, download, open: their text and the judge's rating are in
     # it; no names are. The names key is a separate download.
@@ -225,7 +237,7 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
             )
         )
     assert "Tides rise and fall." in everything
-    assert "a practice rating" in json.dumps(judging)
+    assert "a practice justification" in json.dumps(judging)
     assert "Practice Person" not in everything and "Drop Out" not in everything
     key = _ok(admin.get(f"/api/admin/study/TRAINING/exports/{listed['name']}/pseudonyms"))
     assert key["participants"] == {"P01": "Practice Person", "P02": "Drop Out"}

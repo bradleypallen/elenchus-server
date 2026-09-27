@@ -46,7 +46,7 @@ class TestScriptedSimulation:
         report = run_simulation(driver_mode="scripted", participants=2, judges=2)
         # 2 participants × 2 sessions = 4 submitted texts.
         assert report.texts_submitted == 4
-        # Absolute ratings: every judge rates every text → 4 × 2 = 8.
+        # Every judge rates every text (as pairs) → 4 × 2 = 8.
         assert report.ratings_submitted == 8
 
     def test_every_role_is_exercised(self):
@@ -72,8 +72,10 @@ class TestScriptedSimulation:
             "list_texts",
             "assign_texts",
             "judge_queue",
-            "view_text",
+            "view_pair",
             "rate_text",
+            "rank_pair",
+            "guess_condition",
             "export_study",
         ):
             assert needed in actions, f"action {needed!r} never succeeded"
