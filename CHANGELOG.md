@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The baseline condition could show the formal panes.** Whether the
+  position and sequents panes are open is a preference stored in the
+  browser, and the baseline condition only hid the badges that toggle
+  them — so a crossover participant who opened a pane in their Elenchus
+  session saw empty "Commitments" / "No sequents yet" panes in their
+  baseline session on the same laptop, with no way to close them. The
+  panes are now never rendered in the baseline condition, whatever the
+  stored preference; the preference itself is kept for use outside a
+  study. A static test (`tests/test_study_ui_guards.py`) pins this.
+
 ## [0.8.4] — 2026-09-26
 
 ### Fixed
