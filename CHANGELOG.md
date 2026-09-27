@@ -16,6 +16,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   panes are now never rendered in the baseline condition, whatever the
   stored preference; the preference itself is kept for use outside a
   study. A static test (`tests/test_study_ui_guards.py`) pins this.
+- **`elenchus serve --data-dir X` ran on the wrong data directory.** The
+  registry is built at import time on `ELENCHUS_DATA` (default
+  `./dialectics`); the flag changed only what the server *reported*, so
+  it served, and migrated, the default directory's platform DB while
+  logging `X`. The flag now re-points the registry before serving.
+- **An empty `ELENCHUS_MODEL` was sent to the API as `model=""`** and every
+  call failed with a 400. Empty now means the default, at the
+  environment and at `Opponent()`.
 
 ## [0.8.4] — 2026-09-26
 

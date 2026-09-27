@@ -415,10 +415,16 @@ def _parse_tension_id(tid) -> int:
     return int(s)
 
 
+# The model used when none is configured. An *empty* model name — an
+# `ELENCHUS_MODEL=` line in an env file, a blank field — means this too,
+# never a request with `model=""` (which the API rejects).
+DEFAULT_MODEL = "claude-opus-4-6"
+
+
 class Opponent:
     def __init__(
         self,
-        model: str = "claude-opus-4-6",
+        model: str | None = DEFAULT_MODEL,
         api_key: str | None = None,
         base_url: str | None = None,
         protocol: str | None = None,
@@ -442,7 +448,7 @@ class Opponent:
         available for admin tooling, batch imports, and tests
         regardless of the flag.
         """
-        self.model = model
+        self.model = model or DEFAULT_MODEL
         self.base_url = base_url
         self._api_key = api_key
         self.protocol = protocol or self._detect_protocol(base_url)
