@@ -446,21 +446,39 @@ class ParticipantTokenRequest(BaseModel):
 
 class TextAssignmentRequest(BaseModel):
     """Body for `POST /api/admin/study/{study_id}/text-assignments`.
-    Omit `text_ids` to assign every submitted text in the study that
-    the judge doesn't already have."""
+    Omit `participant_ids` to assign every participant of the study
+    with both texts submitted that the judge doesn't already have."""
 
     judge_actor_id: int
-    text_ids: list[int] | None = None
+    participant_ids: list[int] | None = None
 
 
-class TextRatingRequest(BaseModel):
-    """Body for `POST /api/judge/texts/{assignment_id}/rate`."""
+class PairRatingRequest(BaseModel):
+    """Body for `POST /api/judge/pairs/{pair_id}/rate`: one of the
+    pair's two texts, by its label, rated on every dimension with a
+    one-sentence justification per dimension."""
 
+    label: str  # 'A' | 'B'
     ratings: dict  # dimension key → integer score; see text_judging.py
-    justification: str | None = ""
-    condition_guess: str | None = None  # 'elenchus' | 'baseline' | 'unsure'
-    confidence: int | None = None  # 1–7
+    justifications: dict  # dimension key → one sentence
     seconds_spent: int | None = None  # how long the form was open
+
+
+class PairRankingRequest(BaseModel):
+    """Body for `POST /api/judge/pairs/{pair_id}/rank`."""
+
+    preferred: str  # 'A' | 'B'
+    seconds_spent: int | None = None
+
+
+class ConditionGuessRequest(BaseModel):
+    """Body for `POST /api/judge/guesses`: a guess at one text's
+    condition, identified as the judge knows it — by pair and label."""
+
+    pair_id: int
+    label: str  # 'A' | 'B'
+    guess: str  # 'elenchus' | 'baseline' | 'unsure'
+    confidence: int | None = None  # 1–7
 
 
 class StudyConfigRequest(BaseModel):
@@ -2269,11 +2287,13 @@ def _text_label(con, text: dict) -> dict:
 
 @app.get("/api/admin/study/{study_id}/texts")
 def admin_list_study_texts(study_id: str, actor: dict = Depends(auth.require_researcher)):
-    """Submitted texts in a study, with how far the panel has got on
-    each. Metadata only — the researcher assigns and tracks; reading the
-    texts is the panel's job (and the export's)."""
+    """Submitted texts in a study, with how far the panel has got —
+    per text (how many judges have rated it) and per judge (pairs
+    completed, guesses given). Metadata only — the researcher assigns
+    and tracks; reading the texts is the panel's job (and the export's)."""
     con = get_registry().platform_con()
     assignments = pdb.list_text_assignments_for_study(con, study_id)
+    pairs = pdb.list_text_pairs_for_study(con, study_id)
     out = []
     for text in pdb.list_study_texts(con, study_id=study_id):
         mine = [a for a in assignments if a["text_id"] == text["id"]]
@@ -2286,19 +2306,35 @@ def admin_list_study_texts(study_id: str, actor: dict = Depends(auth.require_res
         )
     judges = {j["id"]: j for j in pdb.list_judges(con)}
     progress = {}
-    for a in assignments:
+    for pair in pairs:
         row = progress.setdefault(
-            a["judge_actor_id"],
+            pair["judge_actor_id"],
             {
-                "judge_actor_id": a["judge_actor_id"],
-                "display_name": judges.get(a["judge_actor_id"], {}).get("display_name", "—"),
+                "judge_actor_id": pair["judge_actor_id"],
+                "display_name": judges.get(pair["judge_actor_id"], {}).get("display_name", "—"),
                 "assigned": 0,
-                "rated": 0,
+                "completed": 0,
+                "texts_rated": 0,
+                "guesses": 0,
+                "guesses_required": 0,
             },
         )
         row["assigned"] += 1
-        row["rated"] += a["status"] == "completed"
-    return {"study_id": study_id, "texts": out, "judges": list(progress.values())}
+        row["completed"] += pair["status"] == "completed"
+        row["guesses_required"] += 2
+        for text_id in (pair["label_a_text_id"], pair["label_b_text_id"]):
+            a = pdb.find_text_assignment_for_pair_text(con, pair["id"], text_id)
+            row["texts_rated"] += bool(a and a["status"] == "completed")
+            row["guesses"] += (
+                pdb.latest_condition_guess(con, pair["judge_actor_id"], text_id) is not None
+            )
+    ready = pdb.list_participants_with_both_texts(con, study_id)
+    return {
+        "study_id": study_id,
+        "texts": out,
+        "pairs_available": len(ready),
+        "judges": list(progress.values()),
+    }
 
 
 @app.post("/api/admin/study/{study_id}/text-assignments")
@@ -2307,10 +2343,12 @@ def admin_assign_texts(
     req: TextAssignmentRequest,
     actor: dict = Depends(auth.require_researcher),
 ):
-    """Assign texts to a judge — by default every submitted text in the
-    study the judge doesn't already have, so the button can be pressed
-    again as more sessions finish. Each assignment draws a random queue
-    position: every judge meets the texts in their own order."""
+    """Assign participants' pairs of texts to a judge — by default every
+    participant with both texts submitted whom the judge doesn't already
+    have, so the button can be pressed again as more pairs complete. Each
+    pair draws a random queue position (every judge meets the pairs in
+    their own order) and its own A/B labelling (which text is "A" is
+    decided per participant *and* per judge)."""
     import random
 
     reg = get_registry()
@@ -2318,28 +2356,36 @@ def admin_assign_texts(
     judge = pdb.find_actor_by_id(con, req.judge_actor_id)
     if judge is None or judge.get("kind") != "judge":
         raise HTTPException(404, "Judge not found")
-    texts = {t["id"]: t for t in pdb.list_study_texts(con, study_id=study_id)}
-    wanted = list(texts) if req.text_ids is None else req.text_ids
-    unknown = [tid for tid in wanted if tid not in texts]
+    ready = {
+        e["participant"]["id"]: e for e in pdb.list_participants_with_both_texts(con, study_id)
+    }
+    wanted = list(ready) if req.participant_ids is None else req.participant_ids
+    unknown = [pid for pid in wanted if pid not in ready]
     if unknown:
-        raise HTTPException(404, f"Not submitted texts of study '{study_id}': {unknown}")
+        raise HTTPException(
+            404, f"Not participants of '{study_id}' with both texts submitted: {unknown}"
+        )
 
     rng = random.SystemRandom()
     created = []
     with reg.platform_lock:
-        for text_id in wanted:
-            new_id = pdb.create_text_assignment(
+        for pid in wanted:
+            first, second = ready[pid]["texts"][1], ready[pid]["texts"][2]
+            a, b = (first, second) if rng.random() < 0.5 else (second, first)
+            new_id = pdb.create_text_pair_assignment(
                 con,
                 study_id=study_id,
-                text_id=text_id,
+                participant_id=pid,
                 judge_actor_id=req.judge_actor_id,
+                label_a_text_id=a["id"],
+                label_b_text_id=b["id"],
                 assigned_by=actor["id"],
                 position=rng.random(),
             )
             if new_id is not None:
                 created.append(new_id)
     logger.info(
-        "Text assignments: study=%s judge=%d created=%d already_had=%d (by %d)",
+        "Text pair assignments: study=%s judge=%d created=%d already_had=%d (by %d)",
         study_id,
         req.judge_actor_id,
         len(created),
@@ -2349,7 +2395,7 @@ def admin_assign_texts(
     return {
         "created": len(created),
         "already_assigned": len(wanted) - len(created),
-        "assignment_ids": created,
+        "pair_ids": created,
     }
 
 
@@ -2358,113 +2404,266 @@ def judge_rubric(actor: dict = Depends(auth.require_judge)):
     return text_judging.rubric()
 
 
-@app.get("/api/judge/texts")
-def judge_text_queue(actor: dict = Depends(auth.require_judge)):
-    """The judge's texts, in that judge's own random order. Just enough
-    to show a queue: nothing here says who wrote a text or how."""
-    con = get_registry().platform_con()
-    queue = []
-    for a in pdb.list_text_assignments_for_judge(con, actor["id"]):
-        text = pdb.find_study_text(con, a["text_id"]) or {}
-        queue.append(
-            {
-                "assignment_id": a["id"],
-                "status": a["status"],
-                "topic_title": text.get("topic_title", ""),
-                "word_count": text.get("word_count"),
-            }
-        )
-    return {"assignments": queue}
+def _judge_pair(con, pair_id: int, actor: dict) -> dict:
+    pair = pdb.find_text_pair(con, pair_id)
+    if pair is None:
+        raise HTTPException(404, "Pair not found")
+    if pair["judge_actor_id"] != actor["id"] and actor.get("kind") != "admin":
+        raise HTTPException(403, "Not your pair")
+    return pair
 
 
-def _judge_text_assignment(con, assignment_id: int, actor: dict) -> dict:
-    assignment = pdb.find_text_assignment(con, assignment_id)
-    if assignment is None:
-        raise HTTPException(404, "Assignment not found")
-    if assignment["judge_actor_id"] != actor["id"] and actor.get("kind") != "admin":
-        raise HTTPException(403, "Not your assignment")
-    return assignment
+def _pair_text_id(pair: dict, label: str) -> int:
+    if label not in text_judging.LABELS:
+        raise HTTPException(400, {"user_message": "label must be 'A' or 'B'"})
+    return pair["label_a_text_id"] if label == "A" else pair["label_b_text_id"]
 
 
-@app.get("/api/judge/texts/{assignment_id}")
-def judge_view_text(assignment_id: int, actor: dict = Depends(auth.require_judge)):
-    """One text to rate, **blinded**: the topic the writer was given,
-    the text, the rubric, and the judge's own latest rating. Never the
-    condition, the participant, the session, or even the text's id —
-    ids are handed out in submission order, which a judge could read."""
-    con = get_registry().platform_con()
-    assignment = _judge_text_assignment(con, assignment_id, actor)
-    text = pdb.find_study_text(con, assignment["text_id"])
-    if text is None:
-        raise HTTPException(404, "The text for this assignment is gone")
-    session = pdb.find_study_session(con, text["session_id"]) or {}
-    token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
-    latest = pdb.latest_text_rating(con, assignment_id)
+def _judge_pair_status(con, pair: dict) -> dict:
+    """What the judge has done on a pair: which labels are rated, and
+    whether it is ranked."""
+    rated = {}
+    for label in text_judging.LABELS:
+        a = pdb.find_text_assignment_for_pair_text(con, pair["id"], _pair_text_id(pair, label))
+        rated[label] = bool(a and a["status"] == "completed")
+    ranking = pdb.latest_pair_ranking(con, pair["id"])
+    preferred = None
+    if ranking is not None:
+        preferred = "A" if ranking["preferred_text_id"] == pair["label_a_text_id"] else "B"
+    return {"rated": rated, "ranked": ranking is not None, "preferred": preferred}
+
+
+def _guessing(con, actor_id: int) -> dict:
+    """The guessing pass: open once every pair in the judge's queue is
+    completed; how many of the texts have a guess."""
+    pairs = pdb.list_text_pairs_for_judge(con, actor_id)
+    completed = [p for p in pairs if p["status"] == "completed"]
+    guessed = sum(
+        pdb.latest_condition_guess(con, actor_id, tid) is not None
+        for p in pairs
+        for tid in (p["label_a_text_id"], p["label_b_text_id"])
+    )
     return {
-        "assignment_id": assignment_id,
-        "status": assignment["status"],
-        "topic_title": text["topic_title"],
-        "topic_brief": token.get("topic_brief", ""),
-        "content": text["content"],
-        "word_count": text["word_count"],
-        "rubric": text_judging.rubric(),
-        "rating": (
-            {k: latest[k] for k in ("ratings", "justification", "condition_guess", "confidence")}
-            if latest
-            else None
-        ),
+        "open": bool(pairs) and len(completed) == len(pairs),
+        "required": 2 * len(pairs),
+        "done": guessed,
     }
 
 
-@app.post("/api/judge/texts/{assignment_id}/rate")
-def judge_rate_text(
-    assignment_id: int,
-    req: TextRatingRequest,
-    actor: dict = Depends(auth.require_judge),
+@app.get("/api/judge/pairs")
+def judge_pair_queue(actor: dict = Depends(auth.require_judge)):
+    """The judge's pairs, in that judge's own random order. Just enough
+    to show a queue: the two topics, and what is still to do. Nothing
+    here says who wrote a text or how."""
+    con = get_registry().platform_con()
+    queue = []
+    for pair in pdb.list_text_pairs_for_judge(con, actor["id"]):
+        topics = {}
+        for label in text_judging.LABELS:
+            text = pdb.find_study_text(con, _pair_text_id(pair, label)) or {}
+            topics[label] = text.get("topic_title", "")
+        queue.append(
+            {
+                "pair_id": pair["id"],
+                "status": pair["status"],
+                "topics": topics,
+                **_judge_pair_status(con, pair),
+            }
+        )
+    return {"pairs": queue, "guessing": _guessing(con, actor["id"])}
+
+
+@app.get("/api/judge/pairs/{pair_id}")
+def judge_view_pair(pair_id: int, actor: dict = Depends(auth.require_judge)):
+    """One pair to rate, **blinded**: for each label, the topic the
+    writer was given, its brief, the text, and the judge's own latest
+    rating; the rubric; the judge's ranking. Never the condition, the
+    participant, the session, the period, or a text id — the pair id is
+    the only identifier, and it is the judge's own."""
+    con = get_registry().platform_con()
+    pair = _judge_pair(con, pair_id, actor)
+    texts = {}
+    for label in text_judging.LABELS:
+        text_id = _pair_text_id(pair, label)
+        text = pdb.find_study_text(con, text_id)
+        if text is None:
+            raise HTTPException(404, "A text of this pair is gone")
+        session = pdb.find_study_session(con, text["session_id"]) or {}
+        token = pdb.find_participant_token(con, session.get("study_token") or "") or {}
+        assignment = pdb.find_text_assignment_for_pair_text(con, pair_id, text_id)
+        latest = pdb.latest_text_rating(con, assignment["id"]) if assignment else None
+        texts[label] = {
+            "topic_title": text["topic_title"],
+            "topic_brief": token.get("topic_brief", ""),
+            "content": text["content"],
+            "word_count": text["word_count"],
+            "rating": ({k: latest[k] for k in ("ratings", "justifications")} if latest else None),
+        }
+    return {
+        "pair_id": pair_id,
+        "status": pair["status"],
+        "texts": texts,
+        "rubric": text_judging.rubric(),
+        **_judge_pair_status(con, pair),
+    }
+
+
+@app.post("/api/judge/pairs/{pair_id}/rate")
+def judge_rate_pair_text(
+    pair_id: int, req: PairRatingRequest, actor: dict = Depends(auth.require_judge)
 ):
-    """Submit (or revise) a rating. Validated strictly and rejected
-    whole on any error, so every stored rating is complete. A revision
-    is a new row; the newest counts and the earlier ones are kept."""
+    """Submit (or revise) the rating of one of the pair's texts: every
+    dimension scored, a one-sentence justification per dimension.
+    Validated strictly and rejected whole on any error. A revision is a
+    new row; the newest counts and the earlier ones are kept."""
     try:
         ratings = text_judging.validate_ratings(req.ratings)
+        justifications = text_judging.validate_justifications(req.justifications)
     except ValueError as e:
         raise HTTPException(400, {"user_message": str(e)}) from None
-    if (
-        req.condition_guess is not None
-        and req.condition_guess not in text_judging.CONDITION_GUESSES
-    ):
-        raise HTTPException(
-            400, "condition_guess must be 'elenchus', 'baseline', 'unsure' or null"
-        )
-    if req.confidence is not None and not 1 <= req.confidence <= 7:
-        raise HTTPException(400, "confidence must be between 1 and 7")
     if req.seconds_spent is not None and req.seconds_spent < 0:
         raise HTTPException(400, "seconds_spent can't be negative")
 
     reg = get_registry()
     con = reg.platform_con()
-    _judge_text_assignment(con, assignment_id, actor)
+    pair = _judge_pair(con, pair_id, actor)
+    text_id = _pair_text_id(pair, req.label)
+    assignment = pdb.find_text_assignment_for_pair_text(con, pair_id, text_id)
+    if assignment is None:
+        raise HTTPException(404, "The text for this pair is gone")
     with reg.platform_lock:
         rating_id = pdb.record_text_rating(
             con,
-            assignment_id=assignment_id,
+            assignment_id=assignment["id"],
             rubric_version=text_judging.RUBRIC_VERSION,
             ratings=ratings,
-            justification=(req.justification or "").strip(),
-            condition_guess=req.condition_guess,
-            confidence=req.confidence,
+            justifications=justifications,
             seconds_spent=req.seconds_spent,
         )
+        pdb.complete_pair_if_done(con, pair_id)
     logger.info(
-        "Text rated: assignment=%d judge=%d rating_id=%d rubric=v%s seconds_spent=%s guess=%s",
-        assignment_id,
+        "Text rated: pair=%d label=%s judge=%d rating_id=%d rubric=v%s seconds_spent=%s",
+        pair_id,
+        req.label,
         actor["id"],
         rating_id,
         text_judging.RUBRIC_VERSION,
         req.seconds_spent,
-        req.condition_guess,
     )
-    return {"id": rating_id, "assignment_id": assignment_id, "status": "submitted"}
+    return {"id": rating_id, "pair_id": pair_id, "label": req.label, "status": "submitted"}
+
+
+@app.post("/api/judge/pairs/{pair_id}/rank")
+def judge_rank_pair(
+    pair_id: int, req: PairRankingRequest, actor: dict = Depends(auth.require_judge)
+):
+    """Which of the pair is the better introduction to its topic. Both
+    texts must be rated first. Every ranking is kept; the newest counts."""
+    reg = get_registry()
+    con = reg.platform_con()
+    pair = _judge_pair(con, pair_id, actor)
+    preferred_id = _pair_text_id(pair, req.preferred)
+    status = _judge_pair_status(con, pair)
+    if not all(status["rated"].values()):
+        raise HTTPException(400, {"user_message": "Rate both texts before ranking the pair"})
+    if req.seconds_spent is not None and req.seconds_spent < 0:
+        raise HTTPException(400, "seconds_spent can't be negative")
+    with reg.platform_lock:
+        ranking_id = pdb.record_pair_ranking(
+            con,
+            pair_id=pair_id,
+            preferred_text_id=preferred_id,
+            rubric_version=text_judging.RUBRIC_VERSION,
+            seconds_spent=req.seconds_spent,
+        )
+        completed = pdb.complete_pair_if_done(con, pair_id)
+    logger.info(
+        "Pair ranked: pair=%d preferred=%s judge=%d ranking_id=%d completed=%s",
+        pair_id,
+        req.preferred,
+        actor["id"],
+        ranking_id,
+        completed,
+    )
+    return {
+        "id": ranking_id,
+        "pair_id": pair_id,
+        "preferred": req.preferred,
+        "completed": completed,
+    }
+
+
+@app.get("/api/judge/guesses")
+def judge_guesses(actor: dict = Depends(auth.require_judge)):
+    """The guessing pass — open only once every pair in the judge's
+    queue is rated and ranked: each text, as the judge knows it (pair
+    and label, with its topic), and the judge's latest guess."""
+    con = get_registry().platform_con()
+    guessing = _guessing(con, actor["id"])
+    items = []
+    if guessing["open"]:
+        for pair in pdb.list_text_pairs_for_judge(con, actor["id"]):
+            for label in text_judging.LABELS:
+                text_id = _pair_text_id(pair, label)
+                text = pdb.find_study_text(con, text_id) or {}
+                latest = pdb.latest_condition_guess(con, actor["id"], text_id)
+                items.append(
+                    {
+                        "pair_id": pair["id"],
+                        "label": label,
+                        "topic_title": text.get("topic_title", ""),
+                        "guess": latest["guess"] if latest else None,
+                        "confidence": latest["confidence"] if latest else None,
+                    }
+                )
+    return {**guessing, "items": items, "options": text_judging.rubric()["condition_guess"]}
+
+
+@app.post("/api/judge/guesses")
+def judge_guess(req: ConditionGuessRequest, actor: dict = Depends(auth.require_judge)):
+    """A guess at one text's condition, with a confidence — after all
+    assessments, so the guess can't colour the ratings. Every guess is
+    kept; the newest per text counts."""
+    if req.guess not in text_judging.CONDITION_GUESSES:
+        raise HTTPException(
+            400, {"user_message": "guess must be 'elenchus', 'baseline' or 'unsure'"}
+        )
+    if req.confidence is not None and not (
+        text_judging.CONFIDENCE_MIN <= req.confidence <= text_judging.CONFIDENCE_MAX
+    ):
+        raise HTTPException(
+            400,
+            {
+                "user_message": f"confidence must be between {text_judging.CONFIDENCE_MIN} "
+                f"and {text_judging.CONFIDENCE_MAX}"
+            },
+        )
+    reg = get_registry()
+    con = reg.platform_con()
+    pair = _judge_pair(con, req.pair_id, actor)
+    if not _guessing(con, actor["id"])["open"]:
+        raise HTTPException(
+            400, {"user_message": "Rate and rank every pair in your queue before guessing"}
+        )
+    text_id = _pair_text_id(pair, req.label)
+    with reg.platform_lock:
+        guess_id = pdb.record_condition_guess(
+            con,
+            judge_actor_id=actor["id"],
+            text_id=text_id,
+            guess=req.guess,
+            confidence=req.confidence,
+            rubric_version=text_judging.RUBRIC_VERSION,
+        )
+    logger.info(
+        "Condition guess: pair=%d label=%s judge=%d guess=%s confidence=%s",
+        req.pair_id,
+        req.label,
+        actor["id"],
+        req.guess,
+        req.confidence,
+    )
+    return {"id": guess_id, "pair_id": req.pair_id, "label": req.label, "status": "submitted"}
 
 
 @app.get("/api/judge/queue")

@@ -1727,11 +1727,20 @@ def list_judges(con) -> list[dict]:
 
 
 def create_text_assignment(
-    con, *, study_id: str, text_id: int, judge_actor_id: int, assigned_by: int, position: float
+    con,
+    *,
+    study_id: str,
+    text_id: int,
+    judge_actor_id: int,
+    assigned_by: int,
+    position: float,
+    pair_id: int | None = None,
 ) -> int | None:
     """Assign one text to one judge. Returns the new id, or None if
     that judge already has that text (assigning is idempotent, so
-    "assign everything" can be pressed again after more texts come in)."""
+    "assign everything" can be pressed again after more texts come in).
+    Since migration 0020 a text is assigned as half of a pair
+    (`pair_id`); the per-text row is where its ratings live."""
     existing = con.execute(
         "SELECT id FROM text_assignments WHERE text_id = ? AND judge_actor_id = ?",
         [text_id, judge_actor_id],
@@ -1739,16 +1748,16 @@ def create_text_assignment(
     if existing is not None:
         return None
     row = con.execute(
-        "INSERT INTO text_assignments (study_id, text_id, judge_actor_id, assigned_by, position) "
-        "VALUES (?, ?, ?, ?, ?) RETURNING id",
-        [study_id, text_id, judge_actor_id, assigned_by, position],
+        "INSERT INTO text_assignments (study_id, text_id, judge_actor_id, assigned_by, position, "
+        "pair_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+        [study_id, text_id, judge_actor_id, assigned_by, position, pair_id],
     ).fetchone()
     return int(row[0])
 
 
 _TEXT_ASSIGNMENT_COLUMNS = (
     "id, study_id, text_id, judge_actor_id, assigned_by, assigned_at, position, "
-    "status, completed_at"
+    "status, completed_at, pair_id"
 )
 
 
@@ -1763,7 +1772,247 @@ def _row_to_text_assignment(row) -> dict:
         "position": row[6],
         "status": row[7],
         "completed_at": row[8],
+        "pair_id": row[9],
     }
+
+
+def find_text_assignment_for_pair_text(con, pair_id: int, text_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_TEXT_ASSIGNMENT_COLUMNS} FROM text_assignments "
+        "WHERE pair_id = ? AND text_id = ?",
+        [pair_id, text_id],
+    ).fetchone()
+    return _row_to_text_assignment(row) if row else None
+
+
+# ─── Text pairs (migration 0020) ──────────────────────────────────────
+
+
+def list_participants_with_both_texts(con, study_id: str) -> list[dict]:
+    """Every participant of a study whose two sessions have each
+    submitted a text — the unit the panel judges. Each entry:
+    `{"participant": row, "texts": {1: text, 2: text}}`, in enrolment
+    order."""
+    out = []
+    for participant in list_study_participants(con, study_id):
+        texts = {}
+        for period in (1, 2):
+            token = find_participant_period_token(con, participant["id"], period)
+            if token is None or token["session_id"] is None:
+                break
+            text = find_study_text_for_session(con, token["session_id"])
+            if text is None:
+                break
+            texts[period] = text
+        if len(texts) == 2:
+            out.append({"participant": participant, "texts": texts})
+    return out
+
+
+_PAIR_COLUMNS = (
+    "id, study_id, participant_id, judge_actor_id, label_a_text_id, label_b_text_id, "
+    "assigned_by, assigned_at, position, status, completed_at"
+)
+
+
+def _row_to_pair(row) -> dict:
+    return {
+        "id": row[0],
+        "study_id": row[1],
+        "participant_id": row[2],
+        "judge_actor_id": row[3],
+        "label_a_text_id": row[4],
+        "label_b_text_id": row[5],
+        "assigned_by": row[6],
+        "assigned_at": row[7],
+        "position": row[8],
+        "status": row[9],
+        "completed_at": row[10],
+    }
+
+
+def create_text_pair_assignment(
+    con,
+    *,
+    study_id: str,
+    participant_id: int,
+    judge_actor_id: int,
+    label_a_text_id: int,
+    label_b_text_id: int,
+    assigned_by: int,
+    position: float,
+) -> int | None:
+    """Assign a participant's pair of texts to a judge, with the A/B
+    labels already drawn, and the two per-text assignments that hold
+    the ratings. Returns the new pair id, or None if the judge already
+    has this participant (idempotent, like `create_text_assignment`)."""
+    existing = con.execute(
+        "SELECT id FROM text_pair_assignments WHERE participant_id = ? AND judge_actor_id = ?",
+        [participant_id, judge_actor_id],
+    ).fetchone()
+    if existing is not None:
+        return None
+    row = con.execute(
+        "INSERT INTO text_pair_assignments (study_id, participant_id, judge_actor_id, "
+        "label_a_text_id, label_b_text_id, assigned_by, position) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        [
+            study_id,
+            participant_id,
+            judge_actor_id,
+            label_a_text_id,
+            label_b_text_id,
+            assigned_by,
+            position,
+        ],
+    ).fetchone()
+    pair_id = int(row[0])
+    for offset, text_id in ((0.0, label_a_text_id), (1e-6, label_b_text_id)):
+        create_text_assignment(
+            con,
+            study_id=study_id,
+            text_id=text_id,
+            judge_actor_id=judge_actor_id,
+            assigned_by=assigned_by,
+            position=position + offset,
+            pair_id=pair_id,
+        )
+    return pair_id
+
+
+def find_text_pair(con, pair_id: int) -> dict | None:
+    row = con.execute(
+        f"SELECT {_PAIR_COLUMNS} FROM text_pair_assignments WHERE id = ?", [pair_id]
+    ).fetchone()
+    return _row_to_pair(row) if row else None
+
+
+def list_text_pairs_for_judge(con, judge_actor_id: int) -> list[dict]:
+    """A judge's queue of pairs, in that judge's own random order."""
+    rows = con.execute(
+        f"SELECT {_PAIR_COLUMNS} FROM text_pair_assignments "
+        "WHERE judge_actor_id = ? ORDER BY position, id",
+        [judge_actor_id],
+    ).fetchall()
+    return [_row_to_pair(r) for r in rows]
+
+
+def list_text_pairs_for_study(con, study_id: str) -> list[dict]:
+    rows = con.execute(
+        f"SELECT {_PAIR_COLUMNS} FROM text_pair_assignments WHERE study_id = ? ORDER BY id",
+        [study_id],
+    ).fetchall()
+    return [_row_to_pair(r) for r in rows]
+
+
+def record_pair_ranking(
+    con, *, pair_id: int, preferred_text_id: int, rubric_version: str, seconds_spent: int | None
+) -> int:
+    """Store a ranking; every submission is kept and the newest counts."""
+    row = con.execute(
+        "INSERT INTO text_pair_rankings (pair_id, preferred_text_id, rubric_version, "
+        "seconds_spent) VALUES (?, ?, ?, ?) RETURNING id",
+        [pair_id, preferred_text_id, rubric_version, seconds_spent],
+    ).fetchone()
+    return int(row[0])
+
+
+def list_pair_rankings(con, pair_id: int) -> list[dict]:
+    rows = con.execute(
+        "SELECT id, pair_id, preferred_text_id, rubric_version, seconds_spent, submitted_at "
+        "FROM text_pair_rankings WHERE pair_id = ? ORDER BY id",
+        [pair_id],
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "pair_id": r[1],
+            "preferred_text_id": r[2],
+            "rubric_version": r[3],
+            "seconds_spent": r[4],
+            "submitted_at": r[5],
+        }
+        for r in rows
+    ]
+
+
+def latest_pair_ranking(con, pair_id: int) -> dict | None:
+    rankings = list_pair_rankings(con, pair_id)
+    return rankings[-1] if rankings else None
+
+
+def complete_pair_if_done(con, pair_id: int) -> bool:
+    """Mark a pair completed once both texts are rated and it is
+    ranked. Returns the pair's completeness."""
+    pair = find_text_pair(con, pair_id)
+    if pair is None:
+        return False
+    rated = con.execute(
+        "SELECT COUNT(*) FROM text_assignments WHERE pair_id = ? AND status = 'completed'",
+        [pair_id],
+    ).fetchone()[0]
+    done = rated == 2 and latest_pair_ranking(con, pair_id) is not None
+    if done and pair["status"] != "completed":
+        con.execute(
+            "UPDATE text_pair_assignments SET status = 'completed', "
+            "completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [pair_id],
+        )
+    return done
+
+
+def record_condition_guess(
+    con,
+    *,
+    judge_actor_id: int,
+    text_id: int,
+    guess: str,
+    confidence: int | None,
+    rubric_version: str,
+) -> int:
+    """Store a judge's guess at a text's condition; every submission is
+    kept, the newest per (judge, text) counts."""
+    row = con.execute(
+        "INSERT INTO text_condition_guesses (judge_actor_id, text_id, guess, confidence, "
+        "rubric_version) VALUES (?, ?, ?, ?, ?) RETURNING id",
+        [judge_actor_id, text_id, guess, confidence, rubric_version],
+    ).fetchone()
+    return int(row[0])
+
+
+def list_condition_guesses(
+    con, *, judge_actor_id: int | None = None, text_id: int | None = None
+) -> list[dict]:
+    clauses, params = [], []
+    if judge_actor_id is not None:
+        clauses.append("judge_actor_id = ?")
+        params.append(judge_actor_id)
+    if text_id is not None:
+        clauses.append("text_id = ?")
+        params.append(text_id)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = con.execute(
+        "SELECT id, judge_actor_id, text_id, guess, confidence, rubric_version, submitted_at "
+        f"FROM text_condition_guesses {where} ORDER BY id",
+        params,
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "judge_actor_id": r[1],
+            "text_id": r[2],
+            "guess": r[3],
+            "confidence": r[4],
+            "rubric_version": r[5],
+            "submitted_at": r[6],
+        }
+        for r in rows
+    ]
+
+
+def latest_condition_guess(con, judge_actor_id: int, text_id: int) -> dict | None:
+    guesses = list_condition_guesses(con, judge_actor_id=judge_actor_id, text_id=text_id)
+    return guesses[-1] if guesses else None
 
 
 def find_text_assignment(con, assignment_id: int) -> dict | None:
@@ -1804,23 +2053,29 @@ def record_text_rating(
     assignment_id: int,
     rubric_version: str,
     ratings: dict,
-    justification: str,
-    condition_guess: str | None,
-    confidence: int | None,
+    justification: str = "",
+    justifications: dict | None = None,
+    condition_guess: str | None = None,
+    confidence: int | None = None,
     seconds_spent: int | None,
 ) -> int:
     """Store a submission and mark the assignment completed. Every
-    submission is kept; `latest_text_rating` is the one that counts."""
+    submission is kept; `latest_text_rating` is the one that counts.
+    `justifications` (one sentence per dimension) is the rubric-2 field;
+    the single `justification` and the per-rating guess are rubric 1's
+    and stay for old rows."""
     import json
 
     row = con.execute(
         "INSERT INTO text_ratings (assignment_id, rubric_version, ratings, justification, "
-        "condition_guess, confidence, seconds_spent) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "justifications, condition_guess, confidence, seconds_spent) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         [
             assignment_id,
             rubric_version,
             json.dumps(ratings, sort_keys=True),
             justification,
+            json.dumps(justifications or {}, sort_keys=True),
             condition_guess,
             confidence,
             seconds_spent,
@@ -1840,7 +2095,7 @@ def list_text_ratings(con, assignment_id: int) -> list[dict]:
 
     rows = con.execute(
         "SELECT id, assignment_id, rubric_version, ratings, justification, condition_guess, "
-        "confidence, seconds_spent, submitted_at FROM text_ratings "
+        "confidence, seconds_spent, submitted_at, justifications FROM text_ratings "
         "WHERE assignment_id = ? ORDER BY id",
         [assignment_id],
     ).fetchall()
@@ -1851,6 +2106,7 @@ def list_text_ratings(con, assignment_id: int) -> list[dict]:
             "rubric_version": r[2],
             "ratings": json.loads(r[3]),
             "justification": r[4] or "",
+            "justifications": json.loads(r[9] or "{}"),
             "condition_guess": r[5],
             "confidence": r[6],
             "seconds_spent": r[7],

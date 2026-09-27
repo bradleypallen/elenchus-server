@@ -289,6 +289,7 @@ def export_study(
                     "assignments": [
                         {
                             "assignment_id": a["id"],
+                            "pair_id": a["pair_id"],
                             "judge_actor_id": a["judge_actor_id"],
                             "assigned_by": a["assigned_by"],
                             "assigned_at": a["assigned_at"],
@@ -302,10 +303,41 @@ def export_study(
                     ],
                 }
             )
+        # The pairs (migration 0020): which text each judge saw as "A",
+        # their rankings (every submission; the last counts), and their
+        # condition guesses per text.
+        pairs_out = []
+        for pair in pdb.list_text_pairs_for_study(con, study_id):
+            person = pdb.find_study_participant(con, pair["participant_id"])
+            pairs_out.append(
+                {
+                    "pair_id": pair["id"],
+                    "participant_code": person["participant_code"] if person else None,
+                    "judge_actor_id": pair["judge_actor_id"],
+                    "labels": {"A": pair["label_a_text_id"], "B": pair["label_b_text_id"]},
+                    "assigned_by": pair["assigned_by"],
+                    "assigned_at": pair["assigned_at"],
+                    "queue_position": pair["position"],
+                    "status": pair["status"],
+                    "completed_at": pair["completed_at"],
+                    "rankings": pdb.list_pair_rankings(con, pair["id"]),
+                }
+            )
+        guesses_out = [
+            g
+            for text in text_judging_rows
+            for g in pdb.list_condition_guesses(con, text_id=text["text_id"])
+        ]
         _write_json(
             os.path.join(staging, "text_judging.json"),
             _pseudonymize(
-                {"rubric": text_judging.rubric(), "texts": text_judging_rows}, pseudonyms
+                {
+                    "rubric": text_judging.rubric(),
+                    "texts": text_judging_rows,
+                    "pairs": pairs_out,
+                    "condition_guesses": guesses_out,
+                },
+                pseudonyms,
             ),
         )
         logger.info(

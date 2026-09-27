@@ -275,9 +275,12 @@ class StudyHarness:
     # ── Judging ──
 
     def _run_judging(self, researcher: SimClient):
-        """The panel rates the submitted texts: every judge gets every
-        text (in their own random order), sees it blinded, and gives
-        absolute ratings on the rubric's four dimensions."""
+        """The panel judges the participants' texts as pairs: every judge
+        gets every participant with both texts (in their own random
+        order, with their own A/B labelling), rates each text blinded
+        on the rubric's four dimensions with a justification per
+        dimension, ranks the pair, and — once the queue is done — guesses
+        each text's condition."""
         judge_clients = [self._make_staff("judge", j.label) for j in self.judges]
 
         researcher.get(f"/api/admin/study/{self.study_id}/texts", action="list_texts")
@@ -289,33 +292,68 @@ class StudyHarness:
                 action="assign_texts",
                 note=jp.label,
             )
-            st, queue = jc.get("/api/judge/texts", action="judge_queue")
-            for item in (queue or {}).get("assignments", []):
-                aid = item["assignment_id"]
-                st, view = jc.get(f"/api/judge/texts/{aid}", action="view_text")
+            st, queue = jc.get("/api/judge/pairs", action="judge_queue")
+            guesses: dict[tuple[int, str], dict] = {}
+            for item in (queue or {}).get("pairs", []):
+                pid = item["pair_id"]
+                st, view = jc.get(f"/api/judge/pairs/{pid}", action="view_pair")
                 if st != 200:
                     continue
-                rating = self.driver.judge_text_rating(jp, view)
+                means = {}
+                for label in ("A", "B"):
+                    text_view = {**view["texts"][label], "rubric": view["rubric"]}
+                    rating = self.driver.judge_text_rating(jp, text_view)
+                    scores = rating["ratings"]
+                    means[label] = sum(scores.values()) / max(1, len(scores))
+                    jc.post(
+                        f"/api/judge/pairs/{pid}/rate",
+                        json={
+                            "label": label,
+                            "ratings": scores,
+                            "justifications": {
+                                d: rating.get("justification") or "No particular reason."
+                                for d in scores
+                            },
+                            "seconds_spent": rating.get("seconds_spent"),
+                        },
+                        action="rate_text",
+                        note=f"{jp.label} {label}",
+                    )
+                    guesses[(pid, label)] = {
+                        "guess": rating.get("condition_guess") or "unsure",
+                        "confidence": rating.get("confidence"),
+                    }
+                preferred = "A" if means["A"] >= means["B"] else "B"
                 jc.post(
-                    f"/api/judge/texts/{aid}/rate",
-                    json=rating,
-                    action="rate_text",
+                    f"/api/judge/pairs/{pid}/rank",
+                    json={"preferred": preferred, "seconds_spent": 30},
+                    action="rank_pair",
+                    note=jp.label,
+                )
+            # The guessing pass, after every pair is done.
+            st, todo = jc.get("/api/judge/guesses", action="guess_list")
+            for item in (todo or {}).get("items", []):
+                key = (item["pair_id"], item["label"])
+                g = guesses.get(key, {"guess": "unsure", "confidence": None})
+                jc.post(
+                    "/api/judge/guesses",
+                    json={"pair_id": item["pair_id"], "label": item["label"], **g},
+                    action="guess_condition",
                     note=jp.label,
                 )
                 # Blinding outcome. The ground truth comes from the
                 # platform DB — it is, by design, nowhere in what the
                 # judge was sent.
+                col = "label_a_text_id" if item["label"] == "A" else "label_b_text_id"
                 truth = (
                     get_registry()
                     .platform_con()
                     .execute(
-                        "SELECT x.condition FROM text_assignments a "
-                        "JOIN study_texts x ON x.id = a.text_id WHERE a.id = ?",
-                        [aid],
+                        f"SELECT x.condition FROM text_pair_assignments p "
+                        f"JOIN study_texts x ON x.id = p.{col} WHERE p.id = ?",
+                        [item["pair_id"]],
                     )
                     .fetchone()
                 )
                 if truth is not None:
-                    self.blinding.append(
-                        {"guess": rating.get("condition_guess"), "truth": truth[0]}
-                    )
+                    self.blinding.append({"guess": g["guess"], "truth": truth[0]})
