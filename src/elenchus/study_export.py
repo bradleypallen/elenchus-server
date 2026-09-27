@@ -12,11 +12,13 @@ analyze downstream. Layout inside the archive:
                                        text's condition / participant /
                                        period beside every judge's ratings
                                        (full revision history, newest last)
+      deviations.json                — protocol deviations, every session
       participants.json              — enrolled participants: code, cell
                                        (first condition × first topic),
                                        allocation method — no names
       judging.json                   — packages, assignments, ratings
       sessions/{pseudonym}-{cond}/   — one directory per session
+        deviations.json              — this session's protocol deviations
         session.json                 — lifecycle row (pseudonymized), with the
                                        session's topic
         text.json                    — the submitted text: the judged artifact
@@ -162,6 +164,7 @@ def _pseudonymize(value, pseudonyms: dict[int, str]):
         "created_by",
         "owner_id",
         "participant_actor_id",
+        "logged_by",  # session_deviations: the researcher, or None for the platform
     }
     if isinstance(value, dict):
         out = {}
@@ -324,6 +327,10 @@ def export_study(
                     "first_condition": p["first_condition"],
                     "first_topic": p["first_topic"],
                     "allocation": p["allocation"],
+                    # Screening covariates (Registered Report §2.2).
+                    "ontology_experience": p["ontology_experience"],
+                    "prior_llm_use": p["prior_llm_use"],
+                    "nominated_topic": p["nominated_topic"],
                     "enrolled_at": p["enrolled_at"],
                     "enrolled_by": pseudonyms.get(
                         p["enrolled_by"], f"UNMAPPED-{p['enrolled_by']}"
@@ -334,6 +341,12 @@ def export_study(
         )
         config = pdb.find_study_config(con, study_id)
         _write_json(os.path.join(staging, "study_config.json"), _pseudonymize(config, pseudonyms))
+        # Protocol deviations (Registered Report §2.4, §2.7): logged at the
+        # time, by a researcher (pseudonymized) or the platform (null).
+        _write_json(
+            os.path.join(staging, "deviations.json"),
+            _pseudonymize(pdb.list_session_deviations(con, study_id=study_id), pseudonyms),
+        )
 
         # Seal the archive.
         archive_path = os.path.join(output_dir, f"{archive_name}.tar.gz")
@@ -389,6 +402,10 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
         "allocation": participant["allocation"] if participant else None,
     }
     _write_json(os.path.join(dest, "session.json"), _pseudonymize(session_out, pseudonyms))
+    _write_json(
+        os.path.join(dest, "deviations.json"),
+        _pseudonymize(pdb.list_session_deviations(con, session_id=sid), pseudonyms),
+    )
     _write_json(
         os.path.join(dest, "text.json"),
         _pseudonymize(pdb.find_study_text_for_session(con, sid), pseudonyms),

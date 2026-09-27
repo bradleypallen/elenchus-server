@@ -1324,6 +1324,7 @@ def upsert_study_config(
     min_gap_hours: int,
     actor_id: int,
     task_minutes: int | None = None,
+    max_gap_days: int | None = 21,
 ) -> dict:
     """Create or update a study's setup. `created_by` / `created_at`
     are kept from the first write. `task_minutes` None = the server's
@@ -1331,8 +1332,9 @@ def upsert_study_config(
     if find_study_config(con, study_id) is None:
         con.execute(
             "INSERT INTO study_configs (study_id, topic_a_title, topic_a_brief, "
-            "topic_b_title, topic_b_brief, min_gap_hours, task_minutes, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "topic_b_title, topic_b_brief, min_gap_hours, task_minutes, max_gap_days, "
+            "created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 study_id,
                 topic_a_title,
@@ -1341,6 +1343,7 @@ def upsert_study_config(
                 topic_b_brief,
                 min_gap_hours,
                 task_minutes,
+                max_gap_days,
                 actor_id,
             ],
         )
@@ -1348,6 +1351,7 @@ def upsert_study_config(
         con.execute(
             "UPDATE study_configs SET topic_a_title = ?, topic_a_brief = ?, "
             "topic_b_title = ?, topic_b_brief = ?, min_gap_hours = ?, task_minutes = ?, "
+            "max_gap_days = ?, "
             "updated_at = CURRENT_TIMESTAMP WHERE study_id = ?",
             [
                 topic_a_title,
@@ -1356,6 +1360,7 @@ def upsert_study_config(
                 topic_b_brief,
                 min_gap_hours,
                 task_minutes,
+                max_gap_days,
                 study_id,
             ],
         )
@@ -1365,7 +1370,7 @@ def upsert_study_config(
 def find_study_config(con, study_id: str) -> dict | None:
     row = con.execute(
         "SELECT study_id, topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, "
-        "min_gap_hours, created_by, created_at, updated_at, task_minutes "
+        "min_gap_hours, created_by, created_at, updated_at, task_minutes, max_gap_days "
         "FROM study_configs WHERE study_id = ?",
         [study_id],
     ).fetchone()
@@ -1379,6 +1384,8 @@ def find_study_config(con, study_id: str) -> dict | None:
         },
         "min_gap_hours": row[5],
         "task_minutes": row[9],
+        # The longest a participant's two sessions may be apart; 0 = none.
+        "max_gap_days": row[10],
         "created_by": row[6],
         "created_at": row[7],
         "updated_at": row[8],
@@ -1392,8 +1399,17 @@ def list_study_configs(con) -> list[dict]:
 
 _PARTICIPANT_COLUMNS = (
     "id, study_id, participant_code, display_name, first_condition, first_topic, "
-    "allocation, enrolled_by, enrolled_at, notes"
+    "allocation, enrolled_by, enrolled_at, notes, ontology_experience, prior_llm_use, "
+    "nominated_topic"
 )
+
+# Screening covariates (Registered Report §2.2), recorded at enrolment.
+# Coded levels so they can be exported and used as covariates without
+# a coding pass; '' = not recorded.
+SCREENING_LEVELS: dict[str, tuple[str, ...]] = {
+    "ontology_experience": ("", "none", "some", "extensive"),
+    "prior_llm_use": ("", "none", "occasional", "regular"),
+}
 
 
 def _row_to_participant(row) -> dict:
@@ -1408,6 +1424,9 @@ def _row_to_participant(row) -> dict:
         "enrolled_by": row[7],
         "enrolled_at": row[8],
         "notes": row[9] or "",
+        "ontology_experience": row[10] or "",
+        "prior_llm_use": row[11] or "",
+        "nominated_topic": bool(row[12]),
     }
 
 
@@ -1422,11 +1441,23 @@ def create_study_participant(
     allocation: str,
     enrolled_by: int,
     notes: str = "",
+    ontology_experience: str = "",
+    prior_llm_use: str = "",
+    nominated_topic: bool = False,
 ) -> int:
+    for field, value in (
+        ("ontology_experience", ontology_experience),
+        ("prior_llm_use", prior_llm_use),
+    ):
+        if value not in SCREENING_LEVELS[field]:
+            raise ValueError(
+                f"{field} must be one of {', '.join(v or 'empty' for v in SCREENING_LEVELS[field])}"
+            )
     row = con.execute(
         "INSERT INTO study_participants (study_id, participant_code, display_name, "
-        "first_condition, first_topic, allocation, enrolled_by, notes) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "first_condition, first_topic, allocation, enrolled_by, notes, "
+        "ontology_experience, prior_llm_use, nominated_topic) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         [
             study_id,
             participant_code,
@@ -1436,9 +1467,76 @@ def create_study_participant(
             allocation,
             enrolled_by,
             notes,
+            ontology_experience,
+            prior_llm_use,
+            bool(nominated_topic),
         ],
     ).fetchone()
     return int(row[0])
+
+
+# ── Protocol deviations ──────────────────────────────────────────────
+
+DEVIATION_KINDS = ("technical_failure", "interruption", "ended_early", "timed_out", "other")
+
+
+def create_session_deviation(
+    con, *, session_id: int, kind: str, note: str = "", logged_by: int | None = None
+) -> dict:
+    """Log a protocol deviation against a session, at the time (the
+    registration wants them logged before any text is judged). `logged_by`
+    is the researcher's actor id, or None when the platform itself is
+    the source (a task ended by the clock). Never deleted."""
+    if kind not in DEVIATION_KINDS:
+        raise ValueError(f"kind must be one of {', '.join(DEVIATION_KINDS)}")
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    row = con.execute(
+        "INSERT INTO session_deviations (session_id, kind, note, logged_by, logged_at) "
+        "VALUES (?, ?, ?, ?, ?) RETURNING id, session_id, kind, note, logged_by, logged_at",
+        [session_id, kind, (note or "").strip(), logged_by, now],
+    ).fetchone()
+    return _row_to_deviation(row)
+
+
+def _row_to_deviation(row) -> dict:
+    return {
+        "id": row[0],
+        "session_id": row[1],
+        "kind": row[2],
+        "note": row[3],
+        "logged_by": row[4],
+        "logged_at": row[5],
+    }
+
+
+def list_session_deviations(
+    con, *, session_id: int | None = None, study_id: str | None = None
+) -> list[dict]:
+    """Deviations for one session, or for every session of a study
+    (through the session's token), oldest first."""
+    if session_id is not None:
+        rows = con.execute(
+            "SELECT id, session_id, kind, note, logged_by, logged_at FROM session_deviations "
+            "WHERE session_id = ? ORDER BY id",
+            [session_id],
+        ).fetchall()
+    elif study_id is not None:
+        rows = con.execute(
+            "SELECT d.id, d.session_id, d.kind, d.note, d.logged_by, d.logged_at "
+            "FROM session_deviations d "
+            "JOIN sessions s ON s.id = d.session_id "
+            "JOIN participant_session_tokens t ON t.token = s.study_token "
+            "WHERE t.study_id = ? ORDER BY d.id",
+            [study_id],
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, session_id, kind, note, logged_by, logged_at FROM session_deviations "
+            "ORDER BY id"
+        ).fetchall()
+    return [_row_to_deviation(r) for r in rows]
 
 
 def find_study_participant(con, participant_id: int) -> dict | None:

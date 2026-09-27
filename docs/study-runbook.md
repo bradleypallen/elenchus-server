@@ -51,6 +51,7 @@ itself if nothing has been set up yet).
 | Topic A / Topic B — title | What the participant will see as their topic. |
 | Topic A / Topic B — brief | One or two sentences of framing, shown under the title. |
 | Minimum hours between sessions | How long a participant's second link stays shut after their first session ends. `48` = two days. |
+| Maximum days between a participant's two sessions | `21` unless the study lead says otherwise. **Not enforced** — the second link still opens — but a pair outside it is flagged in the list and in the export, for the analysis. `0` = no maximum. |
 | Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It is a **hard stop**: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant's text is submitted as it stands and their session moves on. Set it before the first participant starts and don't change it afterwards. |
 
 Press **Save study**.
@@ -63,7 +64,11 @@ Press **Save study**.
 ## 3. Enrol a participant
 
 **Study** tab → *Enrol participant*. Type the person's name (or whatever
-label your tracking sheet uses) and press **Enrol**.
+label your tracking sheet uses). Under *From screening*, record what you
+learned when you screened them — their hands-on ontology-engineering
+experience, how much they use LLM tools, and whether they nominated a
+topic; these go into the data beside their code, never their name. Then
+press **Enrol**.
 
 > Use the **ENROL button** — and enrol each person **once**. Every press
 > creates a new participant and uses up a place in the randomization.
@@ -152,6 +157,11 @@ Next to a waiting second session you'll see why it's waiting:
 16:30 CEST"* — shown in **your** time zone. (The participant, if they try
 the link early, is told the same moment in *theirs*.)
 
+A red *sessions more than 21 days apart* next to a participant means
+their second session opened after the study's maximum gap; an amber
+*window closed* means the gap has passed and session 2 hasn't started.
+Neither stops anything — tell the study lead.
+
 Reload the page to refresh the list.
 
 ## 7. When something goes wrong
@@ -162,6 +172,7 @@ Reload the page to refresh the list.
 | "My second link says to do my first session first." | They clicked link 2 before link 1. | Point them to link 1. |
 | "It says my first session is still open" — but they say they finished. | They reached the questionnaires (or earlier) and stopped. | Ask them to open **link 1** again and complete it. |
 | A participant gave up partway and won't be finishing. Their session sits at `tutorial` / `active` forever, and link 2 won't open. | An unfinished first session holds the second one shut. | In the list, press **Close as interrupted** on that session. Everything recorded so far is kept; the session can't be reopened. Link 2 then opens once the gap has passed. **Tell the study lead** — an interrupted session is a protocol deviation to log. |
+| Something went wrong **during** a session — the connection dropped, they had to stop for ten minutes, they left early, anything the protocol didn't allow for. | A protocol deviation. The analysis needs to know, and it must be recorded before any text is judged. | Press **Log deviation** on that session, choose the kind, write what happened and when, and press **Log** — at the time, not later. It can't be edited or deleted; log another if you need to correct one. Closing a session as interrupted logs one by itself, and so does the clock ending a task. |
 | "I closed the window / my laptop died." | Nothing is lost; the text autosaves. | They open the **same link** again. |
 | "The AI isn't answering" / "Couldn't reach the AI service…" / "Something went wrong. Please try again." | A temporary problem reaching the AI. Their text is safe, and the failed message is logged. | Ask them to wait a minute and send the message again. If it persists for more than a few minutes, contact the admin — and note the time. The clock keeps running, so tell the study lead how long they lost. |
 | "This study link has already been used." | The session behind that link is finished. | Expected once they're done. If they *weren't* done, contact the admin with the participant's code. |

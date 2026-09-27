@@ -23,6 +23,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **A study's maximum gap** between a participant's two sessions
+  (`max_gap_days`, default 21, `0` = none). Not enforced: a pair outside it
+  is flagged in the roster (*sessions more than N days apart*, *window
+  closed*) and in the export, for the registered sensitivity analysis.
+- **Screening covariates** recorded at enrolment — hands-on
+  ontology-engineering experience, prior LLM-tool use, whether the person
+  nominated a topic — as coded levels, exported in `participants.json`
+  beside the code.
+- **A protocol deviation log.** *Log deviation* on any session in the
+  Study tab (technical failure, interruption, ended early, other, with a
+  note), at the time; never edited or deleted. Closing a session as
+  interrupted logs one, and so does the clock ending a task (`timed_out`,
+  logged by the platform). `deviations.json` in the export, study-wide and
+  per session. Platform migration `0019`.
+- The welcome page's one condition-specific sentence: how the AI will
+  behave (an ordinary assistant, or one that reads what you say as claims
+  and points out where two may not both hold).
 - **Every inference call now records its identity** — the model the provider
   *reports* having used (`response_model`; the requested name may lack the
   release date), the provider's `request_id`, and the `temperature` and
