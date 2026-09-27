@@ -1764,6 +1764,8 @@ def record_usage(
     attempts: int,
     latency_ms: int,
     purpose: str = "",
+    response_model: str = "",
+    request_id: str = "",
 ) -> int:
     """Insert one row into `usage`. Returns the new row's id.
 
@@ -1777,8 +1779,9 @@ def record_usage(
     row = con.execute(
         "INSERT INTO usage "
         "(actor_id, base_id, model, category, prompt_tokens, "
-        "completion_tokens, cost_usd, attempts, latency_ms, purpose) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "completion_tokens, cost_usd, attempts, latency_ms, purpose, "
+        "response_model, request_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         [
             actor_id,
             base_id,
@@ -1790,6 +1793,8 @@ def record_usage(
             attempts,
             latency_ms,
             purpose,
+            response_model or "",
+            request_id or "",
         ],
     ).fetchone()
     return int(row[0]) if row else -1

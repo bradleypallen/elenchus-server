@@ -172,6 +172,24 @@ def _content_metrics_from(con, base_id: str) -> dict:
         events_by_source = dict(
             con.execute("SELECT source, COUNT(*) FROM state_events GROUP BY source").fetchall()
         )
+        # For the model-stability protocol: what was asked for and what
+        # the provider says it used. A session whose `models_seen` has
+        # more than one entry, or a participant whose two sessions
+        # differ, is the "straddled pair" the analysis plan names.
+        requested_models = [
+            r[0]
+            for r in con.execute(
+                "SELECT DISTINCT model FROM turn_log WHERE model IS NOT NULL AND model <> '' "
+                "ORDER BY model"
+            ).fetchall()
+        ]
+        models_seen = [
+            r[0]
+            for r in con.execute(
+                "SELECT DISTINCT response_model FROM turn_log "
+                "WHERE response_model IS NOT NULL AND response_model <> '' ORDER BY response_model"
+            ).fetchall()
+        ]
     except Exception as e:
         logger.exception("integrity: failed reading content metrics for %r", base_id)
         return {"error": f"content read failed: {e}"}
@@ -202,5 +220,7 @@ def _content_metrics_from(con, base_id: str) -> dict:
             "uncaptured_assistant_turns": int(uncaptured),
             "recovered_parses": int(recovered_parses),
             "state_events": {k: int(v) for k, v in sorted(events_by_source.items())},
+            "requested_models": requested_models,
+            "models_seen": models_seen,
         },
     }

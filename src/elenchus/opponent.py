@@ -17,7 +17,7 @@ from openai import AsyncOpenAI, OpenAI
 
 from . import turn_log
 from .dialectical_state import DialecticalState
-from .llm_client import ChatResult, LLMClient
+from .llm_client import DEFAULT_TEMPERATURE, ChatResult, LLMClient
 from .turn_log import EventContext
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,8 @@ def _make_usage_recorder(
                     attempts=result.attempts,
                     latency_ms=result.latency_ms,
                     purpose=purpose,
+                    response_model=result.response_model,
+                    request_id=result.request_id,
                 )
                 # A call that cost something may have pushed the day
                 # past the spend-alert threshold (cost_alerts.py). Its
@@ -420,6 +422,30 @@ def _parse_tension_id(tid) -> int:
 # never a request with `model=""` (which the API rejects).
 DEFAULT_MODEL = "claude-opus-4-6"
 
+TEMPERATURE_ENV = "ELENCHUS_TEMPERATURE"
+
+
+def _env_temperature() -> float:
+    """`ELENCHUS_TEMPERATURE`, or `llm_client.DEFAULT_TEMPERATURE` when
+    unset, empty or not a number in [0, 2]. Always a number: the value
+    is sent on every call and recorded with it."""
+    raw = (os.environ.get(TEMPERATURE_ENV) or "").strip()
+    if not raw:
+        return DEFAULT_TEMPERATURE
+    try:
+        value = float(raw)
+        if not 0.0 <= value <= 2.0:
+            raise ValueError(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number between 0 and 2; using %s",
+            TEMPERATURE_ENV,
+            raw,
+            DEFAULT_TEMPERATURE,
+        )
+        return DEFAULT_TEMPERATURE
+    return value
+
 
 class Opponent:
     def __init__(
@@ -429,6 +455,7 @@ class Opponent:
         base_url: str | None = None,
         protocol: str | None = None,
         enable_phase_b: bool = False,
+        temperature: float | None = None,
     ):
         """Configure the LLM opponent.
 
@@ -456,14 +483,18 @@ class Opponent:
         self.async_client = self._build_async_client()
         self._has_api_key = bool(api_key or self._env_api_key())
         self.enable_phase_b = enable_phase_b
+        # Sent on every call and recorded with it (the study freezes it).
+        self.temperature = temperature if temperature is not None else _env_temperature()
         self._llm_client = self._build_llm_client()
         logger.info(
-            "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s, phase_b=%s",
+            "Opponent initialized: protocol=%s, model=%s, base_url=%s, api_key_set=%s, "
+            "phase_b=%s, temperature=%s",
             self.protocol,
             model,
             base_url or "(default)",
             self._has_api_key,
             "ON" if enable_phase_b else "off (Sloan-default)",
+            self.temperature,
         )
 
     def reconfigure(
@@ -574,6 +605,7 @@ class Opponent:
             model=self.model,
             sync_client=self.client,
             async_client=self.async_client,
+            temperature=self.temperature,
         )
 
     def _chat(
