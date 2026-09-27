@@ -289,8 +289,11 @@ takes about half an hour, and nothing in it needs anyone else's help.
 11. Enrol "Drop Out", open their session 1 link, stop at the tutorial.
     Back in the list, press **Close as interrupted**.
 12. A practice judge. If you are an admin, [create one](#creating-a-judges-account)
-    and open its invitation link in a private window to sign up; if you
-    are a researcher, ask an admin for one. Then **Judging** → assign all
+    and open its invitation link in a private window to sign up — under
+    an email address that isn't already an account's: one address can't
+    hold two accounts, so if yours is `you@example.org`, sign the judge
+    up as `you+judge@example.org`. If you are a researcher, ask an admin
+    for one. Then **Judging** → assign all
     complete pairs to them (your practice person's two texts are one
     pair); as the judge, in the private window, open the pair, rate both
     texts with a sentence on each dimension, choose the better one and

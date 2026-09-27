@@ -175,6 +175,20 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
     invite = _ok(admin.post("/api/admin/invites", json={"role": "judge"}))
     judge = TestClient(app)
     assert _ok(judge.get(f"/api/auth/invites/{invite['token']}"))["needs_email"] is True
+    # The runbook says to sign the judge up under an address that isn't
+    # already an account's: the admin's own is refused, in plain words,
+    # and the invite is still good afterwards.
+    refused = judge.post(
+        "/api/auth/signup",
+        json={
+            "token": invite["token"],
+            "email_override": "admin@example.org",
+            "display_name": "Practice Judge",
+            "password": "a-practice-password",
+        },
+    )
+    assert refused.status_code == 409, refused.text
+    assert "already exists" in refused.json()["detail"]
     _ok(
         judge.post(
             "/api/auth/signup",
