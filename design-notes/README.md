@@ -53,6 +53,20 @@ needs the protocol frozen, and a suggested order.
 
 Not in the ROADMAP.
 
+### [Conformance to the study's Stage 1 Registered Report](registered-report-conformance.md)
+
+The study's Registered Report manuscript read section by section against
+Elenchus 0.8.4: what the platform implements as described (the crossover,
+the counterbalanced allocation, the washout, the identical editor and
+brief, the instruments, the capture and export), six deviations that bear
+on a registered analysis (judges rating pairs with a ranking, a
+justification per dimension, when the condition guess is asked, seeded and
+concealed allocation, what each inference call records, and the end of
+session), seven smaller gaps, what is outside the platform by design, a
+proposed order, and the decisions the platform is waiting on. Not in the
+ROADMAP; the point is to settle each disagreement, in the code or in the
+text, before registration.
+
 ### [NMMS_Onto integration](nmms-onto-integration.md)
 
 Design notes on extending Elenchus with the NMMS_Onto ontology schemas —
