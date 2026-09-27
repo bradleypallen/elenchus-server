@@ -51,7 +51,7 @@ itself if nothing has been set up yet).
 | Topic A / Topic B — title | What the participant will see as their topic. |
 | Topic A / Topic B — brief | One or two sentences of framing, shown under the title. |
 | Minimum hours between sessions | How long a participant's second link stays shut after their first session ends. `48` = two days. |
-| Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It only drives the clock and its two reminders — nothing is ever cut off. Set it before the first participant starts and don't change it afterwards. |
+| Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It is a **hard stop**: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant's text is submitted as it stands and their session moves on. Set it before the first participant starts and don't change it afterwards. |
 
 Press **Save study**.
 
@@ -247,8 +247,10 @@ takes about half an hour, and nothing in it needs anyone else's help.
    text is still there and the clock kept going.
 6. Close the window entirely. Open the same link again — you're back in
    the task.
-7. Wait for the two time reminders — with a five-minute task they come at
-   one minute and at five. Notice nothing locks.
+7. Wait for the time reminder — with a five-minute task it comes at one
+   minute — and then for the clock to run out: at five minutes the editor
+   locks, the text is submitted as it stands, and the screen says *Time is
+   up*. (Reopen the link afterwards: you are past the task, not back in it.)
 8. Press **Finish session** with a very short text; read the
    confirmation; confirm. Do the questionnaires.
 9. Back in your researcher window, reload: session 1 is `complete`,
