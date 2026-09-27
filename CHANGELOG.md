@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Judges ranked a pair without the texts in view.** The ranking sat below
+  both rating forms, and each text was clipped to a fixed height, so by the
+  time a judge reached "which is better?" both texts had scrolled away. The
+  pair page now puts each text and its form in a column that scrolls on its
+  own, and the ranking with the submit button in a bar that stays at the
+  bottom, so either text can be re-read while choosing.
+
 ## [0.9.0] — 2026-09-27
 
 The platform brought into line with the study's Stage 1 Registered Report
