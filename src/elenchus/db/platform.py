@@ -1543,6 +1543,7 @@ def create_study_text(
     content: str,
     word_count: int,
     active_elapsed_seconds: int | None,
+    submitted_by: str = "participant",
 ) -> int | None:
     """Store a session's submitted text. Written once: returns the new
     row id, or None if the session already has one (a double-clicked
@@ -1551,8 +1552,8 @@ def create_study_text(
         return None
     row = con.execute(
         "INSERT INTO study_texts (session_id, actor_id, condition, topic_title, "
-        "content, word_count, char_count, active_elapsed_seconds) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "content, word_count, char_count, active_elapsed_seconds, submitted_by) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         [
             session_id,
             actor_id,
@@ -1562,6 +1563,7 @@ def create_study_text(
             word_count,
             len(content),
             active_elapsed_seconds,
+            submitted_by,
         ],
     ).fetchone()
     return int(row[0])
@@ -1569,7 +1571,7 @@ def create_study_text(
 
 _STUDY_TEXT_COLUMNS = (
     "id, session_id, actor_id, condition, topic_title, content, word_count, "
-    "char_count, active_elapsed_seconds, submitted_at"
+    "char_count, active_elapsed_seconds, submitted_at, submitted_by"
 )
 
 
@@ -1585,6 +1587,8 @@ def _row_to_study_text(row) -> dict:
         "char_count": row[7],
         "active_elapsed_seconds": row[8],
         "submitted_at": row[9],
+        # 'participant' (pressed FINISH) or 'timeout' (the hard stop).
+        "submitted_by": row[10],
     }
 
 
