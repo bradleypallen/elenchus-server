@@ -13,6 +13,9 @@ analyze downstream. Layout inside the archive:
                                        period beside every judge's ratings
                                        (full revision history, newest last)
       deviations.json                — protocol deviations, every session
+      allocation.json                — the seed's hash, the list's hash, each
+                                       participant's sequence (the seed itself
+                                       is in the side file with the names)
       participants.json              — enrolled participants: code, cell
                                        (first condition × first topic),
                                        allocation method — no names
@@ -61,7 +64,7 @@ import os
 import shutil
 import tarfile
 
-from . import study_text, text_judging, turn_log
+from . import study_enrolment, study_text, text_judging, turn_log
 from .db import get_registry
 from .db import platform as pdb
 from .integrity import compute_base_integrity
@@ -165,6 +168,8 @@ def _pseudonymize(value, pseudonyms: dict[int, str]):
         "owner_id",
         "participant_actor_id",
         "logged_by",  # session_deviations: the researcher, or None for the platform
+        "set_by",  # allocation.json: who set the seed
+        "revealed_by",  # who scheduled session 1
     }
     if isinstance(value, dict):
         out = {}
@@ -359,6 +364,18 @@ def export_study(
                     "first_condition": p["first_condition"],
                     "first_topic": p["first_topic"],
                     "allocation": p["allocation"],
+                    "sequence": study_enrolment.sequence_letter(
+                        study_enrolment.Cell(p["first_condition"], p["first_topic"])
+                    ),
+                    "block_index": p["block_index"],
+                    "revealed_at": p["revealed_at"],
+                    # participants.json is written without `_pseudonymize`
+                    # (its keys are mapped by hand, like `enrolled_by`).
+                    "revealed_by": (
+                        pseudonyms.get(p["revealed_by"], f"UNMAPPED-{p['revealed_by']}")
+                        if p["revealed_by"] is not None
+                        else None
+                    ),
                     # Screening covariates (Registered Report §2.2).
                     "ontology_experience": p["ontology_experience"],
                     "prior_llm_use": p["prior_llm_use"],
@@ -372,7 +389,47 @@ def export_study(
             ],
         )
         config = pdb.find_study_config(con, study_id)
-        _write_json(os.path.join(staging, "study_config.json"), _pseudonymize(config, pseudonyms))
+        seed = (config or {}).get("allocation_seed") or ""
+        public_config = {k: v for k, v in (config or {}).items() if k != "allocation_seed"}
+        _write_json(
+            os.path.join(staging, "study_config.json"), _pseudonymize(public_config, pseudonyms)
+        )
+        # The allocation record (Registered Report §2.1): the hashes that
+        # were deposited, and each participant's sequence. The seed itself
+        # goes in the side file with the names key, not in the archive.
+        planned_n = int((config or {}).get("planned_n") or 48)
+        _write_json(
+            os.path.join(staging, "allocation.json"),
+            _pseudonymize(
+                {
+                    "seeded": bool(seed),
+                    "planned_n": planned_n,
+                    "seed_sha256": study_enrolment.seed_hash(seed) if seed else None,
+                    "list_sha256": (
+                        study_enrolment.allocation_hash(
+                            study_enrolment.allocation_list(seed, planned_n)
+                        )
+                        if seed
+                        else None
+                    ),
+                    "set_by": (config or {}).get("allocation_seed_set_by"),
+                    "set_at": (config or {}).get("allocation_seed_set_at"),
+                    "sequences": [
+                        {
+                            "participant_code": p["participant_code"],
+                            "sequence": study_enrolment.sequence_letter(
+                                study_enrolment.Cell(p["first_condition"], p["first_topic"])
+                            ),
+                            "allocation": p["allocation"],
+                            "block_index": p["block_index"],
+                            "revealed_at": p["revealed_at"],
+                        }
+                        for p in participants
+                    ],
+                },
+                pseudonyms,
+            ),
+        )
         # Protocol deviations (Registered Report §2.4, §2.7): logged at the
         # time, by a researcher (pseudonymized) or the platform (null).
         _write_json(
@@ -395,6 +452,10 @@ def export_study(
                 # person. Same rule as the rest of this file: it stays
                 # with the research team, never in a deposit.
                 "participants": {p["participant_code"]: p["display_name"] for p in participants},
+                # The allocation seed: deposited with the registration by
+                # the person who set it; kept here, beside the names,
+                # never in the archive.
+                "allocation_seed": seed or None,
             },
         )
 

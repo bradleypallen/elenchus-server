@@ -99,6 +99,55 @@ def next_cell(previous: list[Cell], rng: random.Random | None = None) -> Cell:
     return cell
 
 
+# The registration's names for the four sequences: A = Elenchus on topic
+# A first, B = Elenchus on topic B first, C = baseline on topic A first,
+# D = baseline on topic B first.
+SEQUENCE_LETTERS: dict[Cell, str] = {
+    Cell("elenchus", "A"): "A",
+    Cell("elenchus", "B"): "B",
+    Cell("baseline", "A"): "C",
+    Cell("baseline", "B"): "D",
+}
+
+
+def sequence_letter(cell: Cell) -> str:
+    return SEQUENCE_LETTERS[cell]
+
+
+def allocation_list(seed: str, n: int) -> list[Cell]:
+    """The first `n` cells of the allocation list a seed determines:
+    permuted blocks of four, each block a fresh shuffle of the four
+    cells, from `random.Random(seed)`. Deterministic, so the list can
+    be regenerated from the deposited seed and checked against the
+    deposited hash — and extended past `n` without changing its start."""
+    rng = random.Random(seed)
+    cells: list[Cell] = []
+    while len(cells) < n:
+        block = list(ALL_CELLS)
+        rng.shuffle(block)
+        cells.extend(block)
+    return cells[:n]
+
+
+def allocation_hash(cells: list[Cell]) -> str:
+    """SHA-256 of the sequence letters, e.g. of "CADB…" — what is
+    deposited with the registration beside the seed's hash."""
+    import hashlib
+
+    return hashlib.sha256("".join(sequence_letter(c) for c in cells).encode()).hexdigest()
+
+
+def seed_hash(seed: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(seed.encode()).hexdigest()
+
+
+def cell_at(seed: str, index: int) -> Cell:
+    """The cell of the `index`-th block-allocated enrolment (0-based)."""
+    return allocation_list(seed, index + 1)[index]
+
+
 def participant_code(sequence_number: int) -> str:
     """P01, P02, … — a code carries no information about the person or
     their allocation."""

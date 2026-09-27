@@ -18,6 +18,21 @@ of record. Two things in the manuscript are still marked `[Set: …]` and
 bear on the platform directly (the session cutoff and the maximum gap);
 they are called out where they arise and collected in §7.
 
+## Status (2026-09-27)
+
+Everything in §3 and §4 except G4 and G6 has since been built, on the
+manuscript's terms, ahead of the training of 2026-10-01: D1–D3 (pairs,
+a justification per dimension, the guess after the queue), D4 (seeded,
+concealed allocation — the PI chose to build it), D5 (inference
+identity, versions), D6 (a hard stop at the task length, bases frozen
+after the task — the PI settled the cutoff as a hard stop), G1 (maximum
+gap, flagged), G2 (deviation log), G3 (screening covariates in the
+platform), G5 (the condition-specific sentence), G7 (versions in the
+manifest). G4 (the EEQ's five scales) waits for the pilot's revision of
+the instrument; G6 (A/B-coded analysis set) is the analysis script's.
+The manuscript's `[Set:]` values the platform now assumes: a hard
+cutoff at the task length; a maximum gap of 21 days.
+
 ## 1. Where the manuscript's design lives in the platform
 
 | Manuscript | Platform |

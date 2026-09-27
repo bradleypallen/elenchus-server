@@ -95,6 +95,19 @@ Enrol a **person**, not a session (**Study → Enrol participant**, or
 
 ### Counterbalancing
 
+**Randomization.** With an **allocation seed** set on the study (once,
+before the first enrolment, by a team member who will not administer
+sessions), the platform fixes the whole allocation list from the seed —
+permuted blocks of four, regenerable from the seed and checkable against
+the list hash it reports — and keeps each participant's sequence hidden
+from the session administrator until *Schedule session 1* reveals it and
+issues the links. The seed never leaves the server through the API; the
+export carries the seed's hash, the list's hash and each participant's
+sequence letter (A–D), and the seed itself sits in the names-key side
+file. Without a seed, enrolment draws the cell at once from the
+platform's own random source and reveals it — the practice study.
+
+
 Two things vary between participants and either can bias the comparison:
 which *condition* comes first (practice and fatigue carry over), and which
 *topic* is met in which condition (topics differ in difficulty however
@@ -255,7 +268,8 @@ This writes two things:
   |---|---|
   | `manifest.json` | What was exported, and any sessions that failed |
   | `study_config.json` | The study's topics and gap |
-  | `participants.json` | Codes, allocations and screening covariates — **no names** |
+  | `allocation.json` | The seed's hash, the list's hash, planned N, who set the seed, and each participant's sequence letter |
+  | `participants.json` | Codes, allocations, sequence letters and screening covariates — **no names** |
   | `deviations.json` | Every protocol deviation logged, with who logged it (pseudonymized; the platform itself for a task ended by the clock) and when |
   | `text_judging.json` | **Unblinded** analysis set: each text's condition / participant / period beside every judge's ratings (full revision history), plus the rubric wording |
   | `sessions/<id>-<condition>/` | One directory per session: |

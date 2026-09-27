@@ -83,6 +83,8 @@ Enrol a practice person and work through session 1 as them.
 | **Void** a link from the list and open it | Refused; the list shows `voided`. Void the *first* link of a pair: does the second still open? (It should — a voided first token doesn't hold the second.) |
 | Open one link in **two browsers** at once | Both show the same session; no second session is created |
 | Close an in-progress session with **Close as interrupted**, then open its link | Refused; the list shows `interrupted`; **everything captured so far is in the export** |
+| In a study with an **allocation seed**, enrol someone and look for their order or their links anywhere — the roster, the balance line, the export | Nothing until you press **Schedule session 1**; then the order and both links appear, and the export's `allocation.json` gives their sequence letter |
+| Try to set the seed **twice**, or after someone is enrolled | Refused, with the reason |
 | Make a **typo in a topic** after someone is enrolled, then enrol another | The first keeps the old wording; the new one gets the new. (The runbook says: tell the study lead first.) |
 
 ## When the AI fails
