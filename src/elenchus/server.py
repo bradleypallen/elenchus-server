@@ -44,7 +44,7 @@ from .db.registry import SWEEP_INTERVAL_SECONDS
 from .dialectical_state import DialecticalState
 from .llm_client import ChatCategory
 from .material_base import QuerySyntaxError
-from .opponent import LLMCallError, Opponent
+from .opponent import DEFAULT_MODEL, LLMCallError, Opponent
 from .pdf_report import generate_pdf_report
 from .turn_log import EventContext
 
@@ -107,8 +107,14 @@ def _env_phase_b_enabled() -> bool:
     return os.environ.get("ELENCHUS_ENABLE_PHASE_B", "").lower() in ("1", "true", "yes", "on")
 
 
+def _env_model() -> str:
+    """`ELENCHUS_MODEL`, or the default when it is unset *or empty* — an
+    `ELENCHUS_MODEL=` line in an env file must not send `model=""`."""
+    return os.environ.get("ELENCHUS_MODEL") or DEFAULT_MODEL
+
+
 opponent = Opponent(
-    model=os.environ.get("ELENCHUS_MODEL", "claude-opus-4-6"),
+    model=_env_model(),
     api_key=os.environ.get("ELENCHUS_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
     base_url=os.environ.get("ELENCHUS_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL"),
     protocol=os.environ.get("ELENCHUS_PROTOCOL"),
@@ -3594,6 +3600,10 @@ def _run_serve(args) -> None:
     if args.data_dir:
         DATA_DIR = args.data_dir
         os.makedirs(DATA_DIR, exist_ok=True)
+        # The registry was built at import time on the env-derived
+        # directory; without this the server would run on that one
+        # while logging this one (and migrate the wrong platform DB).
+        init_registry(DATA_DIR)
 
     opponent.reconfigure(
         model=args.model,
