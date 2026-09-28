@@ -2744,7 +2744,8 @@ def judge_rank_pair(
 def judge_guesses(actor: dict = Depends(auth.require_judge)):
     """The guessing pass — open only once every pair in the judge's
     queue is rated and ranked: each text, as the judge knows it (pair
-    and label, with its topic), and the judge's latest guess."""
+    and label, with its topic and the text itself, so the guess is made
+    with the text in view), and the judge's latest guess."""
     con = get_registry().platform_con()
     guessing = _guessing(con, actor["id"])
     items = []
@@ -2759,6 +2760,8 @@ def judge_guesses(actor: dict = Depends(auth.require_judge)):
                         "pair_id": pair["id"],
                         "label": label,
                         "topic_title": text.get("topic_title", ""),
+                        "content": text.get("content", ""),
+                        "word_count": text.get("word_count"),
                         "guess": latest["guess"] if latest else None,
                         "confidence": latest["confidence"] if latest else None,
                     }

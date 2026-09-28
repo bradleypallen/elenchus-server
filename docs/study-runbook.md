@@ -281,11 +281,15 @@ takes about half an hour, and nothing in it needs anyone else's help.
    minute — and then for the clock to run out: at five minutes the editor
    locks, the text is submitted as it stands, and the screen says *Time is
    up*. (Reopen the link afterwards: you are past the task, not back in it.)
-8. Press **Finish session** with a very short text; read the
-   confirmation; confirm. Do the questionnaires.
+8. Press **Continue to questionnaires** and do the four of them. The
+   session ends on *All done*.
 9. Back in your researcher window, reload: session 1 is `complete`,
-   **text ✓**, and session 2 no longer says it's waiting.
-10. Do session 2 the same way. Notice the AI behaves differently.
+   **text ✓** with a *timed out* mark, and session 2 no longer says it's
+   waiting.
+10. Do session 2 the same way as far as the main task, and notice the AI
+    behaves differently. This time end the task yourself: press **Finish
+    session** with a very short text, read the warning about its length,
+    and confirm. Then the questionnaires again.
 11. Enrol "Drop Out", open their session 1 link, stop at the tutorial.
     Back in the list, press **Close as interrupted**.
 12. A practice judge. If you are an admin, [create one](#creating-a-judges-account)

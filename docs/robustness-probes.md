@@ -139,7 +139,7 @@ Sign up as the judge from an invitation, assign the complete pairs, and:
 | Submit a pair, reopen, **revise** a rating and the ranking | Both versions are kept; the newest counts. `text_judging.json` in the export shows the history for the ratings and the rankings |
 | Press **assign** twice for the same judge | No duplicates — the second press adds nothing |
 | A second judge on the same pairs | Their queue is in a **different order**, and the same two texts may carry the **other** labels |
-| Look for the *one last step* box before the queue is done | It isn't there; it appears when every pair is done, and the guesses it asks for are per text with a confidence |
+| Look for the *one last step* box before the queue is done | It isn't there; it appears when every pair is done, and the guesses it asks for are per text, each shown again above its question, with a confidence |
 | Give a guess, come back, change it | The newest counts; both are in `condition_guesses` in the export |
 | As the judge, look for any way into the study side — a button, a menu, a URL | There is none; anything you find is a finding |
 

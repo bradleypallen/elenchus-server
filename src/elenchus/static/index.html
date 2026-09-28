@@ -2209,7 +2209,7 @@ function App() {
 
       {/* Center: Messages */}
       <div style={{ overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {messages.map((msg, i) => <Message key={i} msg={msg} fs={fs} />)}
+        {messages.map((msg, i) => <Message key={i} msg={msg} fs={fs} baseline={isBaseline} />)}
         {loading && (
           <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontStyle: 'italic', padding: '8px 0' }}>
             {isBaseline ? 'The assistant is thinking…' : 'Opponent is considering...'}
@@ -2420,7 +2420,7 @@ function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) 
   );
 }
 
-function Message({ msg, fs }) {
+function Message({ msg, fs, baseline }) {
   if (msg.role === 'system' || msg.role === 'error') {
     return (
       <div style={{
@@ -2431,6 +2431,8 @@ function Message({ msg, fs }) {
   }
 
   const isOpp = msg.role === 'opponent';
+  // The baseline condition is an ordinary assistant: no protocol vocabulary.
+  const who = baseline ? (isOpp ? 'Assistant' : 'You') : (isOpp ? 'Opponent' : 'Respondent');
   return (
     <div style={{ display: 'flex', justifyContent: isOpp ? 'flex-start' : 'flex-end' }}>
       <div style={{
@@ -2443,7 +2445,7 @@ function Message({ msg, fs }) {
           fontSize: fs(9), marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase',
           fontFamily: 'var(--mono)',
           color: isOpp ? 'var(--opp)' : 'var(--text-muted)',
-        }}>{isOpp ? 'Opponent' : 'Respondent'}</div>
+        }}>{who}</div>
         {isOpp ? (
           <div className="msg-md" style={{
             fontSize: fs(13), lineHeight: 1.7,
@@ -5543,7 +5545,15 @@ function JudgeGuesses({ fs, onDone }) {
           <div key={key} style={{ padding: '12px 14px', marginBottom: 8, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div style={{ fontFamily: 'var(--sans)', fontSize: fs(13), marginBottom: 8 }}>
               <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)', fontSize: fs(10) }}>PAIR {Math.floor(i / 2) + 1} · TEXT {it.label} </span>{it.topic_title}
+              {it.word_count != null && <span style={{ color: 'var(--text-muted)', fontSize: fs(11) }}> · {it.word_count} words</span>}
             </div>
+            {it.content && (
+              <div style={{
+                maxHeight: 180, overflowY: 'auto', padding: '8px 10px', marginBottom: 10, borderRadius: 4,
+                background: 'var(--surface2)', border: '1px solid var(--border)',
+                fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.6, whiteSpace: 'pre-wrap',
+              }}>{it.content}</div>
+            )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: g.guess && g.guess !== 'unsure' ? 8 : 0 }}>
               {data.options.map(o => (
                 <div key={o.value} onClick={() => set(key, { guess: o.value })} style={pill(g.guess === o.value)}>{o.label}</div>
