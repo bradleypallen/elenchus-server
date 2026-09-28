@@ -5,6 +5,22 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Judges guessed without the text in view.** The last-step page listed
+  each text by topic only; it now shows the text again, with its word
+  count, above the question about how its writer worked.
+- **The runbook's practice run contradicted itself.** Step 7 let the clock
+  end the first session and step 8 then said to press *Finish session*.
+  The steps now end session 1 by the clock and session 2 by hand, and the
+  practice-run test does the same.
+
+### Changed
+
+- The baseline condition's transcript labels its speakers *You* and
+  *Assistant* instead of *Respondent* and *Opponent* — protocol
+  vocabulary in the ordinary-assistant condition.
+
 ### Documentation
 
 - The runbook's practice run now says to sign the practice judge up under

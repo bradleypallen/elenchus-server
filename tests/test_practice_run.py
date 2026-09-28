@@ -127,11 +127,20 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
     assert _ok(reopened.get("/api/study/session"))["state"] == "active"
     assert "Tides rise" in _ok(reopened.get("/api/study/session/text"))["content"]
 
-    # 8. Finish with a very short text; the questionnaires.
-    done = _ok(
-        reopened.post("/api/study/session/finish", json={"content": "Tides rise and fall."})
-    )
-    assert done["state"] == "post_session" and done["text_submitted"]
+    # 7. The clock runs out: the task ends by itself, the text goes in as it
+    # stands, and the link now leads past the task, not back into it.
+    reg = get_registry()
+    with reg.platform_lock:
+        reg.platform_con().execute(
+            "UPDATE sessions SET state_changed_at = state_changed_at - INTERVAL (?) MINUTE "
+            "WHERE id = ?",
+            [6, task["id"]],
+        )
+    done = _ok(reopened.get("/api/study/session"))
+    assert done["state"] == "post_session" and done["text_submitted"] and done["timed_out"]
+    assert reopened.put("/api/study/session/text", json={"content": "too late"}).status_code == 409
+
+    # 8. The questionnaires.
     for instrument in _ok(reopened.get("/api/study/instruments"))["instruments"]:
         answers = {i["id"]: (i["scale_min"] + i["scale_max"]) // 2 for i in instrument["items"]}
         _ok(
@@ -150,12 +159,16 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
     assert sessions[0]["session_state"] == "complete" and sessions[0]["text_submitted"]
     assert sessions[1]["gate"] is None
 
-    # 10. Session 2 now opens.
+    # 10. Session 2 now opens; this time the task is ended by hand, with a
+    # very short text (the page warns about the length; the server takes it).
     two = TestClient(app)
     _ok(two.post(f"/api/study/{second['token']}"))
     _ok(two.post("/api/study/session/begin-tutorial"))
     _ok(two.post("/api/study/session/begin-task"))
-    _ok(two.post("/api/study/session/finish", json={"content": "Clouds are grouped by height."}))
+    ended = _ok(
+        two.post("/api/study/session/finish", json={"content": "Clouds are grouped by height."})
+    )
+    assert ended["state"] == "post_session" and not ended["timed_out"]
 
     # 11. A drop-out, closed as interrupted.
     dropout = _ok(

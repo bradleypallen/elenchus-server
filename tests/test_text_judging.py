@@ -475,7 +475,15 @@ class TestGuessing:
         _complete_pair(jc, queue[1]["pair_id"])
         todo = jc.get("/api/judge/guesses").json()
         assert todo["open"] is True and len(todo["items"]) == 4
-        assert set(todo["items"][0]) == {"pair_id", "label", "topic_title", "guess", "confidence"}
+        assert set(todo["items"][0]) == {
+            "pair_id",
+            "label",
+            "topic_title",
+            "content",
+            "word_count",
+            "guess",
+            "confidence",
+        }
         assert [o["value"] for o in todo["options"]] == ["elenchus", "baseline", "unsure"]
 
     def test_guess_and_revise(self):
@@ -491,6 +499,12 @@ class TestGuessing:
         assert r.status_code == 200
         items = {i["label"]: i for i in jc.get("/api/judge/guesses").json()["items"]}
         assert (items["A"]["guess"], items["A"]["confidence"]) == ("elenchus", 6)
+        # The guess is made with the text in view — and nothing else.
+        for it in items.values():
+            assert it["content"] and isinstance(it["word_count"], int)
+            assert not {"condition", "participant_code", "period", "session_id", "text_id"} & set(
+                it
+            )
         assert items["B"]["guess"] == "unsure"
         # Revise: the newest counts, the earlier is kept.
         jc.post(

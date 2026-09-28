@@ -105,10 +105,11 @@ that count; earlier ones are kept on record, so revising is never
 ## One last question
 
 When **every pair in your queue is done**, a box appears above the list:
-*one last step*. Open it. For each text you rated, you are asked how you
-think its writer worked with the AI — *structured disagreement with the
-AI*, *ordinary chat with the AI*, or *can't tell* — and, unless you chose
-*can't tell*, how sure you are (1 = a guess, 7 = certain).
+*one last step*. Open it. Each text you rated is shown again, and under
+it you are asked how you think its writer worked with the AI —
+*structured disagreement with the AI*, *ordinary chat with the AI*, or
+*can't tell* — and, unless you chose *can't tell*, how sure you are
+(1 = a guess, 7 = certain).
 
 There is no right answer to aim for, and "can't tell" is a perfectly good
 one. It is asked **last**, and only once your ratings are in, so that it
