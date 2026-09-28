@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-09-28
+
 ### Fixed
 
 - **Judges guessed without the text in view.** The last-step page listed
