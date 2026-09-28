@@ -4628,7 +4628,11 @@ function AdminSystemTab({ fs }) {
                 {sys.email.last_delivery && (
                   <div style={{ ...note_, color: sys.email.last_delivery.ok ? 'var(--text-muted)' : 'var(--deny)' }}>
                     Last message ({when(sys.email.last_delivery.at_utc)}, to {sys.email.last_delivery.recipient}):{' '}
-                    {sys.email.last_delivery.ok ? 'accepted by the mail server.' : `not sent. ${sys.email.last_delivery.explanation}`}
+                    {sys.email.last_delivery.ok
+                      ? (sys.email.last_delivery.backend === 'console'
+                          ? 'written to the server log only — no mail backend is set up, so nothing was sent.'
+                          : 'accepted by the mail server.')
+                      : `not sent. ${sys.email.last_delivery.explanation}`}
                     {!sys.email.last_delivery.ok && <div style={{ fontFamily: 'var(--mono)', wordBreak: 'break-all' }}>{sys.email.last_delivery.error}</div>}
                   </div>
                 )}

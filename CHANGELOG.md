@@ -5,6 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The System tab called a console-backend "send" "accepted by the mail
+  server".** With no mail backend the platform only writes the message to
+  the server log; the delivery outcome now records which backend handled
+  it and the tab says the message was written to the log and not sent.
+
+### Changed
+
+- `POST /api/admin/invites` refuses unknown fields (422) instead of
+  dropping them: an `email` where `intended_email` was meant used to issue
+  an invite with no address, so the sign-up form asked for one and the
+  Invites list showed no recipient.
+
 ## [0.9.2] — 2026-09-28
 
 ### Fixed

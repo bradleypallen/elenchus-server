@@ -26,7 +26,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from . import __version__ as elenchus_version
 from . import alerting as alerting_mod
@@ -421,6 +421,10 @@ class SetPasswordRequest(BaseModel):
 
 
 class InviteCreateRequest(BaseModel):
+    # A misspelt field (`email` for `intended_email`) used to be dropped
+    # without a word, issuing an invite with no address; refuse it instead.
+    model_config = ConfigDict(extra="forbid")
+
     role: str
     intended_email: str | None = None
     ttl_days: int | None = 30

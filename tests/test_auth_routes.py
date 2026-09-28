@@ -282,6 +282,38 @@ class TestAdminInvites:
         invites = r.json()["invites"]
         assert len(invites) >= 2
 
+    def test_an_unknown_field_is_refused(self):
+        """`email` for `intended_email` used to be dropped silently — the
+        invite went out with no address and the list showed none."""
+        _make_admin()
+        r = client.post("/api/admin/invites", json={"role": "admin", "email": "s@example.org"})
+        assert r.status_code == 422
+        assert all(
+            i["intended_email"] != "s@example.org"
+            for i in client.get("/api/admin/invites").json()["invites"]
+        )
+
+    def test_a_consumed_invite_keeps_its_recipient_in_the_list(self):
+        _make_admin()
+        token = client.post(
+            "/api/admin/invites", json={"role": "judge", "intended_email": "kept@example.org"}
+        ).json()["token"]
+        peek = client.get(f"/api/auth/invites/{token}").json()
+        assert peek["needs_email"] is False  # the form won't ask for one
+        client.post("/api/auth/logout")
+        client.cookies.clear()
+        r = client.post(
+            "/api/auth/signup", json={"token": token, "display_name": "K", "password": "pw"}
+        )
+        assert r.status_code == 200, r.text
+        client.post("/api/auth/logout")
+        client.cookies.clear()
+        client.post("/api/auth/login", json={"email": "admin@example.com", "password": "admin-pw"})
+        row = next(
+            i for i in client.get("/api/admin/invites").json()["invites"] if i["token"] == token
+        )
+        assert row["consumed_at"] and row["intended_email"] == "kept@example.org"
+
     def test_revoke_invite(self):
         _make_admin()
         r = client.post("/api/admin/invites", json={"role": "user"})

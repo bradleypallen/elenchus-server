@@ -147,7 +147,8 @@ def _explain(error: str) -> str:
 def delivery_status() -> dict | None:
     """The outcome of the most recent send since the server started, or
     None if nothing has been sent: `{ok, at_utc, recipient, subject,
-    error, explanation}`."""
+    error, explanation, backend}`. `backend` is 'console' when the
+    message only went to the server log — ok, but not sent."""
     return dict(_last_delivery) if _last_delivery else None
 
 
@@ -166,6 +167,7 @@ def deliver(recipient: str, subject: str, body: str) -> None:
         error = f"{type(e).__name__}: {e}"[:400]
         _last_delivery = {
             "ok": False,
+            "backend": active_backend(),
             "at_utc": at,
             "recipient": recipient,
             "subject": subject,
@@ -190,6 +192,7 @@ def deliver(recipient: str, subject: str, body: str) -> None:
         raise
     _last_delivery = {
         "ok": True,
+        "backend": active_backend(),
         "at_utc": at,
         "recipient": recipient,
         "subject": subject,
