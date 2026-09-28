@@ -476,7 +476,7 @@ class TestEmailDeliveryIsVisible:
         )
         assert r.json()["emailed"] is True and mail.sent == ["judge@example.org"]
         last = client.get("/api/admin/system").json()["email"]["last_delivery"]
-        assert last["ok"] is True and last["error"] == ""
+        assert last["ok"] is True and last["error"] == "" and last["backend"] == "smtp"
 
     def test_no_address_or_no_backend_is_neither_sent_nor_failed(self, monkeypatch):
         _login("admin")
@@ -486,6 +486,11 @@ class TestEmailDeliveryIsVisible:
             "/api/admin/invites", json={"role": "judge", "intended_email": "j@example.org"}
         )
         assert r.json()["emailed"] is None
+        # The console backend only logs: the System tab must not call that
+        # "accepted by the mail server", so the outcome says which backend.
+        last = client.get("/api/admin/system").json()["email"]["last_delivery"]
+        assert last["ok"] is True and last["backend"] == "console"
+        assert last["recipient"] == "j@example.org"
 
     def test_the_failure_alert_is_not_itself_emailed(self):
         """It would fail the same way and raise the same alert again."""
