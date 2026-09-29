@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-09-29
+
 ### Fixed
 
 - **The consistency check reported every dialectic with a space in its
