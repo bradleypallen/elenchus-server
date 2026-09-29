@@ -7,6 +7,12 @@ platform DB says exists and what's actually on disk. Used by both the
 `elenchus audit` CLI (run by operators) and the `/api/admin/audit`
 endpoint (admin dashboard surface, if/when a UI lands).
 
+A base is registered under its name as typed but stored under the
+sanitized file stem the registry derives from it (spaces and the like
+become underscores), so every comparison between a `bases` row and a
+file goes through `sanitize_base_name` — matching the two verbatim made
+every dialectic with a space in its name look both missing and orphaned.
+
 What it checks:
   * registered_with_file       — `bases` row + scoped file exists
   * registered_missing_file    — `bases` row but file is gone
@@ -29,6 +35,7 @@ import os
 
 from .db import get_registry
 from .db import platform as pdb
+from .db.registry import sanitize_base_name
 from .material_base import MaterialBase
 
 logger = logging.getLogger(__name__)
@@ -115,8 +122,11 @@ def audit_platform(data_dir: str) -> dict:
     scoped = _walk_scoped_files(data_dir)
     flat = _walk_flat_files(data_dir)
 
-    # Group scoped files by base name; we expect base ids to be unique.
-    scoped_by_name: dict[str, tuple[int, str]] = {n: (o, p) for o, n, p in scoped}
+    # Group scoped files by file stem. A registered base is looked up by
+    # the stem its name sanitizes to — the same mapping the registry uses
+    # to place the file.
+    scoped_by_name: dict[str, tuple[int, str]] = {n: (o, n_p) for o, n, n_p in scoped}
+    registered_stems = {sanitize_base_name(base_id) for base_id in bases_rows}
 
     registered_with_file: list[dict] = []
     registered_missing_file: list[dict] = []
@@ -126,8 +136,9 @@ def audit_platform(data_dir: str) -> dict:
 
     # 1. Registered bases: file present or missing?
     for base_id, row in bases_rows.items():
-        if base_id in scoped_by_name:
-            owner_id, path = scoped_by_name[base_id]
+        stem = sanitize_base_name(base_id)
+        if stem in scoped_by_name:
+            owner_id, path = scoped_by_name[stem]
             registered_with_file.append(
                 {
                     "id": base_id,
@@ -142,10 +153,10 @@ def audit_platform(data_dir: str) -> dict:
 
     # 2. Orphan files: scoped or flat, with no `bases` row.
     for owner_id, base_id, path in scoped:
-        if base_id not in bases_rows:
+        if base_id not in registered_stems:
             orphan_scoped.append({"id": base_id, "owner_id": owner_id, "path": path})
     for base_id, path in flat:
-        if base_id not in bases_rows:
+        if base_id not in registered_stems:
             orphan_flat.append({"id": base_id, "path": path})
 
     # 3. Cross-DB actor refs: for every base file we can open, list
