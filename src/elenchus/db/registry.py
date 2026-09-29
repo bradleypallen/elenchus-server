@@ -243,6 +243,15 @@ class _SerializedConnection:
         return getattr(self._con, name)
 
 
+def sanitize_base_name(name: str) -> str:
+    """The file stem a base is stored under: anything but a letter, digit,
+    hyphen or underscore becomes an underscore. `platform.bases.id` keeps
+    the name as typed ("Test dialectic"); the file is `Test_dialectic.duckdb`.
+    Anything that maps a registered name to a file — or a file back to a
+    name — must go through this, or the two will look like strangers."""
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+
+
 class DBRegistry:
     """Process-wide owner of DuckDB connections: the platform connection
     for the registry's lifetime, and a bounded LRU of per-base handles
@@ -385,7 +394,7 @@ class DBRegistry:
 
     @staticmethod
     def _sanitize(name: str) -> str:
-        return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+        return sanitize_base_name(name)
 
     def _lookup_owner(self, name: str) -> int | None:
         """Look up the owner of a base from `platform.bases` without

@@ -92,6 +92,22 @@ class TestAuditPlatform:
         names = [r["id"] for r in report["registered_with_file"]]
         assert names == ["alpha"]
 
+    def test_a_name_with_spaces_is_matched_through_its_file_name(self):
+        """The June dialectics on the PoC box — "Test dialectic", "Darwin
+        Core - core classes" — were reported as both missing and orphaned:
+        the audit compared the registered name to the file stem verbatim,
+        while the registry stores the file under a sanitized stem."""
+        admin_id = _login_as_admin()
+        for name in ("Test dialectic", "Darwin Core - core classes"):
+            assert _create_base_for(admin_id, name).endswith(name.replace(" ", "_") + ".duckdb")
+        report = audit.audit_platform(_test_data_dir)
+        assert sorted(r["id"] for r in report["registered_with_file"]) == [
+            "Darwin Core - core classes",
+            "Test dialectic",
+        ]
+        assert report["registered_missing_file"] == []
+        assert report["orphan_scoped"] == []
+
     def test_registered_but_file_missing(self):
         admin_id = _login_as_admin()
         path = _create_base_for(admin_id, "ghost")

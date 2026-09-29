@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The consistency check reported every dialectic with a space in its
+  name as both missing and orphaned.** A base is registered under its
+  name as typed but stored under a sanitized file stem; the audit compared
+  the two verbatim. It now matches through the registry's own sanitizer
+  (`sanitize_base_name`), so the System tab's check is clean on the PoC
+  box's June dialectics.
+
 ## [0.9.3] — 2026-09-28
 
 ### Fixed
