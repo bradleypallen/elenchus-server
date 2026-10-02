@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-10-02
+
 ### Security
 
 - **An administrator could read, change and delete every dialectic, and
