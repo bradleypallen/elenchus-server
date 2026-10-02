@@ -126,7 +126,7 @@ curl -b cookies.txt -X POST http://localhost:8741/api/sessions/1/derive \
   -H "Content-Type: application/json" \
   -d '{"gamma": ["entity_fixed_aspects"], "delta": ["individuation"]}'
 
-# 7. List your sessions (admins see every base in the platform).
+# 7. List your sessions (your own — an admin's list is their own too).
 curl -b cookies.txt http://localhost:8741/api/sessions
 ```
 

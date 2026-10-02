@@ -5,6 +5,31 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- **An administrator could read, change and delete every dialectic, and
+  opening the admin home page unfroze archived study records.** Admins
+  bypassed the ownership check on all seventeen dialectic routes, and the
+  admin list opened a session of the admin's own on every base it showed;
+  on a study task base that row stood in for the participant's study
+  session, so a submitted session's base accepted edits again. Now only
+  the owner reads, writes or deletes a dialectic — an admin gets the same
+  *not found* as any non-owner; lists hold the caller's own dialectics and
+  create nothing; the study session is found by its token; a study record
+  takes changes only from its own participant and cannot be deleted
+  through the API. Platform migration 22 removes the session rows held by
+  non-owners, and the consistency check reports any that reappear. Until
+  the read-only admin viewer ships, nobody but its owner can open a
+  dialectic in the application.
+
+### Documentation
+
+- **[Who Can See What](docs/data-access.md)** — the policy, in force from
+  this release: what is recorded, who can see it and under what
+  conditions. The decision record is
+  `design-notes/content-access-policy.md`; the admin guide, the runbook's
+  ground rules and the probes page say the same.
+
 ## [0.9.4] — 2026-09-29
 
 ### Fixed

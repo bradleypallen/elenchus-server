@@ -81,6 +81,18 @@ Not currently in the ROADMAP. Optional upgrade when propositional content
 becomes limiting; the propositional approach in Phase B gets ~80% of the value
 at ~5% of the cost.
 
+### [Who may see or change a dialectic](content-access-policy.md)
+
+A decision record. Asked whether an admin could read ordinary users'
+dialogues, the code turned out to let an admin read, write and delete
+every dialectic — and the admin home list quietly unfroze archived study
+records. The note sets the policy (access to someone else's dialogue is
+explicit, read-only, logged and purpose-stated; nobody but the owner
+writes; study records are frozen for everyone), the practices behind it,
+the alternatives rejected, the four work packages (the first built in
+0.9.5) and the rules for whoever adds a route. The user-facing statement
+is [docs/data-access.md](../docs/data-access.md).
+
 ### [Architecture vision](architecture-vision.md)
 
 The broader conceptual framing the speech-act and NMMS_Onto extensions sit

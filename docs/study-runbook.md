@@ -254,6 +254,9 @@ Exports also stay on the server, so you can download one again later.
 - Don't tell participants which condition is which, or what we hope to
   see. Don't help with the *content* of their text.
 - Don't discuss participants with judges.
+- A participant's dialogue is theirs. Nobody on the team opens it in the
+  application, during a session or after; what a session produced reaches
+  you through the export. ([Who Can See What](data-access.md).)
 - Log anything unusual — code, session, time — and tell the study lead.
 - Practise on a separate study id. Never put test people in the real one.
 

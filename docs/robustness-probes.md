@@ -186,7 +186,10 @@ copy**.
 | Issue an invitation **without an email**; open it | Sign-up asks for the email |
 | **Reset password** for a practice account and use the link | Works once; the second use is refused |
 | **Deactivate** the practice judge, then sign in as them | Refused; their ratings are still in the export |
-| **System** → *Consistency check* | Everything registered has a file and every file is registered |
+| On your home page, look for **anyone else's dialectic** — a participant's task or practice record, another account's | Not there: your list is your own, as an admin too |
+| With a practice participant mid-task in a private window, put `/api/dialectics/` plus their task's name into the address bar of **your** admin window | *Not found* — the answer anyone who isn't its owner gets |
+| After a practice session is complete, reopen its link and try to change anything in its record | You are past the task; nothing can be changed, by the participant or by you |
+| **System** → *Consistency check* | Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner |
 
 ## What you can't probe from the browser
 

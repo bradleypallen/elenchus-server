@@ -265,6 +265,16 @@ records whether the participant or the clock submitted. The export is
 still taken by the researcher rather than at the moment of submission —
 which the freeze makes equivalent (see §7).
 
+*Corrected (0.9.5).* The freeze had a hole on the staff side: an admin
+bypassed the ownership check, and the admin home list opened a session of
+the admin's own on every base, which the freeze then mistook for the
+study session — so an archived base took edits again once an admin had
+opened their home page. No real session had been run. Only the owner now
+reaches a dialectic, the study session is found by its token, and a
+study record is never changed or deleted by anyone but its participant
+while their session is on it. See
+[the content-access note](content-access-policy.md).
+
 ## 4. Smaller gaps (as found in 0.8.4, with what was done)
 
 | | Manuscript | Platform at 0.8.4 | Suggested | Done (0.9.0) |

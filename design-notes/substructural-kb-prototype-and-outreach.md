@@ -314,7 +314,10 @@ the tool gave them something. There is nowhere to say so.
 on for every base — every message, every model output, every move. For a
 study participant that is covered by consent. An outreach user signs up
 without being told, and without being asked whether what they make may be
-used.
+used. (Who may *see* it is settled separately, in
+[the content-access note](content-access-policy.md): only the owner,
+with explicit, logged, read-only access for support; the notice and the
+research-use choice are its fourth work package.)
 
 **O9 · The instance speaks for one project.** The landing pages'
 institutions and funding acknowledgement ship inside the package
