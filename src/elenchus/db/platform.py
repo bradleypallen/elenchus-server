@@ -495,6 +495,27 @@ def delete_base(con, base_id: str) -> None:
     con.execute("DELETE FROM bases WHERE id = ?", [base_id])
 
 
+def bases_created_utc(con) -> dict:
+    """`{base_id: created_at as naive UTC}`. `bases.created_at` was filled
+    by CURRENT_TIMESTAMP, i.e. in the server's local zone; convert it the
+    way everything that shows a stored time does."""
+    rows = con.execute(
+        "SELECT id, timezone('UTC', timezone(current_setting('TimeZone'), created_at)) FROM bases"
+    ).fetchall()
+    return {base_id: created for base_id, created in rows}
+
+
+def usage_activity_by_base(con) -> dict:
+    """`{base_id: {"calls": n, "last_at_utc": naive UTC}}` from the usage
+    table alone — activity without opening a single per-base file."""
+    rows = con.execute(
+        "SELECT base_id, COUNT(*), "
+        "timezone('UTC', timezone(current_setting('TimeZone'), MAX(occurred_at))) "
+        "FROM usage WHERE base_id IS NOT NULL GROUP BY base_id"
+    ).fetchall()
+    return {base_id: {"calls": int(calls), "last_at_utc": last} for base_id, calls, last in rows}
+
+
 # ─── Per-actor sessions against a base ────────────────────────────────
 
 
