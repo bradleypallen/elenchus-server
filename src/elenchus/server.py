@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict
 from . import __version__ as elenchus_version
 from . import alerting as alerting_mod
 from . import audit as audit_mod
-from . import auth, invites, secretbox, study_enrolment, study_text, text_judging
+from . import auth, content_access, invites, secretbox, study_enrolment, study_text, text_judging
 from . import backup as backup_mod
 from . import cost_ledger as cost_ledger_mod
 from . import costs as costs_mod
@@ -3949,6 +3949,275 @@ def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
     raise HTTPException(404, f"Dialectic '{name}' not found")
 
 
+def _records_response(filename: str, data: bytes) -> Response:
+    return Response(
+        content=data,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+_STUDY_RECORD_FROM_THE_TEAM = {
+    "study_record": True,
+    "user_message": "This is a study session's record. It isn't downloaded through the "
+    "application — ask the study team.",
+}
+
+
+@app.get("/api/dialectics/{name}/records")
+def download_records(name: str, actor: dict = Depends(auth.current_actor)):
+    """The raw records of one of the caller's **own** dialectics, as a
+    tar.gz: state, transcript, turn log, state events, integrity report
+    and a dump of the per-dialectic database. Your data, no questions
+    asked. A study session's record is not handed out this way."""
+    _authorize_base_access(name, actor)
+    reg = get_registry()
+    con = reg.platform_con()
+    if _study_session_for_base(con, name) is not None:
+        raise HTTPException(409, _STUDY_RECORD_FROM_THE_TEAM)
+    _get_state(name)  # 404 / 422 for a missing or corrupt file
+    filename, data = content_access.build_records_archive(
+        reg, con, base=pdb.find_base(con, name), exported_by="owner"
+    )
+    logger.info("Records of dialectic %r downloaded by its owner (actor %s)", name, actor["id"])
+    return _records_response(filename, data)
+
+
+# ── Looking at a dialectic that isn't yours (admin) ──────────────────
+#
+# The owner's routes above have no staff bypass. What an administrator
+# gets instead is this: a list of metadata, and — with a stated reason,
+# read-only, every fetch logged — the content of one ordinary dialectic
+# at a time (docs/data-access.md; content_access.py). Study records are
+# refused: what a study session produced is in the study export.
+
+_STUDY_RECORD_VIA_EXPORT = {
+    "study_record": True,
+    "user_message": "This is a study session's record. Staff don't open study records in "
+    "the application — what the session produced is in the study export.",
+}
+
+_ADMIN_PDF_NOTE = (
+    "*This copy was produced for an administrator's read-only view of the dialectic. "
+    "It carries no analytical summary.*"
+)
+
+
+class ContentAccessRequest(BaseModel):
+    """Body of the admin content routes. Either a `grant_id` still in
+    its window, or a `category` and `reason` to open one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_id: str
+    grant_id: int | None = None
+    category: str | None = None
+    reason: str | None = None
+
+
+def _grant_public(grant: dict | None) -> dict | None:
+    if grant is None:
+        return None
+    return {
+        "grant_id": grant["id"],
+        "expires_at_utc": content_access.iso(grant["expires_at_utc"]),
+        "category": grant["category"],
+        "category_label": content_access.CATEGORIES.get(grant["category"], grant["category"]),
+        "reason": grant["reason"],
+    }
+
+
+def _admin_content_access(
+    req: ContentAccessRequest, actor: dict, action: str
+) -> tuple[dict, dict | None]:
+    """Settle whether this administrator may fetch this dialectic's
+    content, and record that they did. Returns `(base, grant)`; the grant
+    is None for the administrator's own dialectic, which needs no reason
+    and leaves no record. Study records are refused outright."""
+    reg = get_registry()
+    con = reg.platform_con()
+    base = pdb.find_base(con, req.base_id)
+    if base is None:
+        raise HTTPException(404, {"user_message": "That dialectic no longer exists."})
+    if _study_session_for_base(con, base["id"]) is not None:
+        logger.warning(
+            "Refused: actor %s asked for study record %r (%s)", actor["id"], base["id"], action
+        )
+        raise HTTPException(409, _STUDY_RECORD_VIA_EXPORT)
+    if base["owner_id"] == actor["id"]:
+        return base, None
+    with reg.platform_lock:
+        if req.grant_id is not None:
+            grant = content_access.find_grant(
+                con, req.grant_id, actor_id=actor["id"], base_id=base["id"]
+            )
+            if grant is None:
+                raise HTTPException(
+                    403,
+                    {
+                        "grant_expired": True,
+                        "user_message": "The reason you gave has lapsed — give it again.",
+                    },
+                )
+        else:
+            try:
+                category, reason = content_access.validate_reason(req.category, req.reason)
+            except ValueError as e:
+                raise HTTPException(422, {"user_message": str(e)}) from e
+            grant = content_access.open_grant(
+                con,
+                actor_id=actor["id"],
+                base_id=base["id"],
+                owner_id=base["owner_id"],
+                category=category,
+                reason=reason,
+            )
+        content_access.record(con, grant=grant, action=action)
+    return base, grant
+
+
+@app.get("/api/admin/dialectics")
+def admin_list_dialectics(actor: dict = Depends(auth.require_admin)):
+    """Every dialectic on the platform as **metadata**: its name, whose it
+    is, what kind, when it was last used, how much it has cost, whether
+    it has been looked at. No content, and nothing derived from content —
+    this list is searched and sorted in the dashboard, and a search over
+    what people wrote would be reading it."""
+    con = get_registry().platform_con()
+    actors = {a["id"]: a for a in pdb.list_actors(con, include_deactivated=True)}
+    created = pdb.bases_created_utc(con)
+    activity = pdb.usage_activity_by_base(con)
+    viewed = content_access.summary_by_base(con)
+    out = []
+    for base in pdb.list_bases(con):
+        base_id = base["id"]
+        study = _study_session_for_base(con, base_id)
+        owner = actors.get(base["owner_id"]) or {}
+        if study is None:
+            kind, study_info = "ordinary", None
+            owner_out = {
+                "id": base["owner_id"],
+                "display_name": owner.get("display_name") or "",
+                "email": owner.get("email") or "",
+                "kind": owner.get("kind") or "",
+            }
+        else:
+            kind = "study_practice" if base_id.startswith("practice-") else "study_task"
+            token = pdb.find_participant_token(con, study.get("study_token") or "") or {}
+            participant = (
+                pdb.find_study_participant(con, token["participant_id"])
+                if token.get("participant_id") is not None
+                else None
+            )
+            code = participant["participant_code"] if participant else None
+            study_info = {
+                "study_id": token.get("study_id"),
+                "participant_code": code,
+                "period": token.get("period"),
+                "session_state": study.get("state"),
+            }
+            # The participant's code, not the name typed at enrolment.
+            owner_out = {
+                "id": base["owner_id"],
+                "display_name": f"participant {code}" if code else "study participant",
+                "email": "",
+                "kind": "participant",
+            }
+        usage = pdb.total_cost_for_base(con, base_id)
+        act = activity.get(base_id) or {}
+        out.append(
+            {
+                "base_id": base_id,
+                "name": base["name"],
+                "kind": kind,
+                "viewable": kind == "ordinary",
+                "mine": base["owner_id"] == actor["id"],
+                "owner": owner_out,
+                "study": study_info,
+                "created_at_utc": content_access.iso(created.get(base_id)),
+                "last_activity_at_utc": content_access.iso(act.get("last_at_utc")),
+                "calls": usage["successful_calls"],
+                "tokens": usage["prompt_tokens"] + usage["completion_tokens"],
+                "cost_usd": usage["cost_usd"],
+                "access": viewed.get(base_id),
+            }
+        )
+    return {
+        "dialectics": out,
+        "categories": content_access.categories(),
+        "grant_minutes": content_access.GRANT_MINUTES,
+        "reason_min_chars": content_access.REASON_MIN_CHARS,
+    }
+
+
+@app.post("/api/admin/dialectics/view")
+def admin_view_dialectic(req: ContentAccessRequest, actor: dict = Depends(auth.require_admin)):
+    """One ordinary dialectic, **read-only**: the position and the
+    conversation, as its owner sees them. A POST because it writes — the
+    access log — and carries the reason. Nothing here can change the
+    dialectic."""
+    base, grant = _admin_content_access(req, actor, "view")
+    state = _get_state(base["id"])
+    dialectic = state.to_dict()
+    dialectic["conversation"] = state.get_conversation()
+    owner = pdb.find_actor_by_id(get_registry().platform_con(), base["owner_id"]) or {}
+    return {
+        "base_id": base["id"],
+        "name": base["name"],
+        "read_only": True,
+        "mine": grant is None,
+        "owner": {
+            "display_name": owner.get("display_name") or "",
+            "email": owner.get("email") or "",
+        },
+        "grant": _grant_public(grant),
+        "dialectic": dialectic,
+    }
+
+
+@app.post("/api/admin/dialectics/report.pdf")
+def admin_dialectic_pdf(req: ContentAccessRequest, actor: dict = Depends(auth.require_admin)):
+    """The PDF of one ordinary dialectic for an administrator, under a
+    grant. No model is called: the report carries no analytical summary,
+    so looking costs nothing and writes nothing but the log."""
+    base, _grant = _admin_content_access(req, actor, "pdf")
+    state = _get_state(base["id"])
+    pdf_bytes = generate_pdf_report(state, _ADMIN_PDF_NOTE)
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in base["id"])
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name} - Elenchus Report.pdf"'
+        },
+    )
+
+
+@app.post("/api/admin/dialectics/records")
+def admin_dialectic_records(req: ContentAccessRequest, actor: dict = Depends(auth.require_admin)):
+    """The raw records of one ordinary dialectic for an administrator,
+    under a grant: the same archive its owner can download. For analysis
+    this needs the owner's agreement, which the reason records."""
+    base, _grant = _admin_content_access(req, actor, "records")
+    _get_state(base["id"])
+    reg = get_registry()
+    filename, data = content_access.build_records_archive(
+        reg, reg.platform_con(), base=base, exported_by="administrator"
+    )
+    return _records_response(filename, data)
+
+
+@app.get("/api/admin/access-log")
+def admin_access_log(limit: int = 200, actor: dict = Depends(auth.require_admin)):
+    """Every time someone other than its owner fetched a dialectic's
+    content: who, which, whose, what for, when. Newest first."""
+    con = get_registry().platform_con()
+    return {
+        "entries": content_access.list_log(con, limit=limit),
+        "grant_minutes": content_access.GRANT_MINUTES,
+    }
+
+
 # ── Session-keyed API (primary) ──────────────────────────────────────
 #
 # These are the going-forward routes: a dialectic is addressed by a
@@ -4056,6 +4325,11 @@ def session_report_route(session_id: int, actor: dict = Depends(auth.current_act
 @app.get("/api/sessions/{session_id}/report.pdf")
 def session_report_pdf_route(session_id: int, actor: dict = Depends(auth.current_actor)):
     return download_report_pdf(_resolve_session_base(session_id, actor), actor)
+
+
+@app.get("/api/sessions/{session_id}/records")
+def session_records_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    return download_records(_resolve_session_base(session_id, actor), actor)
 
 
 @app.delete("/api/sessions/{session_id}")
