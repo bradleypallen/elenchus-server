@@ -36,6 +36,7 @@ def _clean():
             "content_access_log",
             "study_texts",
             "participant_session_tokens",
+            "study_participants",
             "study_configs",
             "usage",
             "auth_sessions",
@@ -94,11 +95,17 @@ def _snapshot(name: str) -> dict:
     return {**state.to_dict(), "conversation": state.get_conversation()}
 
 
-def _study_task_base() -> tuple[TestClient, str, int]:
+def _study_task_base(*, development: bool = False) -> tuple[TestClient, str, int]:
     researcher, _ = _as("researcher", "r@example.com")
     researcher.put(
         "/api/admin/study/AD/config",
-        json={"topic_a_title": "A", "topic_b_title": "B", "min_gap_hours": 0, "task_minutes": 5},
+        json={
+            "topic_a_title": "A",
+            "topic_b_title": "B",
+            "min_gap_hours": 0,
+            "task_minutes": 5,
+            "development": development,
+        },
     )
     token = researcher.post(
         "/api/admin/study/tokens",
@@ -400,3 +407,103 @@ class TestTheLog:
         assert alice.delete("/api/dialectics/alice notes").status_code == 200
         (entry,) = admin.get("/api/admin/access-log").json()["entries"]
         assert entry["base_id"] == "alice notes" and entry["base_exists"] is False
+
+
+class TestADevelopmentStudy:
+    """A study the team runs on itself to tune the system (platform
+    migration 0024, docs/data-access.md policy version 3): its records
+    go through the whole participant flow but may be opened in the
+    Dialectics tab under a reason, logged as `study_dev`."""
+
+    def test_its_records_are_viewable_and_logged_as_such(self):
+        p, task_base, session_id = _study_task_base(development=True)
+        get_registry().get(task_base).commit("A spring tide follows a new moon")
+        admin, admin_id = _as("admin", "admin@example.com")
+        rows = {r["base_id"]: r for r in admin.get("/api/admin/dialectics").json()["dialectics"]}
+        for base in (task_base, f"practice-{session_id}"):
+            assert rows[base]["viewable"] is True and rows[base]["study"]["development"] is True
+            assert rows[base]["kind"].startswith("study_")
+            assert "Real Name" not in json.dumps(rows[base])
+        r = admin.post("/api/admin/dialectics/view", json={"base_id": task_base, **REASON})
+        assert r.status_code == 200, r.text
+        assert "spring tide" in json.dumps(r.json())
+        grant = r.json()["grant"]
+        for path in ("report.pdf", "records"):
+            r = admin.post(
+                f"/api/admin/dialectics/{path}",
+                json={"base_id": task_base, "grant_id": grant["grant_id"]},
+            )
+            assert r.status_code == 200, (path, r.text)
+        kinds = _con().execute("SELECT DISTINCT base_kind FROM content_access_log").fetchall()
+        assert kinds == [("study_dev",)]
+        entries = admin.get("/api/admin/access-log").json()["entries"]
+        assert [e["action"] for e in entries] == ["records", "pdf", "view"]
+        assert all(e["base_kind"] == "study_dev" for e in entries)
+        # Still a study record for its participant: not theirs to download.
+        r = p.get(f"/api/dialectics/{task_base}/records")
+        assert r.status_code == 409 and r.json()["detail"]["study_record"] is True
+
+    def test_an_ordinary_study_is_still_refused(self):
+        _, task_base, _ = _study_task_base(development=False)
+        admin, _ = _as("admin", "admin@example.com")
+        r = admin.post("/api/admin/dialectics/view", json={"base_id": task_base, **REASON})
+        assert r.status_code == 409 and r.json()["detail"]["study_record"] is True
+
+    def test_the_flag_and_the_seed_exclude_each_other(self):
+        researcher, _ = _as("researcher", "r@example.com")
+        setup = {"topic_a_title": "A", "topic_b_title": "B", "min_gap_hours": 0}
+        assert (
+            researcher.put(
+                "/api/admin/study/DEV/config", json={**setup, "development": True}
+            ).status_code
+            == 200
+        )
+        assert researcher.get("/api/admin/study/DEV/config").json()["development"] is True
+        r = researcher.post("/api/admin/study/DEV/allocation-seed", json={"seed": "s3cret"})
+        assert r.status_code == 409 and "development study" in r.json()["detail"]["user_message"]
+        assert researcher.put("/api/admin/study/REG/config", json=setup).status_code == 200
+        assert (
+            researcher.post(
+                "/api/admin/study/REG/allocation-seed", json={"seed": "s3cret"}
+            ).status_code
+            == 200
+        )
+        r = researcher.put("/api/admin/study/REG/config", json={**setup, "development": True})
+        assert r.status_code == 422 and "allocation seed" in r.json()["detail"]["user_message"]
+        assert researcher.get("/api/admin/study/REG/config").json()["development"] is False
+
+    def test_the_flag_is_fixed_once_anyone_is_enrolled(self):
+        researcher, _ = _as("researcher", "r@example.com")
+        setup = {"topic_a_title": "A", "topic_b_title": "B", "min_gap_hours": 0}
+        assert researcher.put("/api/admin/study/AD/config", json=setup).status_code == 200
+        # Editing anything else stays open.
+        assert (
+            researcher.put(
+                "/api/admin/study/AD/config", json={**setup, "min_gap_hours": 1}
+            ).status_code
+            == 200
+        )
+        assert (
+            researcher.post(
+                "/api/admin/study/AD/participants", json={"display_name": "Real Name"}
+            ).status_code
+            == 200
+        )
+        r = researcher.put("/api/admin/study/AD/config", json={**setup, "development": True})
+        assert r.status_code == 409 and "enrolled" in r.json()["detail"]["user_message"]
+        assert researcher.get("/api/admin/study/AD/config").json()["development"] is False
+        # And a development study with a link out can't be turned back
+        # (which would make the team's own records look like a real study's).
+        assert (
+            researcher.put(
+                "/api/admin/study/DEV/config", json={**setup, "development": True}
+            ).status_code
+            == 200
+        )
+        researcher.post(
+            "/api/admin/study/tokens",
+            json={"study_id": "DEV", "condition": "elenchus", "display_name": "Team member"},
+        )
+        r = researcher.put("/api/admin/study/DEV/config", json=setup)
+        assert r.status_code == 409
+        assert researcher.get("/api/admin/study/DEV/config").json()["development"] is True

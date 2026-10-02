@@ -541,6 +541,10 @@ class StudyConfigRequest(BaseModel):
     # The longest a participant's two sessions may be apart. Not a gate:
     # a pair outside it is flagged for the sensitivity analysis. 0 = none.
     max_gap_days: int | None = 21
+    # A development study: run by the team on itself to tune the system.
+    # Its sessions' records may be opened in the Dialectics tab. Can't
+    # carry an allocation seed, and can't change once anyone is enrolled.
+    development: bool = False
 
 
 class EnrolParticipantRequest(BaseModel):
@@ -1572,6 +1576,38 @@ def admin_list_study_configs(actor: dict = Depends(auth.require_researcher)):
     }
 
 
+def _check_development_flag(con, study_id: str, before: dict | None, development: bool) -> None:
+    """The development flag is a property of a study's *records*: it
+    says whether the team may open them. So it is set at setup and fixed
+    once anyone has been enrolled or issued a link — flipping an
+    ordinary study to development afterwards would open real
+    participants' records, and flipping a development study back would
+    strand the team's own. And a seeded study is a registered one: never
+    development."""
+    was = bool(before["development"]) if before else False
+    if development == was:
+        return
+    if development and before and before.get("allocation_seed"):
+        raise HTTPException(
+            422,
+            {
+                "user_message": "This study has an allocation seed, so it is a registered "
+                "study; it can't be marked as a development study."
+            },
+        )
+    if before and (
+        pdb.list_study_participants(con, study_id)
+        or pdb.list_participant_tokens(con, study_id=study_id)
+    ):
+        raise HTTPException(
+            409,
+            {
+                "user_message": "Whether a study is a development study is fixed once "
+                "anyone has been enrolled in it. Set up a new study instead."
+            },
+        )
+
+
 @app.put("/api/admin/study/{study_id}/config")
 def admin_set_study_config(
     study_id: str,
@@ -1600,6 +1636,7 @@ def admin_set_study_config(
         raise HTTPException(400, "max_gap_days must be 0 (no maximum) or more")
     reg = get_registry()
     before = pdb.find_study_config(reg.platform_con(), study_id)
+    _check_development_flag(reg.platform_con(), study_id, before, req.development)
     with reg.platform_lock:
         config = pdb.upsert_study_config(
             reg.platform_con(),
@@ -1611,17 +1648,19 @@ def admin_set_study_config(
             min_gap_hours=req.min_gap_hours,
             task_minutes=req.task_minutes,
             max_gap_days=req.max_gap_days if req.max_gap_days is not None else 21,
+            development=req.development,
             actor_id=actor["id"],
         )
     logger.info(
         "Study config set: study=%s topics=(%r, %r) min_gap_hours=%d task_minutes=%s "
-        "(was %s) (by %d)",
+        "(was %s) development=%s (by %d)",
         study_id,
         config["topics"]["A"]["title"],
         config["topics"]["B"]["title"],
         config["min_gap_hours"],
         config["task_minutes"],
         before["task_minutes"] if before else "—",
+        config["development"],
         actor["id"],
     )
     return {**_public_config(config), "default_task_minutes": _task_minutes()}
@@ -3321,6 +3360,26 @@ def _study_session_for_base(con, name: str) -> dict | None:
     return pdb.find_session_by_base(con, name)
 
 
+def _study_of_session(con, session: dict | None) -> dict | None:
+    """The study config a study session belongs to (through its token),
+    or None."""
+    if not session or not session.get("study_token"):
+        return None
+    token = pdb.find_participant_token(con, session["study_token"])
+    if token is None or not token.get("study_id"):
+        return None
+    return pdb.find_study_config(con, token["study_id"])
+
+
+def _is_development_record(con, session: dict | None) -> bool:
+    """Whether a study session's record belongs to a development study —
+    the team's own tuning material, which the Dialectics tab may open
+    (docs/data-access.md, policy version 3). A real study's record is
+    never opened in the application."""
+    study = _study_of_session(con, session)
+    return bool(study and study.get("development"))
+
+
 def _refuse_study_record_deletion(name: str) -> None:
     """A study session's practice and task bases are research records:
     nobody deletes them through the API, their participant included."""
@@ -4037,6 +4096,11 @@ _STUDY_RECORD_VIA_EXPORT = {
     "the application — what the session produced is in the study export.",
 }
 
+# The `base_kind` an access-log row carries for a development study's
+# record (platform migration 0024): opened under a reason like an
+# ordinary dialectic, but the log says what it was.
+DEVELOPMENT_RECORD_KIND = "study_dev"
+
 _ADMIN_PDF_NOTE = (
     "*This copy was produced for an administrator's read-only view of the dialectic. "
     "It carries no analytical summary.*"
@@ -4073,17 +4137,26 @@ def _admin_content_access(
     """Settle whether this administrator may fetch this dialectic's
     content, and record that they did. Returns `(base, grant)`; the grant
     is None for the administrator's own dialectic, which needs no reason
-    and leaves no record. Study records are refused outright."""
+    and leaves no record. Study records are refused outright — except a
+    development study's, which the team may open under a reason, logged
+    with `base_kind` = 'study_dev'."""
     reg = get_registry()
     con = reg.platform_con()
     base = pdb.find_base(con, req.base_id)
     if base is None:
         raise HTTPException(404, {"user_message": "That dialectic no longer exists."})
-    if _study_session_for_base(con, base["id"]) is not None:
-        logger.warning(
-            "Refused: actor %s asked for study record %r (%s)", actor["id"], base["id"], action
-        )
-        raise HTTPException(409, _STUDY_RECORD_VIA_EXPORT)
+    base_kind = "ordinary"
+    study_session = _study_session_for_base(con, base["id"])
+    if study_session is not None:
+        if not _is_development_record(con, study_session):
+            logger.warning(
+                "Refused: actor %s asked for study record %r (%s)",
+                actor["id"],
+                base["id"],
+                action,
+            )
+            raise HTTPException(409, _STUDY_RECORD_VIA_EXPORT)
+        base_kind = DEVELOPMENT_RECORD_KIND
     if base["owner_id"] == actor["id"]:
         return base, None
     with reg.platform_lock:
@@ -4109,6 +4182,7 @@ def _admin_content_access(
                 actor_id=actor["id"],
                 base_id=base["id"],
                 owner_id=base["owner_id"],
+                base_kind=base_kind,
                 category=category,
                 reason=reason,
             )
@@ -4128,11 +4202,13 @@ def admin_list_dialectics(actor: dict = Depends(auth.require_admin)):
     created = pdb.bases_created_utc(con)
     activity = pdb.usage_activity_by_base(con)
     viewed = content_access.summary_by_base(con)
+    development_studies = {c["study_id"] for c in pdb.list_study_configs(con) if c["development"]}
     out = []
     for base in pdb.list_bases(con):
         base_id = base["id"]
         study = _study_session_for_base(con, base_id)
         owner = actors.get(base["owner_id"]) or {}
+        development = False
         if study is None:
             kind, study_info = "ordinary", None
             owner_out = {
@@ -4150,11 +4226,15 @@ def admin_list_dialectics(actor: dict = Depends(auth.require_admin)):
                 else None
             )
             code = participant["participant_code"] if participant else None
+            development = token.get("study_id") in development_studies
             study_info = {
                 "study_id": token.get("study_id"),
                 "participant_code": code,
                 "period": token.get("period"),
                 "session_state": study.get("state"),
+                # A development study's record may be opened; a real
+                # study's never is.
+                "development": development,
             }
             # The participant's code, not the name typed at enrolment.
             owner_out = {
@@ -4170,7 +4250,7 @@ def admin_list_dialectics(actor: dict = Depends(auth.require_admin)):
                 "base_id": base_id,
                 "name": base["name"],
                 "kind": kind,
-                "viewable": kind == "ordinary",
+                "viewable": kind == "ordinary" or development,
                 "mine": base["owner_id"] == actor["id"],
                 "owner": owner_out,
                 "study": study_info,

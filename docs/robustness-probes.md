@@ -194,6 +194,9 @@ copy**.
 | Give a real reason and view it; look for any way to type, accept, contest, retract or delete | There is none: the view is read-only |
 | In the viewer, take the **PDF** and the **Records**; then open **Access log** | Three entries — view, pdf, records — with your name, the owner, the time and your reason; the same three under *Content access* in **System** |
 | Filter to **Study records** and try to open one | No *View* at all: the row says *via export* |
+| Set up a study with **Development study** ticked, run a session in it yourself, then find it under **Study records** | The kind reads *study · task (development)* and **View** is there; it opens under a reason, and the access log entry says *(development study)* |
+| On that development study, try **Set seed**; on a study that has a seed, try to tick **Development study** | Both refused: a development study never carries a seed, and a seeded study is a registered one |
+| Enrol someone in an ordinary practice study, then try to tick **Development study** on it | Refused: the choice is fixed once anyone is enrolled |
 | Open one of **your own** dialectics from the list | No reason asked, and no entry in the log |
 | From one of your own dialectics, press **Records** in the top bar | An archive downloads: the position, the conversation, the turn log, the state events |
 | **System** → *Consistency check* | Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner |

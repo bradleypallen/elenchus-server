@@ -23,6 +23,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   prompts from a directory of same-named files, recorded under their own
   labels; it is refused — logged, packaged prompts used — on an instance
   that carries a study with an allocation seed, whose prompt is frozen.
+- **Development studies.** A study set up with *Development study* ticked
+  is one the team runs on itself to tune the system: its sessions are
+  participant sessions in every respect — practice, task, clock, writing
+  pane, the frozen record — but their records can be opened in the
+  Dialectics tab like any other dialectic, under a reason, read-only,
+  logged (the log says *development study*). A development study can't
+  carry an allocation seed, a seeded study can't be marked, and the mark
+  is fixed once anyone is enrolled, so a real study's records can never
+  be opened by a later edit. Its export's manifest says what it is.
+  Platform migration 24.
+- The System tab shows the **prompt versions** in force (label, hash on
+  hover) and whether a prompt directory override is active.
+
+### Changed
+
+- **[Who Can See What](docs/data-access.md) is at policy version 3**: the
+  development study is the one kind of study record staff may open in
+  the application. Everything else stands.
+- Every exchange's turn-log row and the study export's manifest record
+  the prompt's version label (see *Added*).
 
 ## [0.10.0] — 2026-10-02
 

@@ -54,6 +54,7 @@ itself if nothing has been set up yet).
 | Maximum days between a participant's two sessions | `21` unless the study lead says otherwise. **Not enforced** — the second link still opens — but a pair outside it is flagged in the list and in the export, for the analysis. `0` = no maximum. |
 | Allocation seed | **For the real study only**, and **not by you** if you will run sessions: a team member who won't administer sessions enters any phrase here, once, before the first enrolment, writes it down, and deposits the two hashes the page then shows (of the seed, and of the list it fixes) with the registration. From then on each participant's order and topics are fixed by the list and **hidden from you until you press Schedule session 1**. Leave it empty for a practice study. |
 | Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It is a **hard stop**: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant's text is submitted as it stands and their session moves on. Set it before the first participant starts and don't change it afterwards. |
+| Development study | **Leave unticked for the real study.** Tick it for a study the team runs *on itself* to tune the system (for instance `DEV`): its sessions work exactly like a participant's, but their records can be opened in the **Dialectics** tab under a reason, logged. It can't carry an allocation seed, and the choice is fixed once anyone is enrolled — a real study can never be made into one later. |
 
 Press **Save study**.
 
@@ -256,7 +257,9 @@ Exports also stay on the server, so you can download one again later.
 - Don't discuss participants with judges.
 - A participant's dialogue is theirs. Nobody on the team opens it in the
   application, during a session or after; what a session produced reaches
-  you through the export. ([Who Can See What](data-access.md).)
+  you through the export. The only sessions the team reads in the
+  application are its own, in a study marked *Development study*.
+  ([Who Can See What](data-access.md).)
 - Log anything unusual — code, session, time — and tell the study lead.
 - Practise on a separate study id. Never put test people in the real one.
 

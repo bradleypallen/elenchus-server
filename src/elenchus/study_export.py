@@ -250,6 +250,10 @@ def export_study(
 
         manifest = {
             "study_id": study_id,
+            # A development study is the team's own tuning material, not a
+            # registered run (migration 0024); an analysis must not
+            # mistake its export for one.
+            "development": bool((pdb.find_study_config(con, study_id) or {}).get("development")),
             "export_format_version": EXPORT_FORMAT_VERSION,
             "versions": _versions(con),
             "exported_at": ts,

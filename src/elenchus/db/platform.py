@@ -1362,16 +1362,19 @@ def upsert_study_config(
     actor_id: int,
     task_minutes: int | None = None,
     max_gap_days: int | None = 21,
+    development: bool = False,
 ) -> dict:
     """Create or update a study's setup. `created_by` / `created_at`
     are kept from the first write. `task_minutes` None = the server's
-    default task length."""
+    default task length. `development` marks a study the team runs on
+    itself (migration 0024); the route enforces that it and the
+    allocation seed are exclusive."""
     if find_study_config(con, study_id) is None:
         con.execute(
             "INSERT INTO study_configs (study_id, topic_a_title, topic_a_brief, "
             "topic_b_title, topic_b_brief, min_gap_hours, task_minutes, max_gap_days, "
-            "created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "development, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 study_id,
                 topic_a_title,
@@ -1381,6 +1384,7 @@ def upsert_study_config(
                 min_gap_hours,
                 task_minutes,
                 max_gap_days,
+                bool(development),
                 actor_id,
             ],
         )
@@ -1388,7 +1392,7 @@ def upsert_study_config(
         con.execute(
             "UPDATE study_configs SET topic_a_title = ?, topic_a_brief = ?, "
             "topic_b_title = ?, topic_b_brief = ?, min_gap_hours = ?, task_minutes = ?, "
-            "max_gap_days = ?, "
+            "max_gap_days = ?, development = ?, "
             "updated_at = CURRENT_TIMESTAMP WHERE study_id = ?",
             [
                 topic_a_title,
@@ -1398,6 +1402,7 @@ def upsert_study_config(
                 min_gap_hours,
                 task_minutes,
                 max_gap_days,
+                bool(development),
                 study_id,
             ],
         )
@@ -1408,7 +1413,8 @@ def find_study_config(con, study_id: str) -> dict | None:
     row = con.execute(
         "SELECT study_id, topic_a_title, topic_a_brief, topic_b_title, topic_b_brief, "
         "min_gap_hours, created_by, created_at, updated_at, task_minutes, max_gap_days, "
-        "allocation_seed, allocation_seed_set_by, allocation_seed_set_at, planned_n "
+        "allocation_seed, allocation_seed_set_by, allocation_seed_set_at, planned_n, "
+        "development "
         "FROM study_configs WHERE study_id = ?",
         [study_id],
     ).fetchone()
@@ -1431,6 +1437,10 @@ def find_study_config(con, study_id: str) -> dict | None:
         "allocation_seed_set_by": row[12],
         "allocation_seed_set_at": row[13],
         "planned_n": row[14],
+        # A development study (migration 0024): run by the team on itself;
+        # its records may be opened in the Dialectics tab. Exclusive with
+        # the allocation seed.
+        "development": bool(row[15]),
         "created_by": row[6],
         "created_at": row[7],
         "updated_at": row[8],
@@ -1445,6 +1455,11 @@ def set_allocation_seed(con, *, study_id: str, seed: str, planned_n: int, actor_
         raise LookupError(f"No study '{study_id}'")
     if config["allocation_seed"]:
         raise ValueError("This study's allocation seed is already set; it can't be changed")
+    if config["development"]:
+        raise ValueError(
+            "This is a development study; it can't carry an allocation seed. "
+            "Set up a separate study for the registered run."
+        )
     if not seed.strip():
         raise ValueError("The seed can't be empty")
     if planned_n < 1:
