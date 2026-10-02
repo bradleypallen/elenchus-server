@@ -108,6 +108,28 @@ class TestAuditPlatform:
         assert report["registered_missing_file"] == []
         assert report["orphan_scoped"] == []
 
+    def test_a_session_held_by_a_non_owner_is_reported(self):
+        """Only the owner has a working session on a base; before 0.9.5 the
+        admin home list planted one of the admin's on every base."""
+        admin_id = _login_as_admin()
+        other_id = pdb.create_actor(
+            get_registry().platform_con(),
+            kind="user",
+            email="owner@example.com",
+            display_name="Owner",
+            password_hash=auth.hash_password("pw"),
+        )
+        _create_base_for(other_id, "theirs")
+        reg = get_registry()
+        assert audit.audit_platform(_test_data_dir)["sessions_not_owned"] == []
+        with reg.platform_lock:
+            sid = pdb.create_session(reg.platform_con(), actor_id=admin_id, base_id="theirs")
+            own = pdb.create_session(reg.platform_con(), actor_id=other_id, base_id="theirs")
+        report = audit.audit_platform(_test_data_dir)
+        assert [r["session_id"] for r in report["sessions_not_owned"]] == [sid]
+        assert own not in [r["session_id"] for r in report["sessions_not_owned"]]
+        assert "held by someone other than" in audit.format_report(report)
+
     def test_registered_but_file_missing(self):
         admin_id = _login_as_admin()
         path = _create_base_for(admin_id, "ghost")

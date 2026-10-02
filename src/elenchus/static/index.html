@@ -4601,6 +4601,7 @@ function AdminSystemTab({ fs }) {
     ['orphan_scoped', audit.orphan_scoped],
     ['orphan_flat', audit.orphan_flat],
     ['dangling_actor_refs', audit.dangling_actor_refs],
+    ['sessions_not_owned', audit.sessions_not_owned || []],
     ['owner_mismatch', (audit.registered_with_file || []).filter(r => r.path_owner_matches_row === false)],
   ].filter(([, v]) => Array.isArray(v) && v.length > 0) : [];
 

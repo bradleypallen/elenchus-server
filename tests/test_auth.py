@@ -301,7 +301,9 @@ class TestRequireBaseOwner:
             auth.require_base_owner("b1", actor)
         assert excinfo.value.status_code == 403
 
-    def test_admin_can_access_any_base(self, fresh_registry):
+    def test_admin_is_refused_like_any_non_owner(self, fresh_registry):
+        from fastapi import HTTPException
+
         from elenchus.db import platform as pdb
 
         owner_id = pdb.create_actor(
@@ -320,8 +322,9 @@ class TestRequireBaseOwner:
         )
         pdb.create_base(fresh_registry.platform_con(), base_id="b1", name="B", owner_id=owner_id)
         admin_actor = pdb.find_actor_by_id(fresh_registry.platform_con(), admin_id)
-        base = auth.require_base_owner("b1", admin_actor)
-        assert base["id"] == "b1"
+        with pytest.raises(HTTPException) as excinfo:
+            auth.require_base_owner("b1", admin_actor)
+        assert excinfo.value.status_code == 403  # no staff bypass on ownership
 
     def test_unknown_base_404(self, fresh_registry, actor):
         from fastapi import HTTPException
