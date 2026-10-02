@@ -44,7 +44,7 @@ Migrating a pre-0.2 single-user install? Run `elenchus migrate-legacy
 ## The admin dashboard
 
 Admins see an **ADMIN** button in the home header. It opens a dashboard
-with six tabs:
+with seven tabs:
 
 - **Invites** — issue an invite (pick a role, optionally pin it to an
   email), list outstanding/consumed/expired invites, and revoke unused
@@ -57,6 +57,10 @@ with six tabs:
   (See [Running a Study](study.md) and the [Study Runbook](study-runbook.md).)
 - **Judging** — assign submitted texts to judges and watch the panel's
   progress.
+- **Dialectics** — every dialectic on the platform as a list you can
+  search, filter and sort by name, owner, kind, activity and cost; and,
+  with a reason, a read-only view of one. (See
+  [What an admin can and cannot see](#what-an-admin-can-and-cannot-see).)
 - **Costs** — what the LLM calls have cost (by model, by purpose and per
   study session), a ledger of hosting / domain / email charges, and both
   against their budget lines. (See [Cost and usage](#cost-and-usage).)
@@ -66,7 +70,7 @@ with six tabs:
 
 The Study and Judging tabs drive researcher-gated routes. A `researcher`
 account sees a **STUDY** button instead of ADMIN, opening the same
-dashboard with just those two tabs; an admin sees all six, so a sole
+dashboard with just those two tabs; an admin sees all seven, so a sole
 admin can run a pilot end to end **without a shell on the server** — the
 [Study Runbook](study-runbook.md#if-you-are-the-admin) has the admin's
 click-by-click, and lists the few things that still need server access. **Judge accounts are created by an
@@ -76,17 +80,35 @@ but not create them.
 ### What an admin can and cannot see
 
 An admin runs the platform; that does not include reading what people
-write in it. **Only its owner can open, change or delete a dialectic** —
-your home page lists your own dialectics and nobody else's, and asking
-for someone else's gets the same *not found* anyone would get. What you
-do see is the operational picture: accounts (Users), what the AI has cost
-per account and per study session (Costs), and whether the system is
-healthy (System).
+write in it as a matter of course. **Only its owner can open, change or
+delete a dialectic** — your home page lists your own dialectics and
+nobody else's, and asking for someone else's on the ordinary routes gets
+the same *not found* anyone would get.
 
-A read-only view of a single dialectic for support, with a typed reason
-and a log of every access, is planned; until it ships there is no way to
-open another person's dialectic in the application, and none is needed to
-run a study — what study sessions produce reaches you through the export.
+The **Dialectics** tab is the deliberate exception.
+
+- **The list** is metadata: each dialectic's name, owner, kind, last
+  activity, number of turns and cost, and how often it has been looked
+  at. Search it by name or owner, filter by kind, sort by activity, cost,
+  turns, owner or name. The search does not look inside dialectics.
+- **View** asks why before it shows anything: pick what it is for and
+  write a sentence. You then see the conversation and the position,
+  **read-only** — there is no input box and nothing to accept, contest or
+  retract. One reason covers that dialectic for thirty minutes.
+- **PDF** and **Records**, in the viewer, download the report and the
+  raw records (state, transcript, turn log, state events, a database
+  dump) under the same reason. Records are what you want for offline
+  analysis — and for analysis of someone else's dialectic the reason to
+  give is *Owner agreed to analysis*, after asking them.
+- **Access log** lists every view, PDF and records download of a
+  dialectic by someone other than its owner: who, when, which, whose and
+  why. It can be downloaded, cannot be edited, and the latest entries
+  also show in the System tab. Your own dialectics need no reason and
+  leave no entry.
+- **Study records** appear in the list, by participant code, and cannot
+  be opened here. What a session produced reaches you through the study
+  export.
+
 The whole policy, written for the people whose work it concerns, is
 [Who Can See What](data-access.md).
 

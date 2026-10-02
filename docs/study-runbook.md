@@ -20,7 +20,7 @@ site's address with your email and password.
 | Your account | The button, top right | What you see |
 |---|---|---|
 | `researcher` | **STUDY** | two tabs: **Study** and **Judging** — everything in sections 1–10 |
-| `admin` | **ADMIN** | six tabs: the same two, plus **Invites**, **Users**, **Costs** and **System** — see [If you are the admin](#if-you-are-the-admin) |
+| `admin` | **ADMIN** | seven tabs: the same two, plus **Invites**, **Users**, **Dialectics**, **Costs** and **System** — see [If you are the admin](#if-you-are-the-admin) |
 
 **A researcher can:** set up a study, enrol participants, watch their
 progress, close an abandoned session, assign texts to judges, export and

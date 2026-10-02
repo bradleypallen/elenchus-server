@@ -189,6 +189,13 @@ copy**.
 | On your home page, look for **anyone else's dialectic** — a participant's task or practice record, another account's | Not there: your list is your own, as an admin too |
 | With a practice participant mid-task in a private window, put `/api/dialectics/` plus their task's name into the address bar of **your** admin window | *Not found* — the answer anyone who isn't its owner gets |
 | After a practice session is complete, reopen its link and try to change anything in its record | You are past the task; nothing can be changed, by the participant or by you |
+| **Dialectics** → search for a word that only appears *inside* someone's dialogue | Nothing: the search covers names and owners, never what was written |
+| **Dialectics** → **View** on another account's dialectic, and submit with no reason, then a three-letter one | Refused both times; nothing is shown and nothing appears in the access log |
+| Give a real reason and view it; look for any way to type, accept, contest, retract or delete | There is none: the view is read-only |
+| In the viewer, take the **PDF** and the **Records**; then open **Access log** | Three entries — view, pdf, records — with your name, the owner, the time and your reason; the same three under *Content access* in **System** |
+| Filter to **Study records** and try to open one | No *View* at all: the row says *via export* |
+| Open one of **your own** dialectics from the list | No reason asked, and no entry in the log |
+| From one of your own dialectics, press **Records** in the top bar | An archive downloads: the position, the conversation, the turn log, the state events |
 | **System** → *Consistency check* | Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner |
 
 ## What you can't probe from the browser

@@ -4,7 +4,7 @@ This page says what Elenchus records about your work, who can see it, and
 under what conditions. It applies to every instance run from this code;
 the people running an instance may add to it, never take away from it.
 
-*Policy version 1 — in force from release 0.9.5.*
+*Policy version 2 — in force from release 0.10.0. (Version 1, from 0.9.5, had no administrator view at all.)*
 
 ## The short version
 
@@ -12,8 +12,10 @@ the people running an instance may add to it, never take away from it.
   or delete it. That is true of everyone else on the platform, including
   its administrators.
 - **Reading someone else's dialectic is never a side effect of a role.**
-  When it is allowed at all, it is a deliberate, read-only act with a
-  stated reason, and it is recorded.
+  An administrator can do it only as a deliberate, read-only act with a
+  stated reason, and every time it is recorded.
+- **You can download your own records** — everything the platform holds
+  about one of your dialectics — whenever you like.
 - **A study session's record is frozen** once the session moves on, for
   everyone: the participant, the researchers and the administrators.
 
@@ -43,7 +45,7 @@ resets.
 |---|---|---|---|
 | Writing | you, the owner | everything in your own dialectics | the normal interface |
 | Running the platform | administrators | accounts; the names of dialectics and who owns them; how much AI use each has cost; whether the system is healthy | the dashboard — **no content** |
-| Helping you with a problem | administrators | one dialectic, read-only | only with a stated reason, recorded each time |
+| Helping you with a problem | administrators | one dialectic at a time, read-only: the view, a PDF, the raw records | only with a stated reason, recorded each time |
 | Research | the study team | what study sessions produced, under participant codes rather than names | an export, never the live interface |
 
 Two rules sit above the table.
@@ -61,14 +63,33 @@ to names is a separate file that only an administrator can download, and
 each download is recorded. A study session's practice and task records
 cannot be deleted through the application by anyone.
 
-### Helping you with a problem: not yet available
+### When an administrator looks at your dialectic
 
-The read-only view for administrators, with its reason prompt and its
-log of every access, is being built. **Until it exists, nobody but you
-can open your dialectic in the application at all.** When it arrives, a
-view will require a typed reason, will be read-only by construction, will
-be listed where the other administrator can see it, and will not be
-offered for study records.
+An administrator's dashboard lists every dialectic by name and owner —
+no content, and its search covers names and owners only, never what was
+written. To see what is in one, the administrator must first say why:
+they choose what it is for (you asked for help; a reported problem is
+being investigated; you agreed to its analysis; an abuse or policy
+concern; other) and write a sentence. Only then are they shown the
+dialectic, **read-only**: there is no way to add to it, change it or
+delete it from that view. They can also take its PDF or its raw records
+under the same reason, which lapses after thirty minutes.
+
+Every one of those fetches — each view, each PDF, each download of the
+records — is written to a log with the administrator's name, the time,
+the dialectic, its owner and the reason. The log cannot be edited, the
+other administrator sees it, and it outlives the dialectic. An
+administrator's own dialectics are simply theirs and leave no entry.
+
+This is not offered for study records at all.
+
+### Your own records
+
+From any of your own dialectics, **Records** downloads an archive of
+everything held about it: the position, the conversation, each exchange
+with the AI exactly as it was sent and received, every change to the
+position with its time and source, and a dump of its database. It is
+the same archive an administrator receives under a reason.
 
 ### People with access to the server
 
@@ -80,11 +101,15 @@ service after a mistake or a failure, not as a way to read dialogues.
 
 ## Research use of ordinary dialectics
 
-Dialectics that are not part of a study are **not used for research**.
-A sign-up notice, and a choice about research use that you can withdraw,
-are planned for instances that invite people in outside a study; until
-they exist, ordinary dialectics are recorded only so that the application
-works and so that problems can be diagnosed.
+Dialectics that are not part of a study are **not used for research
+without their owner's agreement**. An administrator who downloads the
+records of someone else's dialectic for analysis does so under the reason
+*the owner agreed to analysis*, which goes in the log like any other; an
+administrator's analysis of their own dialectics is their own business.
+A sign-up notice, and a research-use choice that you can make and
+withdraw inside the application, are planned for instances that invite
+people in outside a study; until they exist, agreement is asked for
+directly and recorded by the administrator.
 
 ## Deleting
 
@@ -100,9 +125,11 @@ The rules above are implemented in the application, not left to
 discipline: the ownership check has no exception for administrators, a
 list of dialectics contains only the caller's own, a study record takes
 changes only from its own participant and only while its session is on
-it, and each of these is covered by automated tests that run on every
-change. The system's consistency check reports any working session held
-by someone other than a dialectic's owner.
+it, an administrator's view goes through one module that refuses to
+answer without a recorded reason and has no code path that writes to a
+dialectic, and each of these is covered by automated tests that run on
+every change. The system's consistency check reports any working session
+held by someone other than a dialectic's owner.
 
 ## Questions
 
