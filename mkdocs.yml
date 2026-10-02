@@ -33,6 +33,7 @@ nav:
       - Cloud Deployment: cloud-deployment.md
   - Architecture: architecture.md
   - Reference:
+      - The Opponent's Prompts: prompts.md
       - ARDS Study (example design): ards-study-design.md
       - EEQ Review Packet: eeq-review.md
       - Session API Migration: session-api-migration.md

@@ -85,6 +85,12 @@ pytest -v
   serving, `WARNING` for the one-off subcommands). `main()` calls
   `logging.basicConfig` because uvicorn configures only its own loggers;
   before 0.8.4 every `logger.info` in the app was silently dropped.
+- `ELENCHUS_PROMPT_DIR` — a directory of prompt files (`elenchus.md`,
+  `baseline.md`, `phase_b.md`, same header format as the packaged ones)
+  that a **development instance** runs instead of the packaged prompts;
+  each turn records the override's label and hash. Refused at startup —
+  logged at ERROR, packaged prompts used — on an instance with a seeded
+  study. See `docs/prompts.md` and "LLM System Prompt Notes".
 - `ELENCHUS_MAX_OPEN_BASES` / `ELENCHUS_BASE_IDLE_SECONDS` — how many
   per-base DuckDB files the server keeps open (default `32`) and how long
   an unused one stays open (default `900`); see `db/registry.py`. Each
@@ -163,7 +169,9 @@ All interactive buttons (accept, contest, retract ×) are disabled while `loadin
 
 ## LLM System Prompt Notes
 
-The opponent system prompt in `opponent.py` includes:
+**The prompts are files, not constants** (`src/elenchus/prompts/`, one per family — `elenchus.md`, `baseline.md`, `phase_b.md` — each a `---` header with `family` / `version` / `date` / `changed` and then the text byte for byte; `prompts.py` is the loader). The `version` is a label `family/YYYY-MM-DD`. `opponent.py` keeps `SLOAN_SYSTEM_PROMPT` / `BASELINE_SYSTEM_PROMPT` / `PHASE_B_SYSTEM_PROMPT` as the *packaged* text (`prompts.packaged`), but the runtime paths (`Opponent._system_prompt`, `baseline_system_prompt`, `_prompt_identity`) go through `prompts.load`, which honours **`ELENCHUS_PROMPT_DIR`** — a directory of same-named files for a development instance — unless the lifespan's `_settle_prompt_override` refused it because a `study_configs` row has an `allocation_seed` (a registered study's prompt is frozen; refusal is logged at ERROR and the packaged text runs). Every turn records `system_prompt_name` (`sloan` / `baseline` / `phase_b`), `system_prompt_version` (base migration `0006`) and `system_prompt_sha256` of the text as sent (the baseline's includes the topic); the export manifest's `versions.prompts` and `GET /api/admin/system` → `prompts` carry the labels, hashes and whether an override is active. **`tests/test_prompts.py` pins each family's label and hash** — a prompt edit must change the file's `version`, the pins, the history table in `docs/prompts.md` and the changelog together; never edit a prompt's text under an existing label.
+
+The Elenchus opponent prompt includes:
 - **UI-DRIVEN ACTIONS** section — instructs the LLM not to re-issue speech acts for actions already applied via UI, and to respond substantively rather than noting the state was already updated
 - **PROPOSITION QUALITY** — clean, atomic, declarative sentences only; no metadata annotations
 - **TENSION CONSTRUCTION** — gamma must be verbatim from C; delta should preferentially target propositions in D

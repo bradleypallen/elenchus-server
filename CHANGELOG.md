@@ -5,6 +5,25 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The opponent's prompts are versioned files** (`src/elenchus/prompts/`),
+  one per family — `elenchus`, `baseline`, `phase_b` — each with a label
+  (`elenchus/2026-06-10` …), a date and a note on what the revision
+  changed; the text is byte-identical to the constants it replaces, so
+  every hash recorded so far still matches. Every exchange with the LLM
+  now records the prompt's **version label** beside its name and hash
+  (base migration 6); the export manifest, the System tab and the server
+  log at startup list the label and hash of each family in force. A test
+  pins each label and hash, so a prompt cannot change without its label,
+  the history page and this changelog changing with it. The history and
+  the revision procedure are on the new docs page *The Opponent's
+  Prompts*.
+- **`ELENCHUS_PROMPT_DIR`** lets a development instance run candidate
+  prompts from a directory of same-named files, recorded under their own
+  labels; it is refused — logged, packaged prompts used — on an instance
+  that carries a study with an allocation seed, whose prompt is frozen.
+
 ## [0.10.0] — 2026-10-02
 
 ### Added
