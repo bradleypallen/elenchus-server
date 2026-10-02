@@ -73,6 +73,23 @@ click-by-click, and lists the few things that still need server access. **Judge 
 admin** (invite with role `judge`) — researchers can assign work to judges
 but not create them.
 
+### What an admin can and cannot see
+
+An admin runs the platform; that does not include reading what people
+write in it. **Only its owner can open, change or delete a dialectic** —
+your home page lists your own dialectics and nobody else's, and asking
+for someone else's gets the same *not found* anyone would get. What you
+do see is the operational picture: accounts (Users), what the AI has cost
+per account and per study session (Costs), and whether the system is
+healthy (System).
+
+A read-only view of a single dialectic for support, with a typed reason
+and a log of every access, is planned; until it ships there is no way to
+open another person's dialectic in the application, and none is needed to
+run a study — what study sessions produce reaches you through the export.
+The whole policy, written for the people whose work it concerns, is
+[Who Can See What](data-access.md).
+
 ## Accounts and invites
 
 Signup is **invite-only** by default (`platform_settings.signup_mode =
