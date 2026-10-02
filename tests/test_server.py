@@ -290,7 +290,7 @@ class TestAuthorization:
         assert "mine1" not in names
         assert "mine2" not in names
 
-    def test_admin_sees_all_dialectics(self):
+    def test_admin_sees_only_their_own_dialectics(self):
         # Default user creates a dialectic.
         client.post("/api/dialectics", json={"name": "userbase"})
 
@@ -307,9 +307,9 @@ class TestAuthorization:
         r = client.get("/api/dialectics")
         assert r.status_code == 200
         names = [d["name"] for d in r.json()]
-        assert "userbase" in names
+        assert "userbase" not in names  # an admin's list is their own (docs/data-access.md)
 
-    def test_admin_can_access_any_dialectic(self):
+    def test_admin_cannot_open_someone_elses_dialectic(self):
         client.post("/api/dialectics", json={"name": "userbase"})
 
         admin_id = pdb.create_actor(
@@ -322,7 +322,7 @@ class TestAuthorization:
         client.cookies.clear()
         client.cookies.set(auth.SESSION_COOKIE, auth.create_session(admin_id))
         r = client.get("/api/dialectics/userbase")
-        assert r.status_code == 200
+        assert r.status_code == 404  # the same answer any non-owner gets
 
 
 # ── Tensions ──

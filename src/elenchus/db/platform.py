@@ -571,13 +571,19 @@ def find_study_session(con, session_id: int) -> dict | None:
 
 
 def find_session_by_base(con, base_id: str) -> dict | None:
-    """The study session whose task base is `base_id`, newest first, with
-    the state-machine columns — how a mutation route learns whether the
-    base it is about to change still belongs to a task in progress."""
+    """The **study** session whose task base is `base_id`, with the
+    state-machine columns — how a mutation route learns whether the base
+    it is about to change still belongs to a task in progress.
+
+    Selected by its study token, not by recency: an ordinary session row
+    on the same base (the admin home list used to create one for every
+    base it showed, with the column default `state='active'`) must never
+    stand in for the study session, or a closed record reads as open."""
     row = con.execute(
         "SELECT id, actor_id, base_id, opened_at, closed_at, status, "
         "state, state_changed_at, study_token, condition "
-        "FROM sessions WHERE base_id = ? ORDER BY id DESC LIMIT 1",
+        "FROM sessions WHERE base_id = ? AND study_token IS NOT NULL "
+        "ORDER BY id DESC LIMIT 1",
         [base_id],
     ).fetchone()
     if row is None:

@@ -13,7 +13,6 @@ Or:  uvicorn elenchus.server:app --reload
 
 import asyncio
 import contextlib
-import glob
 import logging
 import os
 import sys
@@ -21,7 +20,6 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
@@ -213,20 +211,27 @@ def _get_state(name: str) -> DialecticalState:
 
 
 def _authorize_base_access(name: str, actor: dict) -> None:
-    """Verify the current actor is authorized to access the named
-    dialectic. Admins can access any base; other roles can only access
-    bases they own.
+    """Verify the current actor **owns** the named dialectic — the only
+    authorization there is on the working routes.
 
-    Looks up the base in `platform.bases` (id = sanitized name).
-    Non-owners and missing-base responses both return 404 — leaking
-    that a name exists but is owned by someone else is an information
-    leak. Admins bypass ownership entirely.
+    There is no staff bypass: an admin is refused exactly like any other
+    non-owner. Reading someone else's dialectic is a separate, explicit
+    act (read-only, with a stated reason, logged — docs/data-access.md);
+    it never happens through the owner's routes, which can also write and
+    delete. Non-owners and missing bases both get 404 — saying that a
+    name exists but belongs to someone else is a leak. A legacy flat file
+    with no `bases` row has no owner, so nobody reaches it until
+    `elenchus migrate-legacy` registers it.
     """
-    if actor.get("kind") == "admin":
-        return  # admins bypass ownership
-
     base = pdb.find_base(get_registry().platform_con(), name)
     if base is None or base["owner_id"] != actor["id"]:
+        if base is not None:
+            logger.info(
+                "Refused: actor %s (%s) is not the owner of dialectic %r",
+                actor.get("id"),
+                actor.get("kind"),
+                name,
+            )
         raise HTTPException(404, f"Dialectic '{name}' not found")
 
 
@@ -241,15 +246,15 @@ def _resolve_session_base(session_id: int, actor: dict) -> str:
     session-keyed API. Returns the base name (the internal storage key).
 
     Missing sessions and sessions owned by another actor BOTH return 404
-    — the same name-existence leak-prevention posture as base access.
-    Admins bypass ownership. Sessions without a bound base (e.g. a study
+    — the same name-existence leak-prevention posture as base access;
+    an admin is a non-owner like any other. Sessions without a bound base (e.g. a study
     session still in briefing) are treated as not-found for this API,
     which only addresses working dialectic sessions.
     """
     sess = pdb.find_session(get_registry().platform_con(), session_id)
     if sess is None or sess.get("base_id") is None:
         raise HTTPException(404, f"Session {session_id} not found")
-    if sess["actor_id"] != actor["id"] and actor.get("kind") != "admin":
+    if sess["actor_id"] != actor["id"]:
         raise HTTPException(404, f"Session {session_id} not found")
     return sess["base_id"]
 
@@ -3253,23 +3258,60 @@ async def _end_task_by_timeout(session: dict) -> dict:
     return updated
 
 
-def _refuse_if_closed(name: str) -> None:
-    """A study base accepts changes only while its session is on it:
-    the practice base during the tutorial, the task base during the
-    task and before the task length. After that the record is closed —
-    the archived base is the state at submission and is never edited."""
-    con = get_registry().platform_con()
+def _study_session_for_base(con, name: str) -> dict | None:
+    """The study session a base is the record of — its practice base
+    (`practice-{session_id}`, owned by the session's own actor) or its
+    task base — or None for an ordinary dialectic. Found by what makes it
+    a study session (the token), never by "the newest session on this
+    base"."""
     if name.startswith("practice-"):
         try:
             session = pdb.find_study_session(con, int(name.split("-", 1)[1]))
         except ValueError:
-            return
-        open_state = "tutorial"
-    else:
-        session = pdb.find_session_by_base(con, name)
-        open_state = "active"
+            return None
+        base = pdb.find_base(con, name)
+        if (
+            session is None
+            or not session.get("study_token")
+            or base is None
+            or base["owner_id"] != session["actor_id"]
+        ):
+            return None  # somebody's ordinary dialectic that happens to be called practice-N
+        return session
+    return pdb.find_session_by_base(con, name)
+
+
+def _refuse_study_record_deletion(name: str) -> None:
+    """A study session's practice and task bases are research records:
+    nobody deletes them through the API, their participant included."""
+    if _study_session_for_base(get_registry().platform_con(), name) is not None:
+        logger.warning("Refused: deletion of study record %r", name)
+        raise HTTPException(
+            409, {"user_message": "This is a study session's record and can't be deleted."}
+        )
+
+
+def _refuse_if_closed(name: str, actor: dict) -> None:
+    """A study base accepts changes only while its session is on it, and
+    only from that session's own participant: the practice base during
+    the tutorial, the task base during the task and before the task
+    length. After that the record is closed — the archived base is the
+    state at submission and is never edited, by anyone."""
+    con = get_registry().platform_con()
+    session = _study_session_for_base(con, name)
     if session is None:
         return
+    if session["actor_id"] != actor["id"]:
+        # Belt and braces — the ownership check has already refused this.
+        logger.warning(
+            "Refused: actor %s (%s) tried to change study record %r of session %s",
+            actor.get("id"),
+            actor.get("kind"),
+            name,
+            session["id"],
+        )
+        raise HTTPException(404, f"Dialectic '{name}' not found")
+    open_state = "tutorial" if name.startswith("practice-") else "active"
     if session["state"] != open_state:
         raise HTTPException(409, _RECORD_CLOSED)
     if open_state == "active" and _time_is_up(session):
@@ -3658,26 +3700,13 @@ def create_dialectic(req: CreateRequest, actor: dict = Depends(auth.current_acto
 
 @app.get("/api/dialectics")
 def list_dialectics(actor: dict = Depends(auth.current_actor)):
-    """List the current actor's dialectics. Admins see every base in
-    the platform; other actors see only their own."""
+    """List the current actor's own dialectics — for an admin too. A
+    legacy flat-layout file with no `bases` row has no owner and is
+    listed for nobody; the consistency check reports it and
+    `elenchus migrate-legacy` registers it."""
     reg = get_registry()
-    if actor.get("kind") == "admin":
-        # Walk `platform.bases` for the canonical list, then top up with
-        # any legacy flat-layout files that lack a `bases` row (still
-        # readable; `migrate-legacy` will register them).
-        rows = pdb.list_bases(reg.platform_con())
-        basenames = [r["id"] for r in rows]
-        seen = set(basenames)
-        for f in sorted(glob.glob(os.path.join(DATA_DIR, "*.duckdb"))):
-            if os.path.basename(f) == "platform.duckdb":
-                continue
-            stem = Path(f).stem
-            if stem not in seen:
-                basenames.append(stem)
-                seen.add(stem)
-    else:
-        rows = pdb.list_bases_for_actor(reg.platform_con(), actor["id"])
-        basenames = [r["id"] for r in rows]
+    rows = pdb.list_bases_for_actor(reg.platform_con(), actor["id"])
+    basenames = [r["id"] for r in rows]
 
     result = []
     for basename in basenames:
@@ -3738,7 +3767,7 @@ async def send_message(
     """
     _authorize_base_access(name, actor)
     _get_state(name)  # 404 / 422 for a missing or corrupt file
-    _refuse_if_closed(name)
+    _refuse_if_closed(name, actor)
 
     # Sloan-condition routing: if the caller has an active study session
     # in the BASELINE condition bound to *this* base, dispatch to the
@@ -3813,7 +3842,7 @@ def resolve_tension(
 ):
     """Accept or contest a tension directly (bypassing the oracle)."""
     state = _authorize_and_get_state(name, actor)
-    _refuse_if_closed(name)
+    _refuse_if_closed(name, actor)
     logger.info("Tension action: dialectic=%s, tension=#%d, action=%s", name, tid, req.action)
     # Phase 1 of the two-phase UI flow mutates state without the LLM;
     # the event context is what marks the change as a button press in
@@ -3838,7 +3867,7 @@ def resolve_tension(
 def retract(name: str, req: RetractRequest, actor: dict = Depends(auth.current_actor)):
     """Retract a proposition directly."""
     state = _authorize_and_get_state(name, actor)
-    _refuse_if_closed(name)
+    _refuse_if_closed(name, actor)
     logger.info("Retract: dialectic=%s, proposition=%r", name, req.proposition)
     state.retract_prop(req.proposition, event=EventContext(source="ui", actor_id=actor["id"]))
     return {"retracted": req.proposition, "state": state.to_dict()}
@@ -3902,9 +3931,11 @@ def download_report_pdf(name: str, actor: dict = Depends(auth.current_actor)):
 
 @app.delete("/api/dialectics/{name}")
 def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
-    """Delete a dialectic. Removes the per-base file, the registry
-    cache entry, and the platform `bases` row."""
+    """Delete one of the caller's own dialectics. Removes the per-base
+    file, the registry cache entry, and the platform `bases` row. A study
+    session's record is never deleted this way."""
     _authorize_base_access(name, actor)
+    _refuse_study_record_deletion(name)
     reg = get_registry()
     reg.remove(name)  # idempotent
     path = reg.db_path(name)
@@ -3939,16 +3970,16 @@ def create_session_route(req: CreateRequest, actor: dict = Depends(auth.current_
 
 @app.get("/api/sessions")
 def list_sessions_route(actor: dict = Depends(auth.current_actor)):
-    """List the current actor's sessions (admins: every base), each with
-    its base name + position counts. Bases that predate session-keying
-    get a session opened lazily here, so existing dialectics surface with
-    a stable id."""
+    """List the current actor's own sessions — for an admin too — each
+    with its base name + position counts. One of the actor's own bases
+    that predates session-keying gets a session opened lazily here, so it
+    surfaces with a stable id. Nothing is ever created for a base the
+    actor doesn't own: this route used to open a session of the admin's
+    on every base in the platform, and those rows are how archived study
+    bases came unfrozen (see `pdb.find_session_by_base`)."""
     reg = get_registry()
     con = reg.platform_con()
-    if actor.get("kind") == "admin":
-        bases = [r["id"] for r in pdb.list_bases(con)]
-    else:
-        bases = [r["id"] for r in pdb.list_bases_for_actor(con, actor["id"])]
+    bases = [r["id"] for r in pdb.list_bases_for_actor(con, actor["id"])]
 
     existing = {
         s["base_id"]: s["id"]
@@ -4030,6 +4061,8 @@ def session_report_pdf_route(session_id: int, actor: dict = Depends(auth.current
 @app.delete("/api/sessions/{session_id}")
 def session_delete_route(session_id: int, actor: dict = Depends(auth.current_actor)):
     base = _resolve_session_base(session_id, actor)
+    _authorize_base_access(base, actor)
+    _refuse_study_record_deletion(base)
     reg = get_registry()
     with reg.platform_lock:
         pdb.close_session(reg.platform_con(), session_id)

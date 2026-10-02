@@ -366,12 +366,13 @@ def require_judge(request: Request) -> dict:
 
 
 def require_base_owner(base_id: str, actor: dict) -> dict:
-    """Assert that `actor` owns the given base. Raises 403 otherwise.
+    """Assert that `actor` owns the given base. Raises 403 otherwise —
+    for an admin too: there is no staff bypass on ownership.
     Returns the base dict on success, 404 if the base doesn't exist."""
     con = get_registry().platform_con()
     base = pdb.find_base(con, base_id)
     if base is None:
         raise HTTPException(status_code=404, detail=f"Base '{base_id}' not found")
-    if base.get("owner_id") != actor.get("id") and actor.get("kind") != "admin":
+    if base.get("owner_id") != actor.get("id"):
         raise HTTPException(status_code=403, detail="You do not own this base")
     return base

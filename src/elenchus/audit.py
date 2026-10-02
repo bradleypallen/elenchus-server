@@ -21,6 +21,11 @@ What it checks:
   * actor_refs_with_no_actor   — per-base contributor_id/actor_id pointing
                                  at an actor that doesn't exist (cross-DB
                                  drift)
+  * sessions_not_owned         — a working session held by someone other
+                                 than the base's owner. Only the owner has
+                                 one (docs/data-access.md); such a row on a
+                                 study task base once stood in for the
+                                 study session and unfroze the record.
 
 The audit reopens per-base files read-only via `MaterialBase.open` so
 the migration runner stays consistent; this means an audit run also
@@ -170,12 +175,24 @@ def audit_platform(data_dir: str) -> dict:
         if missing:
             dangling_actor_refs.append({"path": path, "missing_actor_ids": missing})
 
+    # 4. Only the owner holds a working session on a base. Study sessions
+    # (they carry a token) belong to their participant by construction.
+    sessions_not_owned = [
+        {"session_id": sid, "actor_id": actor_id, "base_id": base_id, "owner_id": owner_id}
+        for sid, actor_id, base_id, owner_id in con.execute(
+            "SELECT s.id, s.actor_id, s.base_id, b.owner_id FROM sessions s "
+            "JOIN bases b ON b.id = s.base_id "
+            "WHERE s.study_token IS NULL AND b.owner_id <> s.actor_id ORDER BY s.id"
+        ).fetchall()
+    ]
+
     summary = {
         "registered_with_file": registered_with_file,
         "registered_missing_file": registered_missing_file,
         "orphan_scoped": orphan_scoped,
         "orphan_flat": orphan_flat,
         "dangling_actor_refs": dangling_actor_refs,
+        "sessions_not_owned": sessions_not_owned,
         "actor_count": len(actors_by_id),
         "base_row_count": len(bases_rows),
         "scoped_file_count": len(scoped),
@@ -228,6 +245,14 @@ def format_report(report: dict) -> str:
         "dangling actor refs (cross-DB drift)",
         report["dangling_actor_refs"],
         lambda r: f"{r['path']}: missing actors {r['missing_actor_ids']}",
+    )
+    section(
+        "sessions held by someone other than the base's owner",
+        report.get("sessions_not_owned", []),
+        lambda r: (
+            f"session={r['session_id']} actor_id={r['actor_id']} on base={r['base_id']!r} "
+            f"(owner_id={r['owner_id']})"
+        ),
     )
 
     out.append("")

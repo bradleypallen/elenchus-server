@@ -197,6 +197,40 @@ def run_access_probes(harness) -> None:
         expect=404,
     )
 
+    # An admin is a non-owner like any other: no reading, writing or
+    # deleting through the owner's routes, and their list is their own.
+    admin.probe(
+        "GET",
+        "/api/dialectics/alice-secret",
+        action="admin_read_others_dialectic",
+        expect=404,
+        note="no staff bypass on ownership",
+    )
+    admin.probe(
+        "POST",
+        "/api/dialectics/alice-secret/retract",
+        json={"proposition": "anything"},
+        action="admin_write_others_dialectic",
+        expect=404,
+    )
+    admin.probe(
+        "DELETE",
+        "/api/dialectics/alice-secret",
+        action="admin_delete_others_dialectic",
+        expect=404,
+    )
+    _, listed = admin.probe("GET", "/api/sessions", action="admin_list", expect=200)
+    shown = [d.get("name") for d in (listed or []) if isinstance(d, dict)]
+    _record_check(
+        rec,
+        admin.name,
+        "admin_list_is_their_own",
+        ok="alice-secret" not in shown,
+        note="LEAK: an admin's list shows another user's dialectic"
+        if "alice-secret" in shown
+        else "an admin's list holds only their own dialectics",
+    )
+
     # ── E. Session revocation: a revoked token must stop working ──
     alice_tok = alice.session_token()
     alice.probe("POST", "/api/auth/logout", action="logout", expect=200)
