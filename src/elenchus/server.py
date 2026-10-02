@@ -29,7 +29,16 @@ from pydantic import BaseModel, ConfigDict
 from . import __version__ as elenchus_version
 from . import alerting as alerting_mod
 from . import audit as audit_mod
-from . import auth, content_access, invites, secretbox, study_enrolment, study_text, text_judging
+from . import (
+    auth,
+    content_access,
+    invites,
+    prompts,
+    secretbox,
+    study_enrolment,
+    study_text,
+    text_judging,
+)
 from . import backup as backup_mod
 from . import cost_ledger as cost_ledger_mod
 from . import costs as costs_mod
@@ -70,6 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Apply any admin-persisted LLM settings (model / endpoint / key),
     # overriding the env-derived config the opponent booted with.
     _apply_persisted_llm_settings()
+    _settle_prompt_override()
     # Close per-base connections nobody has used for a while, so memory
     # tracks the bases in use rather than every base ever opened
     # (policy in db/registry.py).
@@ -166,6 +176,32 @@ def _persist_llm_settings(
                     "is unset, so it cannot be stored encrypted and will be lost on restart."
                 )
     return key_persisted
+
+
+def _settle_prompt_override() -> None:
+    """`ELENCHUS_PROMPT_DIR` is for development instances. An instance
+    with a seeded study is a registered study's instance, whose prompt
+    is frozen: the override is refused there, logged, and ignored for
+    the life of the process. Either way the versions in force are
+    logged, so the journal says what every turn will run under."""
+    if prompts.override_active():
+        try:
+            seeded = pdb.studies_with_allocation_seed(get_registry().platform_con())
+        except Exception:
+            logger.exception("Could not check for seeded studies; refusing the prompt override")
+            seeded = ["(unknown)"]
+        if seeded:
+            prompts.refuse_override(
+                f"this instance carries a registered study ({', '.join(seeded)}); its prompts are frozen"
+            )
+    for family, info in prompts.versions().items():
+        logger.info(
+            "Prompt %s: %s sha256=%s%s",
+            family,
+            info["version"],
+            info["sha256"][:12],
+            f" (OVERRIDE from {prompts.override_dir()})" if info["overridden"] else "",
+        )
 
 
 def _apply_persisted_llm_settings() -> None:
@@ -983,6 +1019,10 @@ def admin_system(actor: dict = Depends(auth.require_admin)):
         "started_utc": _SERVER_STARTED_AT.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "server_timezone": time.tzname[0],
         "llm": _settings_payload(),
+        "prompts": {
+            "versions": prompts.versions(),
+            "override_active": prompts.override_active(),
+        },
         "email": {
             "backend": email_service_mod.active_backend(),
             "enabled": email_service_mod.active_backend() == "smtp",

@@ -495,6 +495,16 @@ def delete_base(con, base_id: str) -> None:
     con.execute("DELETE FROM bases WHERE id = ?", [base_id])
 
 
+def studies_with_allocation_seed(con) -> list[str]:
+    """The ids of studies that carry an allocation seed — registered
+    studies, whose prompts are frozen (see prompts.refuse_override)."""
+    rows = con.execute(
+        "SELECT study_id FROM study_configs "
+        "WHERE allocation_seed IS NOT NULL AND allocation_seed <> '' ORDER BY study_id"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def bases_created_utc(con) -> dict:
     """`{base_id: created_at as naive UTC}`. `bases.created_at` was filled
     by CURRENT_TIMESTAMP, i.e. in the server's local zone; convert it the
