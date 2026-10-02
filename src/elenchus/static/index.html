@@ -217,6 +217,33 @@ async function api(path, opts = {}) {
 // whole content can miss real responses and leave raw JSON in the UI.
 // We try fence-strip + direct parse first, then walk braces (string-
 // aware) to recover JSON embedded after a preamble.
+// A POST that answers with a file (the admin's PDF and records, which
+// write the access log and so are not GETs). Errors carry the server's
+// `detail` so a lapsed reason can be told from anything else.
+async function postForBlob(path, body) {
+  const res = await fetch(API + path, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const d = err.detail;
+    const e = new Error(d && typeof d === 'object' ? (d.user_message || res.statusText) : (d || res.statusText));
+    e.detail = d; e.status = res.status;
+    throw e;
+  }
+  const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+  return { blob: await res.blob(), filename: m ? m[1] : null };
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function extractResponseText(content) {
   if (!content) return content;
   let clean = content.trim();
@@ -2121,6 +2148,30 @@ function App() {
               animation: pdfLoading ? 'pdf-pulse 1.4s ease-in-out infinite' : 'none',
             }}
           >PDF</button>
+          )}
+          {!isParticipant && (
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch(`${API}${dxPath('/records')}`, { credentials: 'same-origin' });
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({ detail: res.statusText }));
+                  throw new Error((err.detail && err.detail.user_message) || err.detail || res.statusText);
+                }
+                const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+                saveBlob(await res.blob(), m ? m[1] : `${current}.tar.gz`);
+              } catch (e) {
+                setMessages(prev => [...prev, { role: 'error', content: `Records download failed: ${e.message}` }]);
+              }
+            }}
+            title="Download this dialectic's raw records: state, transcript, turn log, state events"
+            style={{
+              background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+              padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1,
+              fontFamily: 'var(--mono)', outline: 'none',
+            }}
+          >RECORDS</button>
           )}
           {actor && (actor.kind === 'admin' || actor.kind === 'researcher') && (
             <button
@@ -4550,9 +4601,12 @@ function AdminSystemTab({ fs }) {
   const [audit, setAudit] = useState(null);
   const [openAlert, setOpenAlert] = useState(null);
 
+  const [access, setAccess] = useState(null);
   const load = async () => {
     try { setSys(await api('/api/admin/system')); setError(null); }
     catch (e) { setError(e.message); }
+    try { setAccess((await api('/api/admin/access-log?limit=20')).entries); }
+    catch (e) { setAccess(null); }
   };
   useEffect(() => { load(); }, []);
 
@@ -4682,6 +4736,22 @@ function AdminSystemTab({ fs }) {
       </div>
 
       <div style={card}>
+        <div style={heading}>CONTENT ACCESS — {access ? access.length : 0} MOST RECENT</div>
+        {!access || access.length === 0
+          ? <div style={note_}>Nobody has looked at anyone else's dialectic. Only its owner can open one; an admin's
+              read-only view needs a reason and appears here (the full log is in the Dialectics tab).</div>
+          : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+              <tbody>{access.map(e => (
+                <tr key={e.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{when(e.at_utc)}</td>
+                  <td style={td}>{e.actor_name} · {e.action}</td>
+                  <td style={td}>{e.base_name} <span style={{ color: 'var(--text-muted)' }}>({e.owner_name || e.owner_email || 'owner unknown'})</span></td>
+                  <td style={td}><span style={{ color: 'var(--text-dim)' }}>{e.category_label}</span> — {e.reason}</td>
+                </tr>))}</tbody>
+            </table>}
+      </div>
+
+      <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div style={heading}>BACKUPS — {sys.backups_total} KEPT ON THE SERVER</div>
           <button style={smallButton} disabled={busy} onClick={backupNow}>{busy ? 'WORKING…' : 'BACK UP NOW'}</button>
@@ -4724,10 +4794,318 @@ function AdminSystemTab({ fs }) {
   );
 }
 
+// ── Admin: Dialectics ────────────────────────────────────────────────
+// Who can see what (docs/data-access.md): an administrator gets a list of
+// METADATA — searched and sorted here, in the browser, over names and
+// owners and never over what people wrote — and, with a stated reason,
+// a read-only view of one ordinary dialectic at a time. Every fetch is
+// logged. Study records are listed and cannot be opened.
+
+function AccessReasonModal({ fs, row, action, categories, minChars, minutes, lapsed, onCancel, onSubmit }) {
+  const [category, setCategory] = useState(categories[0].value);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState(lapsed ? 'The reason you gave has lapsed — give it again.' : null);
+  const [busy, setBusy] = useState(false);
+  const verb = { view: 'View', pdf: 'Download the PDF of', records: 'Download the records of' }[action];
+  const submit = async () => {
+    const text = reason.trim();
+    if (text.length < minChars) { setErr(`Say why in a sentence — at least ${minChars} characters. It is recorded.`); return; }
+    setBusy(true); setErr(null);
+    try { await onSubmit({ category, reason: text }); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+  const field = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 4, fontSize: fs(12),
+                  fontFamily: 'var(--sans)', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div role="dialog" aria-label="Reason for viewing" style={{ width: '100%', maxWidth: 460, padding: 20, borderRadius: 8,
+                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: fs(14), fontFamily: 'var(--sans)', marginBottom: 6 }}>{verb} “{row.name}”</div>
+        <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 12 }}>
+          Owned by {row.owner.display_name || row.owner.email || 'another account'}. Read-only. What you fetch is recorded with
+          your name, the time and this reason, where the other admin can see it. One reason covers this dialectic
+          for {minutes} minutes.
+        </div>
+        <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...field, marginBottom: 8 }}>
+          {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <textarea rows={3} value={reason} autoFocus placeholder="Why — one sentence"
+          onChange={e => { setReason(e.target.value); setErr(null); }} style={{ ...field, resize: 'vertical' }} />
+        <div style={{ minHeight: 20, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--deny)', margin: '6px 0' }}>{err}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={submit} disabled={busy} style={{ background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
+            cursor: busy ? 'default' : 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1, opacity: busy ? 0.6 : 1 }}>
+            {busy ? '…' : action === 'view' ? 'VIEW READ-ONLY' : 'DOWNLOAD'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onClose }) {
+  const d = view.dialectic;
+  const roleMap = { user: 'respondent', assistant: 'opponent' };
+  const messages = (d.conversation || []).map(m => ({
+    role: roleMap[m.role] || m.role,
+    content: m.role === 'assistant' ? extractResponseText(m.content) : m.content,
+  }));
+  const side = v => Array.isArray(v) ? v.join(', ') : String(v || '');
+  const seq = t => `${side(t.gamma)} |~ ${side(t.delta)}`;
+  const openTensions = [...(d.tensions || []), ...(d.queued_tensions || [])];
+  const label = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', margin: '12px 0 6px' };
+  const item = { fontSize: fs(12), fontFamily: 'var(--sans)', lineHeight: 1.5, padding: '4px 0', borderTop: '1px solid var(--border)' };
+  const button = { background: 'none', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', cursor: 'pointer',
+                   fontSize: fs(10), padding: '3px 10px', letterSpacing: 1, fontFamily: 'var(--mono)', opacity: busy ? 0.5 : 1 };
+  const list = (title, rows, render) => (
+    <div>
+      <div style={label}>{title} · {rows.length}</div>
+      {rows.length === 0 ? <div style={{ ...item, color: 'var(--text-muted)' }}>none</div>
+        : rows.map((r, i) => <div key={i} style={item}>{render(r)}</div>)}
+    </div>
+  );
+  return (
+    <div style={{ borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 12px', background: 'var(--tension-bg, rgba(240,180,60,0.12))',
+                    borderBottom: '1px solid var(--border)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>
+        <span style={{ flex: 1 }}>
+          <b>Read-only</b> · “{view.name}” · {view.mine ? 'your own dialectic'
+            : <>owned by {view.owner.display_name || view.owner.email} · logged: {view.grant ? `${view.grant.category_label} — ${view.grant.reason}` : ''}</>}
+        </span>
+        <button style={button} disabled={busy} onClick={onPdf}>PDF</button>
+        <button style={button} disabled={busy} onClick={onRecords} title="The raw records: state, transcript, turn log, state events, database dump">RECORDS</button>
+        <button style={button} onClick={onClose}>CLOSE</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(0, 1fr)' }}>
+        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '62vh', overflowY: 'auto',
+                      borderRight: '1px solid var(--border)' }}>
+          {messages.length === 0 && <div style={{ fontSize: fs(11), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>No conversation yet.</div>}
+          {messages.map((m, i) => <Message key={i} msg={m} fs={fs} />)}
+        </div>
+        <div style={{ padding: '0 12px 12px', maxHeight: '62vh', overflowY: 'auto' }}>
+          {list('COMMITMENTS', d.commitments || [], x => x)}
+          {list('DENIALS', d.denials || [], x => x)}
+          {list('OPEN TENSIONS', openTensions, seq)}
+          {list('IMPLICATIONS', d.implications || [], seq)}
+          {list('CONTESTED', d.contested || [], seq)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDialecticsTab({ fs }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState('');
+  const [kind, setKind] = useState('ordinary');
+  const [sort, setSort] = useState('last');
+  const [pane, setPane] = useState('list');
+  const [gate, setGate] = useState(null);   // { row, action, lapsed }
+  const [open, setOpen] = useState(null);   // the read-only view
+  const [log, setLog] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try { setData(await api('/api/admin/dialectics')); setError(null); }
+    catch (e) { setError(e.message); }
+  };
+  const loadLog = async () => {
+    try { setLog((await api('/api/admin/access-log?limit=500')).entries); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if (pane === 'log') loadLog(); }, [pane]);
+
+  // One fetch under `creds` — a grant id, or a category and reason.
+  const fetchIt = async (row, action, creds) => {
+    if (action === 'view') {
+      const body = await api('/api/admin/dialectics/view', { method: 'POST', body: JSON.stringify({ base_id: row.base_id, ...creds }) });
+      setOpen({ ...body, row });
+    } else {
+      const { blob, filename } = await postForBlob(
+        `/api/admin/dialectics/${action === 'pdf' ? 'report.pdf' : 'records'}`, { base_id: row.base_id, ...creds });
+      saveBlob(blob, filename || (action === 'pdf' ? `${row.name} - Elenchus Report.pdf` : `${row.name}.tar.gz`));
+    }
+    load();
+  };
+  // From the list: your own needs no reason; anyone else's asks for one.
+  const start = async (row, action) => {
+    if (!row.mine) { setGate({ row, action }); return; }
+    setBusy(true); setError(null);
+    try { await fetchIt(row, action, {}); } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+  // From the viewer: under the reason already given, unless it has lapsed.
+  const under = async (action) => {
+    const row = open.row;
+    setBusy(true); setError(null);
+    try { await fetchIt(row, action, open.grant ? { grant_id: open.grant.grant_id } : {}); }
+    catch (e) {
+      if (e.detail && e.detail.grant_expired) setGate({ row, action, lapsed: true });
+      else setError(e.message);
+    }
+    setBusy(false);
+  };
+
+  const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
+  const card = { padding: 16, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: 16 };
+  const note_ = { fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', lineHeight: 1.6 };
+  const th = { padding: '6px 8px', fontWeight: 400, textAlign: 'left', color: 'var(--text-muted)', whiteSpace: 'nowrap' };
+  const td = { padding: '7px 8px', fontFamily: 'var(--sans)', verticalAlign: 'top' };
+  const control = { padding: '6px 8px', borderRadius: 4, fontSize: fs(11), fontFamily: 'var(--sans)',
+                    background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' };
+  const smallButton = { background: 'none', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)',
+                        cursor: 'pointer', fontSize: fs(10), padding: '3px 10px', letterSpacing: 1, fontFamily: 'var(--mono)' };
+  const paneButton = (id, text) => (
+    <button onClick={() => setPane(id)} style={{ ...smallButton, color: pane === id ? 'var(--text)' : 'var(--text-muted)',
+      borderColor: pane === id ? 'var(--border-focus)' : 'var(--border)' }}>{text}</button>
+  );
+  const when = (iso) => { try { return iso ? new Date(iso).toLocaleString() : '—'; } catch (e) { return iso; } };
+  const ago = (iso) => {
+    if (!iso) return '—';
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+  };
+  const kindLabel = { ordinary: 'ordinary', study_task: 'study · task', study_practice: 'study · practice' };
+
+  if (error && !data) return <div style={{ ...note_, color: 'var(--deny)' }}>{error}</div>;
+  if (!data) return <div style={note_}>Loading…</div>;
+
+  const needle = q.trim().toLowerCase();
+  const rows = data.dialectics
+    .filter(r => kind === 'all' || (kind === 'ordinary' ? r.kind === 'ordinary' : r.kind !== 'ordinary'))
+    // Names and owners only. A search over what people wrote would be reading it.
+    .filter(r => !needle || `${r.name} ${r.base_id} ${r.owner.display_name} ${r.owner.email}`.toLowerCase().includes(needle))
+    .sort((a, b) => sort === 'cost' ? b.cost_usd - a.cost_usd
+      : sort === 'turns' ? b.calls - a.calls
+      : sort === 'owner' ? (a.owner.display_name || '').localeCompare(b.owner.display_name || '')
+      : sort === 'name' ? a.name.localeCompare(b.name)
+      : (b.last_activity_at_utc || b.created_at_utc || '').localeCompare(a.last_activity_at_utc || a.created_at_utc || ''));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
+        {paneButton('list', 'DIALECTICS')}
+        {paneButton('log', 'ACCESS LOG')}
+        <span style={{ ...note_, marginLeft: 8 }}>
+          Only its owner can open a dialectic. This is the exception: read-only, with a reason, recorded.
+        </span>
+      </div>
+      {error && <div style={{ ...note_, color: 'var(--deny)', marginBottom: 10 }}>{error}</div>}
+
+      {pane === 'list' && open && (
+        <div style={{ marginBottom: 16 }}>
+          <ReadOnlyDialectic fs={fs} view={open} busy={busy}
+            onPdf={() => under('pdf')} onRecords={() => under('records')} onClose={() => setOpen(null)} />
+        </div>
+      )}
+
+      {pane === 'list' && (
+        <div style={card}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name or owner"
+              aria-label="Search name or owner" style={{ ...control, flex: 1, minWidth: 180 }} />
+            <select value={kind} onChange={e => setKind(e.target.value)} aria-label="Kind" style={control}>
+              <option value="ordinary">Ordinary</option>
+              <option value="study">Study records</option>
+              <option value="all">All</option>
+            </select>
+            <select value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort by" style={control}>
+              <option value="last">Last activity</option>
+              <option value="cost">Cost</option>
+              <option value="turns">Turns</option>
+              <option value="owner">Owner</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+            <thead><tr>
+              <th style={th}>dialectic</th><th style={th}>owner</th><th style={th}>kind</th>
+              <th style={th}>last activity</th><th style={th}>turns</th><th style={th}>cost</th>
+              <th style={th}>looked at</th><th style={th}></th>
+            </tr></thead>
+            <tbody>
+              {rows.length === 0 && <tr><td style={{ ...td, color: 'var(--text-muted)' }} colSpan={8}>Nothing matches.</td></tr>}
+              {rows.map(r => (
+                <tr key={r.base_id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={td}>{r.name}{r.name !== r.base_id && <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: fs(10) }}>{r.base_id}</div>}</td>
+                  <td style={td}>{r.owner.display_name}{r.mine && <span style={{ color: 'var(--text-muted)' }}> · you</span>}
+                    {r.owner.email && <div style={{ color: 'var(--text-muted)' }}>{r.owner.email}</div>}</td>
+                  <td style={{ ...td, color: r.kind === 'ordinary' ? 'var(--text-dim)' : 'var(--tension)', whiteSpace: 'nowrap' }}>
+                    {kindLabel[r.kind]}{r.study && <div style={{ color: 'var(--text-muted)' }}>{r.study.study_id}{r.study.period ? ` · session ${r.study.period}` : ''}</div>}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }} title={when(r.last_activity_at_utc || r.created_at_utc)}>{ago(r.last_activity_at_utc || r.created_at_utc)}</td>
+                  <td style={td}>{r.calls}</td>
+                  <td style={td}>${r.cost_usd.toFixed(2)}</td>
+                  <td style={td} title={r.access ? `last by ${r.access.last_by}, ${when(r.access.last_at_utc)}` : ''}>{r.access ? `${r.access.count}×` : '—'}</td>
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {r.viewable
+                      ? <button style={smallButton} disabled={busy} onClick={() => start(r, 'view')}>VIEW</button>
+                      : <span style={{ color: 'var(--text-muted)' }} title="Staff don't open study records in the application">via export</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ ...note_, marginTop: 10 }}>
+            {rows.length} of {data.dialectics.length} dialectics. Search covers names and owners, never what was written.
+            Study records are listed and can't be opened here: what a session produced is in the study export.
+          </div>
+        </div>
+      )}
+
+      {pane === 'log' && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div style={heading}>EVERY TIME SOMEONE OTHER THAN ITS OWNER LOOKED AT A DIALECTIC</div>
+            {log && log.length > 0 && <button style={smallButton} onClick={() => saveBlob(
+              new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' }), 'content-access-log.json')}>DOWNLOAD JSON</button>}
+          </div>
+          {!log ? <div style={note_}>Loading…</div> : log.length === 0
+            ? <div style={note_}>Nobody has looked at anyone else's dialectic.</div>
+            : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
+                <thead><tr><th style={th}>when</th><th style={th}>who</th><th style={th}>what</th>
+                  <th style={th}>dialectic</th><th style={th}>owner</th><th style={th}>reason</th></tr></thead>
+                <tbody>{log.map(e => (
+                  <tr key={e.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{when(e.at_utc)}</td>
+                    <td style={td}>{e.actor_name}</td>
+                    <td style={td}>{e.action}</td>
+                    <td style={td}>{e.base_name}{!e.base_exists && <span style={{ color: 'var(--text-muted)' }}> (deleted)</span>}</td>
+                    <td style={td}>{e.owner_name || e.owner_email || '—'}</td>
+                    <td style={td}><span style={{ color: 'var(--text-dim)' }}>{e.category_label}</span> — {e.reason}</td>
+                  </tr>))}</tbody>
+              </table>}
+        </div>
+      )}
+
+      {gate && (
+        <AccessReasonModal fs={fs} row={gate.row} action={gate.action} lapsed={gate.lapsed}
+          categories={data.categories} minChars={data.reason_min_chars} minutes={data.grant_minutes}
+          onCancel={() => setGate(null)}
+          onSubmit={async (creds) => {
+            if (gate.action === 'view') { await fetchIt(gate.row, 'view', creds); setGate(null); return; }
+            // A download under a fresh reason: view first so the viewer holds the new grant.
+            if (open && open.row.base_id === gate.row.base_id) {
+              const body = await api('/api/admin/dialectics/view', { method: 'POST', body: JSON.stringify({ base_id: gate.row.base_id, ...creds }) });
+              setOpen({ ...body, row: gate.row });
+              await fetchIt(gate.row, gate.action, { grant_id: body.grant.grant_id });
+            } else {
+              await fetchIt(gate.row, gate.action, creds);
+            }
+            setGate(null);
+          }} />
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard({ fs, actor, onBack }) {
   // Researchers run studies but don't administer the platform: they get
   // the Study and Judging tabs (whose routes are researcher-gated) and
-  // not Invites / Users / Costs / System (admin-only routes that would just 403).
+  // not Invites / Users / Dialectics / Costs / System (admin-only routes that would just 403).
   const isAdmin = actor?.kind === 'admin';
   const [tab, setTab] = useState(isAdmin ? 'invites' : 'study');
   return (
@@ -4763,6 +5141,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           { id: 'users', label: 'Users', adminOnly: true },
           { id: 'study', label: 'Study' },
           { id: 'judging', label: 'Judging' },
+          { id: 'dialectics', label: 'Dialectics', adminOnly: true },
           { id: 'costs', label: 'Costs', adminOnly: true },
           { id: 'system', label: 'System', adminOnly: true },
         ].filter(t => isAdmin || !t.adminOnly).map(t => (
@@ -4784,6 +5163,7 @@ function AdminDashboard({ fs, actor, onBack }) {
           {tab === 'users' && <AdminUsersTab fs={fs} />}
           {tab === 'study' && <AdminStudyTab fs={fs} />}
           {tab === 'judging' && <AdminJudgingTab fs={fs} />}
+          {tab === 'dialectics' && <AdminDialecticsTab fs={fs} />}
           {tab === 'costs' && <AdminCostsTab fs={fs} />}
           {tab === 'system' && <AdminSystemTab fs={fs} />}
         </div>

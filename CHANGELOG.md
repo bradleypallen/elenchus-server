@@ -5,6 +5,32 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The Dialectics tab** (admins): find a dialectic, view it, download its
+  records. A list of every dialectic as metadata — name, owner, kind, last
+  activity, turns, cost, how often looked at — searched, filtered and
+  sorted over names and owners, never over what was written. **View** asks
+  for a reason (a category and a sentence) and then shows the conversation
+  and the position read-only; **PDF** and **Records** download the report
+  and the raw records under the same reason, which covers that dialectic
+  for thirty minutes. Every fetch goes into an append-only **access log**
+  (who, which, whose, why, when), shown in the tab, downloadable, and in
+  the System tab. Study records are listed by participant code and cannot
+  be opened: their content comes from the study export. Platform
+  migration 23.
+- **Records** for owners: from any of your own dialectics, download
+  everything held about it — position, conversation, turn log, state
+  events, a database dump — as one archive. The same archive an
+  administrator receives under a reason.
+
+### Changed
+
+- **[Who Can See What](docs/data-access.md) is at policy version 2**: an
+  administrator's read-only view now exists and is described; ordinary
+  dialectics are not used for research without the owner's agreement,
+  recorded as the reason for the download.
+
 ## [0.9.5] — 2026-10-02
 
 ### Security

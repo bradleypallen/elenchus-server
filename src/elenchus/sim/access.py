@@ -231,6 +231,30 @@ def run_access_probes(harness) -> None:
         else "an admin's list holds only their own dialectics",
     )
 
+    # The admin's way in is a metadata list and a reasoned, read-only view.
+    alice.probe("GET", "/api/admin/dialectics", action="dialectics_gate", expect=403)
+    admin.probe(
+        "POST",
+        "/api/admin/dialectics/view",
+        json={"base_id": "alice-secret"},
+        action="admin_view_without_reason",
+        expect=422,
+        note="no reason, no content",
+    )
+    _, listing = admin.probe("GET", "/api/admin/dialectics", action="admin_dialectics", expect=200)
+    rows = (listing or {}).get("dialectics") or []
+    content_keys = {"conversation", "commitments", "denials", "tensions", "implications"}
+    leaky = [r.get("base_id") for r in rows if content_keys & set(r)]
+    _record_check(
+        rec,
+        admin.name,
+        "dialectics_list_is_metadata",
+        ok=not leaky and any(r.get("base_id") == "alice-secret" for r in rows),
+        note=f"LEAK: content in the list for {leaky}"
+        if leaky
+        else "the admin list names dialectics and owners and carries no content",
+    )
+
     # ── E. Session revocation: a revoked token must stop working ──
     alice_tok = alice.session_token()
     alice.probe("POST", "/api/auth/logout", action="logout", expect=200)

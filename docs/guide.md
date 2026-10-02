@@ -149,6 +149,10 @@ The system checks whether the conclusion follows from the premises given your cu
 
 Each premise or conclusion is normally one of your propositions, written exactly as it appears in your position. You can also build logically complex sentences with `~` (not), `&` (and), `|` (or), `->` (implies) and parentheses — for example `Whales are mammals -> Whales breathe air`. If a proposition itself contains one of those characters (say, "Whales (cetaceans) are mammals"), wrap it in angle brackets inside a larger sentence: `~<Whales (cetaceans) are mammals>`. A malformed query is reported as an error rather than answered.
 
+### Your Records
+
+Click **RECORDS** (top bar) to download everything the platform holds about the current dialectic as one archive: your position, the conversation, each exchange with the AI exactly as it was sent and received, every change to your position with its time and source, and a dump of the dialectic's database. It is yours to keep, check or analyse. ([Who Can See What](data-access.md) says who else can see it, and when.)
+
 ### PDF Export
 
 Click the **PDF** button (top bar) to generate and download a report of the current dialectic. The report includes:

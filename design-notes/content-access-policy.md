@@ -1,7 +1,7 @@
 # Who may see or change a dialectic
 
-*Decision record, 2026-10-02. Status: policy adopted; first of four work
-packages built (0.9.5). The user-facing statement of the policy is
+*Decision record, 2026-10-02. Status: policy adopted; the first two of
+four work packages built (0.9.5, 0.10.0). The user-facing statement of the policy is
 [docs/data-access.md](../docs/data-access.md).*
 
 ## 1. How the question came up
@@ -102,13 +102,42 @@ analysis.
    listing-creates-nothing check, the freeze regression with and without
    stray rows, the migration, and admin probes in the simulation.
    *Until package 2, an admin cannot open anyone else's dialectic at all.*
-2. **The Dialectics tab — planned (platform migration 23).** An
-   append-only access log; admin routes for a metadata list with owner
-   names, and for view, PDF and delete actions that take a reason, write
-   the log and, for view and PDF, return read-only content; all three
-   refuse study records. A read-only viewer in the dashboard and a block
-   of recent accesses in the System tab. The legacy study-report routes
-   become participant-only.
+2. **The Dialectics tab — built, 0.10.0 (platform migration 23).** What
+   the principal investigator asked of it: *find a given dialogue, view
+   it, and download its raw logs for offline analysis.* So:
+   - **Find** — `GET /api/admin/dialectics`, metadata only, searched,
+     filtered and sorted in the browser over names and owners. It is a
+     database search interface in every respect but one: it never
+     searches or previews content, because that would be reading
+     everyone's dialogues with no reason and no record.
+   - **View** — a reason first (a category and a sentence), then the
+     conversation and the position, read-only by construction: the view
+     has no route that writes to a dialectic.
+   - **Download** — the PDF and the raw records (state, transcript, turn
+     log, state events, integrity, the per-base dump) under the same
+     reason, which covers that dialectic for thirty minutes.
+   - **The log** — `content_access_log`, append-only: every view, PDF
+     and records fetch with who, which, whose, why and when; shown in the
+     tab, downloadable, and in the System tab.
+   - **Study records** are listed by participant code and refused by all
+     three actions: study content comes from the study export.
+   - **Your own records** — an owner can download the same archive of
+     any of their own dialectics, no questions asked. It came for free
+     and it is the right way round: the person a record is about can
+     always have it.
+
+   Raw-records download for *analysis* moved the policy on a point
+   (version 2): ordinary dialectics are not used for research **without
+   the owner's agreement**, which the administrator records as the
+   reason *Owner agreed to analysis* until the application can ask for
+   it itself (package 4).
+
+   Left out of this package, on purpose: an administrator's **delete**
+   (the tab ships with nothing in it that can destroy data; it wants its
+   own small change with a typed confirmation), and closing the **legacy
+   study-report routes** to staff (`generate-report` / `report` still
+   admit a researcher — they belong to the retired paired-report flow,
+   and shutting them means retiring that flow and its tests together).
 3. **Owner-side transparency — planned.** The owner sees when an
    administrator viewed their dialectic; a "who can see this" link to the
    policy page from inside the application.
@@ -120,8 +149,11 @@ analysis.
 ## 6. Rules for whoever adds a route
 
 - Content of a dialectic reaches a non-owner only through the
-  content-access module (package 2): a POST carrying a reason, a log row,
-  a read-only response. Never through `_authorize_base_access`.
+  content-access module: a POST carrying a reason (or a grant still in
+  its window), a log row, a read-only response. Never through
+  `_authorize_base_access`.
+- The admin's list carries metadata only. Nothing derived from content —
+  no preview, no snippet, no match count — goes into it.
 - A GET changes no state.
 - A study session is looked up by its token. Anything that asks "which
   session is on this base" means the study session and must say so.
@@ -135,6 +167,11 @@ analysis.
 
 - How long the access log is kept, and whether the owner is told at the
   time or only on looking (package 3).
+- The legacy study-report routes still let a researcher generate a
+  report from a study session's base — a path to study content outside
+  the export. Retire the paired-report flow, or bring those routes under
+  the access log.
+- An administrator's delete of an ordinary dialectic: its own change.
 - Retention of backups, which hold everything: a policy for the
   production host rather than for the code.
 - Whether an admin's deletion of an ordinary dialectic (abuse, account
