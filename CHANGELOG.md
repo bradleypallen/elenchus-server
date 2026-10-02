@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-02
+
 ### Added
 
 - **The Dialectics tab** (admins): find a dialectic, view it, download its
