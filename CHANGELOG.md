@@ -5,6 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **The legacy paired-report flow.** An earlier design had the LLM distil
+  each study session into a structured report (`generate-report`) and
+  judges compare report pairs (`judge-packages`, `judge-assignments`,
+  `/api/judge/queue`, `/api/judge/assignments/*`). The pilot judges the
+  participants' own texts, and generating a report sent a participant's
+  dialogue to the model at a researcher's request — a staff read of study
+  content outside the export and outside *Who Can See What*. The routes,
+  `study_reports.py`, the Study tab's report column and GEN button, the
+  Judging tab's LEGACY block, the judge's legacy queue and rating view,
+  and the export's `judging.json` / per-session `reports.json` are gone
+  (export format 4). The tables stay in the schema; nothing writes to
+  them.
+
 ## [0.11.0] — 2026-10-02
 
 ### Added

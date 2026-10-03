@@ -5,7 +5,7 @@ Four slices:
   2. Pseudonymization — opaque IDs inside the archive, identity map
      outside it, no display names or emails anywhere in the tar.
   3. Archive contents — per-session directories with the expected
-     files, study-level judging.json + manifest.json, per-base
+     files, study-level manifest.json, per-base
      EXPORT DATABASE dump.
   4. Route — role gating, 404 on unknown study, failure isolation.
 """
@@ -87,8 +87,7 @@ def _wipe():
 def _seed_study(study_id: str = "PILOT") -> dict:
     """Build one full study fixture: researcher, participant (with an
     identifiable display name that must NOT appear in the archive),
-    consumed token, session with base + content, report, survey,
-    judge package + assignment + rating. Returns ids."""
+    consumed token, session with base + content, survey. Returns ids."""
     con = get_registry().platform_con()
     reg = get_registry()
 
@@ -148,26 +147,6 @@ def _seed_study(study_id: str = "PILOT") -> dict:
     )
     state.base.con.close()
 
-    report_id = pdb.record_study_report(
-        con,
-        session_id=sid,
-        condition="elenchus",
-        content="# Domain\nBiomes",
-        generator_model="claude-opus-4-6",
-        prompt_tokens=10,
-        completion_tokens=5,
-        cost_usd=0.01,
-    )
-    baseline_report_id = pdb.record_study_report(
-        con,
-        session_id=sid + 1000,  # synthetic counterpart for the package
-        condition="baseline",
-        content="# Domain\nBiomes (chat)",
-        generator_model="claude-opus-4-6",
-        prompt_tokens=10,
-        completion_tokens=5,
-        cost_usd=0.01,
-    )
     pdb.record_survey_response(
         con,
         session_id=sid,
@@ -176,40 +155,9 @@ def _seed_study(study_id: str = "PILOT") -> dict:
         responses={f"q{i}": 3 for i in range(1, 11)},
     )
 
-    judge = pdb.create_actor(
-        con,
-        kind="judge",
-        email="judge@example.com",
-        display_name="Real Judge Name",
-        password_hash=auth.hash_password("pw"),
-    )
-    pid = pdb.create_judge_package(
-        con,
-        study_id=study_id,
-        slot_a_report_id=report_id,
-        slot_b_report_id=baseline_report_id,
-        slot_a_condition="elenchus",
-        slot_b_condition="baseline",
-        created_by=researcher,
-    )
-    aid = pdb.create_judge_assignment(
-        con, judge_actor_id=judge, package_id=pid, assigned_by=researcher
-    )
-    pdb.record_judge_rating(
-        con,
-        assignment_id=aid,
-        ratings={"completeness": {"a": 5, "b": 4}},
-        justification_a="good",
-        justification_b="ok",
-        pairwise_winner="a",
-        condition_guess_a="unsure",
-        condition_guess_b="unsure",
-        confidence=2,
-    )
     return {
         "researcher": researcher,
         "participant": participant,
-        "judge": judge,
         "session_id": sid,
         "base_id": base_id,
     }
@@ -286,13 +234,14 @@ class TestExportStudy:
             return any(n.endswith(suffix) for n in names)
 
         assert has("manifest.json")
-        assert has("judging.json")
+        # The legacy paired-report flow is gone (only text_judging.json remains).
+        assert not any(n.endswith("/judging.json") for n in names)
         assert has("session.json")
         assert has("state.json")
         assert has("transcript.json")
         assert has("turn_log.json")
         assert has("state_events.json")
-        assert has("reports.json")
+        assert not has("reports.json")
         assert has("surveys.json")
         assert has("integrity.json")
         # The per-base EXPORT DATABASE dump.
@@ -333,25 +282,12 @@ class TestExportStudy:
         assert session["actor_id"] == "P-001"
         assert session["actor_id"] != ids["participant"]
 
-    def test_judging_pseudonymized(self, tmp_path):
-        _seed_study()
-        result = export_study("PILOT", output_dir=str(tmp_path))
-        members = _archive_members(result["archive"])
-        judging_blob = next(v for k, v in members.items() if k.endswith("judging.json"))
-        judging = json.loads(judging_blob)
-        assignment = judging[0]["assignments"][0]["assignment"]
-        assert assignment["judge_actor_id"] == "J-001"
-        assert judging[0]["package"]["created_by"] == "R-001"
-        # The rating itself rode through unmodified.
-        assert judging[0]["assignments"][0]["rating"]["pairwise_winner"] == "a"
-
     def test_pseudonym_file_maps_real_ids(self, tmp_path):
         ids = _seed_study()
         result = export_study("PILOT", output_dir=str(tmp_path))
         with open(result["pseudonym_file"], encoding="utf-8") as f:
             mapping = json.load(f)
         assert mapping[str(ids["participant"])] == "P-001"
-        assert mapping[str(ids["judge"])] == "J-001"
         assert mapping[str(ids["researcher"])] == "R-001"
 
     def test_pseudonym_file_not_inside_archive(self, tmp_path):

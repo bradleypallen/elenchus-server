@@ -546,6 +546,4 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `POST /api/admin/study/tokens` *(researcher)* | Issue a single participant link (test links, one-offs) |
 | `GET`/`DELETE /api/admin/study/tokens[/{token}]` *(researcher)* | List / void tokens |
 | `POST /api/admin/study/{study_id}/export` *(researcher)* | Export a study |
-| `POST`/`GET /api/admin/study/judge-packages` *(researcher)* | Legacy: create / list paired-report packages |
-| `POST /api/admin/study/judge-assignments` *(researcher)* | Legacy: assign a package to a judge |
-| `GET /api/admin/study/surveys` · `reports` *(researcher)* | Cohort questionnaire / report views |
+| `GET /api/admin/study/surveys` *(researcher)* | Cohort questionnaire view |
