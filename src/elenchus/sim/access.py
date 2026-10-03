@@ -118,7 +118,12 @@ def run_access_probes(harness) -> None:
         alice.probe(
             "POST",
             "/api/auth/signup",
-            json={"token": alice_token, "display_name": "Alice", "password": _PW},
+            json={
+                "token": alice_token,
+                "display_name": "Alice",
+                "password": _PW,
+                "accept_terms": True,
+            },
             action="signup",
             expect=200,
             note="consume invite (real flow)",
@@ -127,14 +132,14 @@ def run_access_probes(harness) -> None:
     fresh("anon").probe(
         "POST",
         "/api/auth/login",
-        json={"email": "alice@probe.local", "password": "wrong-password"},
+        json={"email": "alice@probe.local", "password": "wrong-password", "accept_terms": True},
         action="login_bad_password",
         expect=401,
     )
     fresh("anon").probe(
         "POST",
         "/api/auth/login",
-        json={"email": "nobody@probe.local", "password": _PW},
+        json={"email": "nobody@probe.local", "password": _PW, "accept_terms": True},
         action="login_unknown_email",
         expect=401,
     )
@@ -178,7 +183,12 @@ def run_access_probes(harness) -> None:
         bob.probe(
             "POST",
             "/api/auth/signup",
-            json={"token": bob_token, "display_name": "Bob", "password": _PW},
+            json={
+                "token": bob_token,
+                "display_name": "Bob",
+                "password": _PW,
+                "accept_terms": True,
+            },
             action="signup",
             expect=200,
         )
@@ -273,7 +283,12 @@ def run_access_probes(harness) -> None:
     fresh("anon").probe(
         "POST",
         "/api/auth/signup",
-        json={"token": "garbage-token", "display_name": "X", "password": _PW},
+        json={
+            "token": "garbage-token",
+            "display_name": "X",
+            "password": _PW,
+            "accept_terms": True,
+        },
         action="signup_bad_token",
         expect=400,
     )
@@ -281,7 +296,12 @@ def run_access_probes(harness) -> None:
         fresh("anon").probe(
             "POST",
             "/api/auth/signup",
-            json={"token": alice_token, "display_name": "X", "password": _PW},
+            json={
+                "token": alice_token,
+                "display_name": "X",
+                "password": _PW,
+                "accept_terms": True,
+            },
             action="signup_reuse_token",
             expect=400,
             note="invite already consumed",

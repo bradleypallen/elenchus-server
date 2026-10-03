@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 def find_actor_by_id(con, actor_id: int) -> dict | None:
     row = con.execute(
         "SELECT id, kind, email, display_name, password_hash, "
-        "credentials, created_at, deactivated_at, must_change_password "
+        "credentials, created_at, deactivated_at, must_change_password, "
+        "terms_version, terms_accepted_at, research_use, research_use_set_at "
         "FROM actors WHERE id = ?",
         [actor_id],
     ).fetchone()
@@ -37,7 +38,8 @@ def find_actor_by_id(con, actor_id: int) -> dict | None:
 def find_actor_by_email(con, email: str) -> dict | None:
     row = con.execute(
         "SELECT id, kind, email, display_name, password_hash, "
-        "credentials, created_at, deactivated_at, must_change_password "
+        "credentials, created_at, deactivated_at, must_change_password, "
+        "terms_version, terms_accepted_at, research_use, research_use_set_at "
         "FROM actors WHERE email = ?",
         [email],
     ).fetchone()
@@ -99,6 +101,81 @@ def count_judging_assignments(con, actor_id: int) -> int:
         "SELECT COUNT(*) FROM judge_assignments WHERE judge_actor_id = ?", [actor_id]
     ).fetchone()[0]
     return int(texts) + int(packages)
+
+
+def study_session_for_base(con, name: str) -> dict | None:
+    """The study session a base is the record of — its practice base
+    (`practice-{session_id}`, owned by the session's own actor) or its
+    task base — or None for an ordinary dialectic. Found by what makes it
+    a study session (the token), never by "the newest session on this
+    base"."""
+    if name.startswith("practice-"):
+        try:
+            session = find_study_session(con, int(name.split("-", 1)[1]))
+        except ValueError:
+            return None
+        base = find_base(con, name)
+        if (
+            session is None
+            or not session.get("study_token")
+            or base is None
+            or base["owner_id"] != session["actor_id"]
+        ):
+            return None  # somebody's ordinary dialectic that happens to be called practice-N
+        return session
+    return find_session_by_base(con, name)
+
+
+# ─── The notice and the research-use choice (migration 0026) ──────────
+
+
+def record_terms_acceptance(con, actor_id: int, version: str) -> None:
+    """The person accepted notice `version` now. Current state on the
+    actor, history in `consent_events` (append-only)."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    con.execute(
+        "UPDATE actors SET terms_version = ?, terms_accepted_at = ? WHERE id = ?",
+        [version, now, actor_id],
+    )
+    con.execute(
+        "INSERT INTO consent_events (actor_id, at_utc, kind, notice_version) "
+        "VALUES (?, ?, 'terms_accepted', ?)",
+        [actor_id, now, version],
+    )
+
+
+def set_research_use(con, actor_id: int, on: bool, version: str) -> None:
+    """Turn the research-use choice on or off, with an event either way
+    (a repeated 'off' is still a recorded decision)."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    con.execute(
+        "UPDATE actors SET research_use = ?, research_use_set_at = ? WHERE id = ?",
+        [bool(on), now, actor_id],
+    )
+    con.execute(
+        "INSERT INTO consent_events (actor_id, at_utc, kind, notice_version) VALUES (?, ?, ?, ?)",
+        [actor_id, now, "research_use_on" if on else "research_use_off", version],
+    )
+
+
+def list_consent_events(con, actor_id: int) -> list[dict]:
+    rows = con.execute(
+        "SELECT id, at_utc, kind, notice_version FROM consent_events "
+        "WHERE actor_id = ? ORDER BY id",
+        [actor_id],
+    ).fetchall()
+    return [{"id": r[0], "at_utc": r[1], "kind": r[2], "notice_version": r[3]} for r in rows]
+
+
+def research_use_actors(con) -> list[dict]:
+    """Active account holders whose research-use choice is on, now."""
+    rows = con.execute(
+        "SELECT id, kind, email, display_name, password_hash, credentials, created_at, "
+        "deactivated_at, must_change_password, terms_version, terms_accepted_at, "
+        "research_use, research_use_set_at FROM actors "
+        "WHERE research_use AND deactivated_at IS NULL ORDER BY id"
+    ).fetchall()
+    return [_row_to_actor(r) for r in rows]
 
 
 def deactivate_actor(con, actor_id: int) -> None:
@@ -166,6 +243,11 @@ def _row_to_actor(row) -> dict | None:
         "created_at": row[6],
         "deactivated_at": row[7],
         "must_change_password": bool(row[8]) if len(row) > 8 else False,
+        # The notice and the research-use choice (migration 0026).
+        "terms_version": row[9] if len(row) > 9 else None,
+        "terms_accepted_at": row[10] if len(row) > 10 else None,
+        "research_use": bool(row[11]) if len(row) > 11 else False,
+        "research_use_set_at": row[12] if len(row) > 12 else None,
     }
 
 
@@ -194,7 +276,8 @@ def resolve_auth_token(con, token: str) -> dict | None:
     expired / revoked / deactivated."""
     row = con.execute(
         "SELECT a.id, a.kind, a.email, a.display_name, a.password_hash, "
-        "a.credentials, a.created_at, a.deactivated_at, a.must_change_password "
+        "a.credentials, a.created_at, a.deactivated_at, a.must_change_password, "
+        "a.terms_version, a.terms_accepted_at, a.research_use, a.research_use_set_at "
         "FROM auth_sessions s "
         "JOIN actors a ON a.id = s.actor_id "
         "WHERE s.token = ? "

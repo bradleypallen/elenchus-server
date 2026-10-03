@@ -70,9 +70,17 @@ def _make_admin() -> dict:
         display_name="Admin",
         password_hash=auth.hash_password("admin-pw"),
     )
-    r = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "admin-pw"})
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "admin-pw", "accept_terms": True},
+    )
     assert r.status_code == 200, r.text
-    return {"actor_id": actor_id, "email": "admin@example.com", "password": "admin-pw"}
+    return {
+        "actor_id": actor_id,
+        "email": "admin@example.com",
+        "password": "admin-pw",
+        "accept_terms": True,
+    }
 
 
 # ─── Login / logout ───────────────────────────────────────────────────
@@ -89,12 +97,15 @@ class TestLogin:
         client.cookies.clear()
         r = client.post(
             "/api/auth/login",
-            json={"email": "admin@example.com", "password": "wrong"},
+            json={"email": "admin@example.com", "password": "wrong", "accept_terms": True},
         )
         assert r.status_code == 401
 
     def test_unknown_email_401(self):
-        r = client.post("/api/auth/login", json={"email": "ghost@example.com", "password": "x"})
+        r = client.post(
+            "/api/auth/login",
+            json={"email": "ghost@example.com", "password": "x", "accept_terms": True},
+        )
         assert r.status_code == 401
 
 
@@ -157,7 +168,12 @@ class TestSignup:
         # Sign up with the invite.
         r = client.post(
             "/api/auth/signup",
-            json={"token": token, "display_name": "New User", "password": "user-pw"},
+            json={
+                "token": token,
+                "display_name": "New User",
+                "password": "user-pw",
+                "accept_terms": True,
+            },
         )
         assert r.status_code == 200
         data = r.json()
@@ -174,7 +190,7 @@ class TestSignup:
         client.cookies.clear()
         r = client.post(
             "/api/auth/signup",
-            json={"token": "bogus", "display_name": "X", "password": "pw"},
+            json={"token": "bogus", "display_name": "X", "password": "pw", "accept_terms": True},
         )
         assert r.status_code == 400
 
@@ -261,7 +277,7 @@ class TestAdminInvites:
 
         client.post(
             "/api/auth/signup",
-            json={"token": token, "display_name": "U", "password": "pw"},
+            json={"token": token, "display_name": "U", "password": "pw", "accept_terms": True},
         )
         # Now logged in as user — should not be able to create invites.
         r = client.post("/api/admin/invites", json={"role": "user"})
@@ -303,12 +319,16 @@ class TestAdminInvites:
         client.post("/api/auth/logout")
         client.cookies.clear()
         r = client.post(
-            "/api/auth/signup", json={"token": token, "display_name": "K", "password": "pw"}
+            "/api/auth/signup",
+            json={"token": token, "display_name": "K", "password": "pw", "accept_terms": True},
         )
         assert r.status_code == 200, r.text
         client.post("/api/auth/logout")
         client.cookies.clear()
-        client.post("/api/auth/login", json={"email": "admin@example.com", "password": "admin-pw"})
+        client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "admin-pw", "accept_terms": True},
+        )
         row = next(
             i for i in client.get("/api/admin/invites").json()["invites"] if i["token"] == token
         )
@@ -351,7 +371,7 @@ class TestAdminUsers:
         client.cookies.clear()
         client.post(
             "/api/auth/signup",
-            json={"token": token, "display_name": "X", "password": "pw"},
+            json={"token": token, "display_name": "X", "password": "pw", "accept_terms": True},
         )
         r = client.get("/api/admin/users")
         assert r.status_code == 403

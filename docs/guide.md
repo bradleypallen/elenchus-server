@@ -101,6 +101,7 @@ When you open Elenchus, you see a list of your existing dialectics (if any) and 
 - **Create** — enter a name and press Enter or click Create
 - **Resume** — click any existing dialectic to continue where you left off
 - **Delete** — click the × next to a dialectic to remove it permanently
+- **Privacy** (top bar) — the notice you accepted when your account opened: what is recorded, who can see it, and your research-use choice, which you can turn on or off there at any time. A dialectic that an administrator has looked at says so in the list.
 
 ### Dialogue View
 
@@ -152,6 +153,10 @@ Each premise or conclusion is normally one of your propositions, written exactly
 ### Your Records
 
 Click **RECORDS** (top bar) to download everything the platform holds about the current dialectic as one archive: your position, the conversation, each exchange with the AI exactly as it was sent and received, every change to your position with its time and source, and a dump of the dialectic's database. It is yours to keep, check or analyse. ([Who Can See What](data-access.md) says who else can see it, and when.)
+
+### Who Has Looked
+
+Click **ACCESS** (top bar) to see whether anyone but you has looked at the current dialectic: each occasion an administrator viewed it, took its PDF or its records, or deleted it — when, who, and what kind of reason they gave. Nobody can look without a reason, and every look is listed here.
 
 ### PDF Export
 

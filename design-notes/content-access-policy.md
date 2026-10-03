@@ -1,9 +1,11 @@
 # Who may see or change a dialectic
 
-*Decision record, 2026-10-02. Status: policy adopted; the first two of
-four work packages built (0.9.5, 0.10.0), plus the development study
+*Decision record, 2026-10-02. Status: policy adopted; the four work
+packages built (0.9.5, 0.10.0), plus the development study
 (0.11.0), the retirement of the legacy report flow and the
-administrator's delete (0.12.0). The user-facing statement of the policy is
+administrator's delete (0.12.0), and the notice, the research-use choice
+and owner-side transparency (0.13.0) — all four packages built. The
+user-facing statement of the policy is
 [docs/data-access.md](../docs/data-access.md).*
 
 ## 1. How the question came up
@@ -182,13 +184,28 @@ analysis.
    the log: at the pilot's scale one administrator's logged act with the
    name typed is proportionate, and the other administrator sees it.
    Revisit if the instance ever has more than a handful of staff.
-3. **Owner-side transparency — planned.** The owner sees when an
-   administrator viewed their dialectic; a "who can see this" link to the
-   policy page from inside the application.
-4. **Notice and research-use choice — planned, with the outreach mode.**
-   The sign-up notice and revocable research-use flag described in
-   [the outreach note](substructural-kb-prototype-and-outreach.md) (O8),
-   and a pseudonymised export limited to those who opted in.
+3. **Owner-side transparency — built, 0.13.0 (policy version 5).** The
+   owner's list marks a dialectic an administrator has looked at, and
+   **Access** in the dialectic lists each occasion with the time, the
+   action, the administrator's name and the *category* of the reason.
+   The sentence is withheld on purpose: it may name a third party (an
+   abuse report), and the category already says what kind of thing it
+   was. The policy page is linked from the notice, from Privacy and
+   from the access notes.
+4. **Notice and research-use choice — built, 0.13.0 (platform
+   migration 26, policy version 5).** A versioned notice (`notice.py`)
+   that no account opens without, shown again on a rewording and once
+   to accounts that predate it; a research-use choice that defaults to
+   no, is made on the form or under Privacy, is revocable, and whose
+   every change is a `consent_events` row; and the research export —
+   only the ordinary dialectics of those whose choice is on at the
+   moment of export, pseudonymized, the key in a separate admin-only
+   file, each dialectic taken logged as a records fetch under *Owner
+   agreed to analysis* so the owner can see it. Built ahead of the
+   outreach mode: the choice is the same whether people come in by an
+   invitation or a cohort, so it belongs with the policy, not the mode.
+   Study participants are untouched by all of it — their consent is the
+   study's — and study records never enter a research export.
 
 ## 6. Rules for whoever adds a route
 
@@ -209,8 +226,13 @@ analysis.
 
 ## 7. What remains open
 
-- How long the access log is kept, and whether the owner is told at the
-  time or only on looking (package 3).
+- How long the access log is kept. The owner is told on looking
+  (Access), not at the time; a notification would need email to users,
+  which the platform sends only to account holders and only for
+  sign-in — a later question.
+- Whether opted-in outreach dialectics feeding papers needs the same
+  ethical review as the study (the outreach note's question): for the
+  institution, before the first research export is used.
 - Retention of backups, which hold everything: a policy for the
   production host rather than for the code.
 - Whether an administrator's deletion should one day need a second

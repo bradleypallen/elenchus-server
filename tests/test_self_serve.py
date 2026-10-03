@@ -392,7 +392,12 @@ class TestInviteWithoutEmail:
     def test_an_invite_without_an_email_can_be_used(self):
         token = self._issue()
         anon = TestClient(app)
-        body = {"token": token, "display_name": "Practice Judge", "password": "a-long-password"}
+        body = {
+            "token": token,
+            "display_name": "Practice Judge",
+            "password": "a-long-password",
+            "accept_terms": True,
+        }
         assert (
             anon.post("/api/auth/signup", json=body).status_code == 400
         )  # what the old form sent
@@ -405,7 +410,12 @@ class TestInviteWithoutEmail:
         token = self._issue(intended_email="judge@example.org")
         anon.post(
             "/api/auth/signup",
-            json={"token": token, "display_name": "J", "password": "a-long-password"},
+            json={
+                "token": token,
+                "display_name": "J",
+                "password": "a-long-password",
+                "accept_terms": True,
+            },
         )
         assert anon.get(f"/api/auth/invites/{token}").status_code == 404  # used
         assert "judge@example.org" not in anon.get(f"/api/auth/invites/{token}").text

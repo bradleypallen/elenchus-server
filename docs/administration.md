@@ -116,6 +116,23 @@ The **Dialectics** tab is the deliberate exception.
 - **Study records** appear in the list, by participant code, and cannot
   be opened here or deleted by anyone. What a session produced reaches
   you through the study export.
+- **Research use** (a pane of the tab) shows how many account holders
+  have turned their research-use choice on and how many ordinary
+  dialectics that covers, and builds the **research export**: those
+  dialectics' records with owners as `U-001`, `U-002`, …, the key in a
+  separate admin-only file. Each dialectic taken goes into the access
+  log as a records download under *Owner agreed to analysis*, where its
+  owner sees it. Nobody who has not turned the choice on is ever in it;
+  a choice turned off is honoured from the next export.
+- **What owners see.** Each owner's list marks a dialectic an
+  administrator has looked at, and its **Access** button lists every
+  occasion: when, which action, which administrator, and the *kind* of
+  reason — never the sentence, which stays in the log here. Write the
+  sentence accordingly.
+- **The notice.** Every account holder accepts a versioned notice of
+  the policy at sign-up, or on first sign-in for accounts that predate
+  it (`notice.py`; the version is recorded with the account). Rewording
+  it bumps the version and shows it to everyone again.
 - **A development study's records** are the exception. When the team
   wants to read whole sessions to tune the system — the opponent's
   prompt, above all — it sets up a study with *Development study* ticked
