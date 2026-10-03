@@ -5,7 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.13.0] — 2026-10-03
+## [0.13.1] — 2026-10-03
+
+### Fixed
+
+- **Platform migration 26 failed on DuckDB 1.5** when `actors` had rows:
+  an `ADD COLUMN … BOOLEAN DEFAULT false` followed by another `ALTER
+  TABLE actors` in the same transaction is refused at commit ("another
+  transaction has altered this table"). The deploy rehearsal caught it
+  and the box stayed on 0.12.0; 0.13.0 was tagged but never published.
+  The migration now adds the DEFAULT column last, the rule is in
+  `migrations/README.md`, and a static test refuses the pattern in any
+  later migration.
+
+## [0.13.0] — 2026-10-03 *(tagged, not published)*
 
 ### Added
 

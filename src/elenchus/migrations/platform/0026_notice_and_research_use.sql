@@ -14,10 +14,12 @@
 -- append-only history (which notice version was accepted when, and
 -- each time the research-use choice changed), never updated or deleted.
 
-ALTER TABLE actors ADD COLUMN terms_version VARCHAR;
-ALTER TABLE actors ADD COLUMN terms_accepted_at TIMESTAMP;
-ALTER TABLE actors ADD COLUMN research_use BOOLEAN DEFAULT false;
-ALTER TABLE actors ADD COLUMN research_use_set_at TIMESTAMP;
+-- Order matters on DuckDB 1.5: an ADD COLUMN with a DEFAULT must be the
+-- LAST statement that touches the table in a transaction, or the commit
+-- fails with "another transaction has altered this table" (the 0.13.0
+-- rehearsal on the production box caught the original order, which had
+-- the DEFAULT column third of four). The table and index come first,
+-- the four ALTERs after, the DEFAULT one last.
 
 CREATE SEQUENCE IF NOT EXISTS consent_events_seq START 1;
 
@@ -31,3 +33,8 @@ CREATE TABLE IF NOT EXISTS consent_events (
 );
 
 CREATE INDEX IF NOT EXISTS consent_events_actor_idx ON consent_events (actor_id);
+
+ALTER TABLE actors ADD COLUMN terms_version VARCHAR;
+ALTER TABLE actors ADD COLUMN terms_accepted_at TIMESTAMP;
+ALTER TABLE actors ADD COLUMN research_use_set_at TIMESTAMP;
+ALTER TABLE actors ADD COLUMN research_use BOOLEAN DEFAULT false;

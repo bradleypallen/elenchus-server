@@ -54,7 +54,14 @@ version number is a programming error and aborts the run.
 4. Write the SQL. For backwards-compatible column additions use
    `ALTER TABLE name ADD COLUMN col TYPE DEFAULT value` — the DEFAULT
    backfills existing rows so the migration is safe on a populated
-   file.
+   file. **Put an `ADD COLUMN … DEFAULT` last among a file's statements
+   on that table.** On DuckDB 1.5 a non-string DEFAULT (`BOOLEAN DEFAULT
+   false`, say) followed by another `ALTER TABLE` on the same table in
+   the same transaction fails at commit with *"Attempting to modify
+   table X but another transaction has altered this table"* — only when
+   the table has rows, so a test on a fresh database never sees it; the
+   0.13.0 rehearsal on the production box did. `tests/test_migrations.py`
+   refuses the pattern in any migration after version 25.
 5. **If you add columns to a table that any positional
    `INSERT INTO table VALUES (...)` writes to, switch that INSERT to
    the column-explicit form** (`INSERT INTO table (a, b, c) VALUES (...)`).
