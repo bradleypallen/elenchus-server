@@ -323,3 +323,34 @@ class TestContentAccessLogRebuild:
         }
         assert indexes == {"content_access_log_base_idx", "content_access_log_at_idx"}
         con.close()
+
+
+class TestMigrationHygiene:
+    """Rules a migration file must follow that no database test on a
+    fresh file would catch."""
+
+    def test_a_default_column_is_the_last_touch_on_its_table(self):
+        """On DuckDB 1.5, `ADD COLUMN … DEFAULT <non-string>` followed by
+        another ALTER on the same table in the same transaction fails at
+        commit when the table has rows ("another transaction has altered
+        this table"). The 0.13.0 rehearsal on the production box caught
+        it; migrations shipped before then are exempt (frozen)."""
+        import re
+
+        from elenchus.migrations.runner import list_migrations
+
+        alter = re.compile(r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\b(.*?);", re.I | re.S)
+        for kind, first_checked in (("platform", 26), ("base", 7)):
+            for version, path in list_migrations(kind):
+                if version < first_checked:
+                    continue
+                sql = re.sub(r"--[^\n]*", "", path.read_text(encoding="utf-8"))
+                seen_default: set[str] = set()
+                for m in alter.finditer(sql):
+                    table = m.group(1).lower()
+                    assert table not in seen_default, (
+                        f"{path.name}: ALTER TABLE {table} after an ADD COLUMN … DEFAULT on it — "
+                        "put the DEFAULT column last (see migrations/README.md)"
+                    )
+                    if re.search(r"\bDEFAULT\b", m.group(2), re.I):
+                        seen_default.add(table)
