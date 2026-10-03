@@ -595,6 +595,14 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
   const [needsEmail, setNeedsEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // The notice (notice.py): no account without it; the research-use
+  // choice defaults to no.
+  const [noticeDoc, setNoticeDoc] = useState(null);
+  const [accepted, setAccepted] = useState(false);
+  const [researchUse, setResearchUse] = useState(false);
+  useEffect(() => {
+    fetch(API + '/api/notice').then(r => r.ok ? r.json() : null).then(n => setNoticeDoc(n)).catch(() => {});
+  }, []);
 
   // An invitation issued without an email can only be used if this form
   // asks for one. Ask the server what this token needs.
@@ -609,12 +617,13 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
   }, [token]);
 
   const submit = async () => {
-    if (!token || !displayName || !password || busy || (needsEmail && !email.trim())) return;
+    if (!token || !displayName || !password || busy || (needsEmail && !email.trim()) || !accepted) return;
     setBusy(true); setError(null);
     try {
       await api('/api/auth/signup', {
         method: 'POST',
         body: JSON.stringify({ token, display_name: displayName, password,
+                               accept_terms: true, research_use: researchUse,
                                ...(needsEmail ? { email_override: email.trim() } : {}) }),
       });
       // Clean the ?token= from the URL so a refresh doesn't re-submit.
@@ -667,8 +676,10 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
         onKeyDown={e => { if (e.key === 'Enter') submit(); }}
         placeholder="choose a password" style={authInputStyle}
       />
-      <button onClick={submit} disabled={!token || !displayName || !password || busy || (needsEmail && !email.trim())}
-        style={authButtonStyle(!!(token && displayName && password && (!needsEmail || email.trim())) && !busy)}>
+      <NoticeBlock notice={noticeDoc} accepted={accepted} onAccepted={setAccepted}
+        researchUse={researchUse} onResearchUse={setResearchUse} />
+      <button onClick={submit} disabled={!token || !displayName || !password || busy || (needsEmail && !email.trim()) || !accepted}
+        style={authButtonStyle(!!(token && displayName && password && accepted && (!needsEmail || email.trim())) && !busy)}>
         {busy ? '…' : 'CREATE ACCOUNT'}
       </button>
     </AuthShell>
@@ -871,6 +882,160 @@ function ForceSetPassword({ onDone, logout }) {
   );
 }
 
+// ── The notice (notice.py; docs/data-access.md) ──
+//
+// What every account holder is told, and the one choice they make. Shown
+// on the sign-up form and, for an account that predates it or a reworded
+// notice, as a gate on first sign-in. Participants never see it.
+function NoticeBlock({ notice, accepted, onAccepted, researchUse, onResearchUse, compact }) {
+  const text = { fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--sans)', lineHeight: 1.6 };
+  const box = { maxHeight: compact ? 160 : 220, overflowY: 'auto', padding: '10px 12px', marginBottom: 10,
+                borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface2, var(--surface))' };
+  const check = { display: 'flex', gap: 8, alignItems: 'flex-start', ...text, color: 'var(--text)', marginBottom: 8, cursor: 'pointer' };
+  if (!notice) return <div style={{ ...text, marginBottom: 10 }}>Loading the notice…</div>;
+  return (
+    <div>
+      <div style={box} aria-label="Notice">
+        {notice.paragraphs.map((para, i) => <p key={i} style={{ ...text, margin: i === 0 ? 0 : '8px 0 0' }}>{para}</p>)}
+        <p style={{ ...text, margin: '8px 0 0' }}>
+          The full policy: <a href={notice.policy_url} target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>Who Can See What</a>.
+        </p>
+      </div>
+      <label style={check}>
+        <input type="checkbox" checked={!!accepted} onChange={e => onAccepted(e.target.checked)} style={{ marginTop: 3 }} />
+        <span>I have read what is recorded and who can see it.</span>
+      </label>
+      <label style={check}>
+        <input type="checkbox" checked={!!researchUse} onChange={e => onResearchUse(e.target.checked)} style={{ marginTop: 3 }} />
+        <span>My dialectics may be used in the project's research, under a pseudonym. <span style={{ color: 'var(--text-muted)' }}>Optional — you can change this any time under Privacy.</span></span>
+      </label>
+    </div>
+  );
+}
+
+function NoticeGate({ actor, onDone, logout }) {
+  const [noticeDoc, setNoticeDoc] = useState(null);
+  const [accepted, setAccepted] = useState(false);
+  const [researchUse, setResearchUse] = useState(!!actor.research_use);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    fetch(API + '/api/notice').then(r => r.ok ? r.json() : null).then(n => setNoticeDoc(n)).catch(() => {});
+  }, []);
+  const submit = async () => {
+    if (!accepted || busy) return;
+    setBusy(true); setError(null);
+    try { await api('/api/auth/accept-terms', { method: 'POST', body: JSON.stringify({ research_use: researchUse }) }); onDone(); }
+    catch (e) { setError(e.message); setBusy(false); }
+  };
+  return (
+    <AuthShell error={error} title={actor.terms_version ? 'The notice has changed' : 'Before you continue'}
+      footer={<button style={authLinkStyle} onClick={logout}>sign out</button>}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
+        {actor.terms_version
+          ? 'The notice about what Elenchus records and who can see it has been reworded. Please read it again.'
+          : 'Elenchus now tells every account holder what it records and who can see it. Please read it once.'}
+      </div>
+      <NoticeBlock notice={noticeDoc} accepted={accepted} onAccepted={setAccepted}
+        researchUse={researchUse} onResearchUse={setResearchUse} />
+      <button onClick={submit} disabled={!accepted || busy} style={authButtonStyle(accepted && !busy)}>
+        {busy ? '…' : 'CONTINUE'}
+      </button>
+    </AuthShell>
+  );
+}
+
+// Privacy: the notice as accepted, the research-use choice (changeable
+// either way), and the policy. Reached from the home header.
+function PrivacyModal({ actor, fs, onClose, onChanged }) {
+  const [noticeDoc, setNoticeDoc] = useState(null);
+  const [researchUse, setResearchUse] = useState(!!actor.research_use);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    fetch(API + '/api/notice').then(r => r.ok ? r.json() : null).then(n => setNoticeDoc(n)).catch(() => {});
+  }, []);
+  const toggle = async (on) => {
+    setBusy(true); setError(null); setSaved(false);
+    try {
+      await api('/api/auth/research-use', { method: 'PUT', body: JSON.stringify({ research_use: on }) });
+      setResearchUse(on); setSaved(true); onChanged && onChanged(on);
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+  const text = { fontSize: fs(12), color: 'var(--text-dim)', fontFamily: 'var(--sans)', lineHeight: 1.6 };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div role="dialog" aria-label="Privacy" style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: 20, borderRadius: 8,
+                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)' }}>PRIVACY</div>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '3px 10px', letterSpacing: 1 }}>CLOSE</button>
+        </div>
+        {!noticeDoc ? <div style={text}>Loading…</div> : (
+          <>
+            {noticeDoc.paragraphs.map((para, i) => <p key={i} style={{ ...text, margin: i === 0 ? 0 : '8px 0 0' }}>{para}</p>)}
+            <p style={{ ...text, margin: '8px 0 14px' }}>
+              The full policy: <a href={noticeDoc.policy_url} target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>Who Can See What</a>.
+              {actor.terms_version && <span style={{ color: 'var(--text-muted)' }}> You accepted version {actor.terms_version} of this notice.</span>}
+            </p>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 4,
+                            border: '1px solid var(--border)', cursor: busy ? 'default' : 'pointer', ...text, color: 'var(--text)' }}>
+              <input type="checkbox" checked={researchUse} disabled={busy} onChange={e => toggle(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>
+                <b>My dialectics may be used in the project's research</b>, under a pseudonym, never with my name.
+                <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>
+                  {researchUse
+                    ? 'On. Untick it at any time: from then on nothing of yours goes into a research export.'
+                    : 'Off — the default. Nothing of yours is used for research unless you tick it.'}
+                  {saved && <span> Saved.</span>}
+                </div>
+              </span>
+            </label>
+            {error && <div style={{ ...text, color: 'var(--deny)', marginTop: 8 }}>{error}</div>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The owner's view of administrators' access to one dialectic: when,
+// what, who, what for — the category, never the sentence.
+function AccessNotes({ fs, notes, onClose }) {
+  const text = { fontSize: fs(12), color: 'var(--text-dim)', fontFamily: 'var(--sans)', lineHeight: 1.6 };
+  const verb = { view: 'looked at it', pdf: 'took its PDF', records: 'took its records', delete: 'deleted it' };
+  const when = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return iso; } };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div role="dialog" aria-label="Who has looked at this dialectic" style={{ width: '100%', maxWidth: 520, maxHeight: '80vh', overflowY: 'auto',
+                    padding: 20, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)' }}>WHO HAS LOOKED AT “{notes.name}”</div>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '3px 10px', letterSpacing: 1 }}>CLOSE</button>
+        </div>
+        {notes.entries.length === 0
+          ? <div style={text}>Nobody but you. An administrator can look only for a stated reason, and it would be listed here.</div>
+          : notes.entries.map((e, i) => (
+            <div key={i} style={{ ...text, padding: '6px 0', borderTop: i ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ color: 'var(--text)' }}>{e.by}</span> {verb[e.action] || e.action} · {when(e.at_utc)}
+              <div style={{ color: 'var(--text-muted)' }}>{e.category_label}</div>
+            </div>
+          ))}
+        <p style={{ ...text, margin: '12px 0 0', color: 'var(--text-muted)' }}>
+          Each of these is an entry in a log the administrators cannot edit. The reason given in a sentence stays with them;
+          what it was for is shown. <a href={notes.policy_url} target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>Who Can See What</a>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AuthGate() {
   // Resolution states: 'pending' (initial check in flight), 'login',
   // 'signup', 'magic', 'forgot', 'reset', 'authed', 'study-error'.
@@ -1028,6 +1193,11 @@ function AuthGate() {
   if (actor && actor.must_change_password) {
     return <ForceSetPassword onDone={onAuthed} logout={logout} />;
   }
+  // …and until the notice has been accepted (participants are exempt:
+  // the server reports them current).
+  if (actor && actor.terms_current === false) {
+    return <NoticeGate actor={actor} onDone={onAuthed} logout={logout} />;
+  }
   return (
     <AuthContext.Provider value={{ actor, logout }}>
       <App />
@@ -1058,6 +1228,8 @@ function App() {
   const [error, setError] = useState(null);
   const [newName, setNewName] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);   // the notice, the research-use choice, the policy
+  const [accessNotes, setAccessNotes] = useState(null);     // who looked at the open dialectic (owner's view)
   const [settings, setSettings] = useState({ model: '', base_url: '', has_api_key: false });
   const [settingsForm, setSettingsForm] = useState({ api_key: '', base_url: '', model: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -1852,6 +2024,18 @@ function App() {
               }}
             >{actor.kind === 'admin' ? 'ADMIN' : 'STUDY'}</button>
           )}
+          {actor && actor.kind !== 'participant' && (
+            <button
+              onClick={() => setShowPrivacy(true)}
+              title="What is recorded, who can see it, and your research-use choice"
+              style={{
+                background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                color: 'var(--text-muted)', cursor: 'pointer',
+                fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
+                letterSpacing: 1, fontFamily: 'var(--mono)',
+              }}
+            >PRIVACY</button>
+          )}
           {actor && (
             <button
               onClick={logout}
@@ -1890,6 +2074,10 @@ function App() {
           </div>
 
           {settingsModal}
+          {showPrivacy && actor && (
+            <PrivacyModal actor={actor} fs={fs} onClose={() => setShowPrivacy(false)}
+              onChanged={(on) => { actor.research_use = on; }} />
+          )}
 
           {/* New dialectic */}
           <div style={{ marginBottom: 32 }}>
@@ -1941,6 +2129,7 @@ function App() {
                     <div style={{ fontSize: fs(13), fontFamily: 'var(--sans)', marginBottom: 2 }}>{d.topic}</div>
                     <div style={{ fontSize: fs(10), color: 'var(--text-muted)' }}>
                       C:{d.commitments} · D:{d.denials} · T:{d.tensions} · I:{d.implications}
+                      {d.looked_at && <span style={{ color: 'var(--tension)' }}> · looked at by an administrator {d.looked_at.count}×</span>}
                     </div>
                   </div>
                   <button onClick={e => { e.stopPropagation(); deleteDialectic(d.name, d.session_id); }}
@@ -2173,6 +2362,21 @@ function App() {
             }}
           >RECORDS</button>
           )}
+          {!isParticipant && (
+          <button
+            onClick={async () => {
+              try { setAccessNotes(await api(dxPath('/access'))); }
+              catch (e) { setMessages(prev => [...prev, { role: 'error', content: `Could not load the access notes: ${e.message}` }]); }
+            }}
+            title="Who has looked at this dialectic besides you"
+            style={{
+              background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+              color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
+              padding: '2px 8px', lineHeight: 1.4, letterSpacing: 1,
+              fontFamily: 'var(--mono)', outline: 'none',
+            }}
+          >ACCESS</button>
+          )}
           {actor && (actor.kind === 'admin' || actor.kind === 'researcher') && (
             <button
               onClick={() => { setCurrent(null); setCurrentSessionId(null); setState(null); setView('admin'); }}
@@ -2352,6 +2556,7 @@ function App() {
       </div>
 
       {settingsModal}
+      {accessNotes && <AccessNotes fs={fs} notes={accessNotes} onClose={() => setAccessNotes(null)} />}
     </div>
   );
 }
@@ -4838,6 +5043,8 @@ function AdminDialecticsTab({ fs }) {
   const [open, setOpen] = useState(null);   // the read-only view
   const [doomed, setDoomed] = useState(null); // the row a deletion is being confirmed for
   const [log, setLog] = useState(null);
+  const [research, setResearch] = useState(null);   // { opted_in, exports } — the research-use pane
+  const [exporting, setExporting] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -4849,7 +5056,19 @@ function AdminDialecticsTab({ fs }) {
     catch (e) { setError(e.message); }
   };
   useEffect(() => { load(); }, []);
-  useEffect(() => { if (pane === 'log') loadLog(); }, [pane]);
+  const loadResearch = async () => {
+    try { setResearch(await api('/api/admin/research-exports')); }
+    catch (e) { setError(e.message); }
+  };
+  useEffect(() => { if (pane === 'log') loadLog(); if (pane === 'research') loadResearch(); }, [pane]);
+  const buildResearchExport = async () => {
+    if (!confirm('Build an archive of every dialectic whose owner has agreed to research use?\n\n'
+      + 'Each owner will see it in their dialectic\'s access notes, as a records download under "Owner agreed to analysis".')) return;
+    setExporting(true); setError(null);
+    try { await api('/api/admin/research-export', { method: 'POST' }); await loadResearch(); }
+    catch (e) { setError(e.message); }
+    setExporting(false);
+  };
 
   // One fetch under `creds` — a grant id, or a category and reason.
   const fetchIt = async (row, action, creds) => {
@@ -4929,6 +5148,7 @@ function AdminDialecticsTab({ fs }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
         {paneButton('list', 'DIALECTICS')}
         {paneButton('log', 'ACCESS LOG')}
+        {paneButton('research', 'RESEARCH USE')}
         <span style={{ ...note_, marginLeft: 8 }}>
           Only its owner can open a dialectic. This is the exception: read-only, with a reason, recorded.
         </span>
@@ -4996,6 +5216,49 @@ function AdminDialecticsTab({ fs }) {
             A development study's records — the team's own tuning sessions — can be, under a reason, like any other dialectic.
             Deleting an ordinary dialectic is done from its viewer, under a reason of its own, with the name typed back; study records are never deleted.
           </div>
+        </div>
+      )}
+
+      {pane === 'research' && (
+        <div style={card}>
+          <div style={heading}>DIALECTICS WHOSE OWNERS AGREED TO RESEARCH USE</div>
+          {!research ? <div style={note_}>Loading…</div> : (
+            <>
+              <div style={{ ...note_, color: 'var(--text-dim)', marginBottom: 10 }}>
+                <b>{research.opted_in.accounts}</b> account{research.opted_in.accounts === 1 ? '' : 's'} with the choice on,
+                covering <b>{research.opted_in.dialectics}</b> ordinary dialectic{research.opted_in.dialectics === 1 ? '' : 's'}.
+                The choice is each person's own (Privacy, on their home page); it is off unless they turned it on, and
+                turning it off takes them out of the next export. Study records are never included.
+              </div>
+              <button style={{ ...smallButton, color: 'var(--accent)', borderColor: 'var(--accent)', opacity: exporting || research.opted_in.dialectics === 0 ? 0.5 : 1 }}
+                disabled={exporting || research.opted_in.dialectics === 0} onClick={buildResearchExport}>
+                {exporting ? 'EXPORTING…' : 'EXPORT NOW'}</button>
+              <div style={{ marginTop: 14 }}>
+                {research.exports.length === 0
+                  ? <div style={note_}>No research export has been made.</div>
+                  : research.exports.map(f => (
+                    <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4,
+                                               fontSize: fs(11), fontFamily: 'var(--mono)' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>{f.created}</span>
+                      <a href={`/api/admin/research-exports/${encodeURIComponent(f.name)}`} download style={{ color: 'var(--accent)' }}>{f.name}</a>
+                      <span style={{ color: 'var(--text-muted)' }}>{(f.size_bytes / 1024).toFixed(0)} KB</span>
+                      {f.pseudonym_file && (
+                        <a href={`/api/admin/research-exports/${encodeURIComponent(f.name)}/pseudonyms`} download
+                           onClick={e => { if (!confirm(
+                             'This file links the U-* pseudonyms in the archive to accounts.\n\n'
+                             + 'Keep it apart from the archive, never upload it to a repository or a shared drive, '
+                             + 'and never send the two together.\n\nDownload it?')) e.preventDefault(); }}
+                           style={{ color: 'var(--deny)', fontFamily: 'var(--sans)' }}>names key (keep separate)</a>
+                      )}
+                    </div>))}
+              </div>
+              <div style={{ ...note_, marginTop: 10 }}>
+                The archive holds no names — owners appear as U-001, U-002, … The key back to accounts is a separate file.
+                Each dialectic taken is written to the access log as a records download under <i>Owner agreed to analysis</i>,
+                where its owner can see it.
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The notice.** No account opens without its holder having read what
+  Elenchus records, who can see it and how to delete it; the notice is
+  versioned, the version accepted is recorded with the account, a
+  rewording shows it again, and accounts that predate it see it once on
+  their next sign-in. **Privacy**, on the home page, shows it at any
+  time. Study participants are never shown it — their consent is the
+  study's. Platform migration 26.
+- **The research-use choice.** *My dialectics may be used in the
+  project's research*, under a pseudonym: off unless turned on, on the
+  sign-up form or under Privacy, revocable there at any time; every
+  change is recorded.
+- **The research export** (Dialectics tab → Research use, admins): the
+  records of every ordinary dialectic whose owner's choice is on at that
+  moment, owners as `U-001`, …, the key in a separate admin-only file;
+  each dialectic taken is a records download in the access log under
+  *Owner agreed to analysis*. Study records are never included.
+- **Owners see who looked.** The list marks a dialectic an administrator
+  has looked at; **ACCESS** in the dialectic lists each occasion — when,
+  what, who, and the kind of reason, never the sentence.
+
+### Changed
+
+- **[Who Can See What](docs/data-access.md) is at policy version 5**:
+  the notice, the choice and the owner's view are described.
+
 ## [0.12.0] — 2026-10-03
 
 ### Added

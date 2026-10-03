@@ -4,7 +4,7 @@ This page says what Elenchus records about your work, who can see it, and
 under what conditions. It applies to every instance run from this code;
 the people running an instance may add to it, never take away from it.
 
-*Policy version 4 — in force from release 0.12.0: it adds an administrator's deletion of an ordinary dialectic under a reason, and retires the last staff path to study content outside the export. (Version 3, from 0.11.0, added the development study; version 2, from 0.10.0, the administrator's view; version 1, from 0.9.5, had none.)*
+*Policy version 5 — in force from release 0.13.0: every account holder reads a notice of this policy and makes the research-use choice inside the application; owners can see when an administrator looked at a dialectic of theirs. (Version 4, from 0.12.0, added the administrator's deletion; version 3, from 0.11.0, the development study; version 2, from 0.10.0, the administrator's view; version 1, from 0.9.5, had none.)*
 
 ## The short version
 
@@ -18,6 +18,12 @@ the people running an instance may add to it, never take away from it.
   about one of your dialectics — whenever you like.
 - **A study session's record is frozen** once the session moves on, for
   everyone: the participant, the researchers and the administrators.
+- **You are told, and you can see.** Every account holder reads a notice
+  of this policy before their account opens (or, for accounts that
+  predate it, on their next sign-in), and from any dialectic of yours
+  you can see when an administrator looked at it, who, and what for.
+- **Research use of your dialectics is your choice.** It is off unless
+  you turn it on, and you can turn it off again at any time.
 - **Nothing is deleted quietly.** You can delete your own dialectics. An
   administrator can delete one of yours only for a stated reason — your
   own request, the closing of your account, or an abuse or policy
@@ -101,6 +107,14 @@ the dialectic, its owner and the reason. The log cannot be edited, the
 other administrator sees it, and it outlives the dialectic. An
 administrator's own dialectics are simply theirs and leave no entry.
 
+**You can see it too.** Your list of dialectics marks any that an
+administrator has looked at, and **Access**, in the dialectic itself,
+lists each occasion: when, what they fetched, who, and what it was for.
+What it was for is shown as the kind of reason (you asked for help; a
+reported problem; an abuse or policy concern; you agreed to analysis),
+not the sentence the administrator wrote — a sentence may name another
+person, and it stays with the administrators.
+
 This is not offered for study records, except a development study's.
 
 ### Your own records
@@ -119,17 +133,39 @@ by this same policy: no reading of content without a purpose from the
 table above, and a note of each occasion. Backups exist to restore the
 service after a mistake or a failure, not as a way to read dialogues.
 
+## The notice
+
+No account opens without its holder having read a short notice of what
+this page says: what is recorded, who can see it, how to delete it, and
+the one choice below. The notice is versioned, and the version a person
+accepted is recorded with their account; if its wording changes, it is
+shown again at the next sign-in. Accounts that predate the notice see it
+once, on their next sign-in. **Privacy**, on your home page, shows the
+notice you accepted and the choice at any time. Study participants do
+not see it: they come in by a link, not an account, and what they are
+told is the study's consent material.
+
 ## Research use of ordinary dialectics
 
 Dialectics that are not part of a study are **not used for research
-without their owner's agreement**. An administrator who downloads the
-records of someone else's dialectic for analysis does so under the reason
-*the owner agreed to analysis*, which goes in the log like any other; an
-administrator's analysis of their own dialectics is their own business.
-A sign-up notice, and a research-use choice that you can make and
-withdraw inside the application, are planned for instances that invite
-people in outside a study; until they exist, agreement is asked for
-directly and recorded by the administrator.
+without their owner's agreement**, and the agreement is a choice you
+make yourself: *my dialectics may be used in the project's research* —
+read for analysis, quoted in worked examples or papers under a
+pseudonym, never with your name. It is **off unless you turn it on**,
+on the sign-up form or under Privacy, and you can turn it off again
+there at any time. Each change is recorded.
+
+What the research team takes is a **research export**: the records of
+every ordinary dialectic whose owner's choice is on at that moment, with
+owners replaced by pseudonyms; the key back to accounts is a separate
+file only an administrator can download and that never travels with the
+archive. Each dialectic taken is written to the access log as a records
+download under *the owner agreed to analysis* — so it appears in your
+own dialectic's access notes. Turning the choice off takes you out of
+every later export; what an earlier export already holds is handled
+under this policy by the team that holds it. Study records are never
+part of a research export, and an administrator's analysis of their own
+dialectics is their own business.
 
 ## Deleting
 
@@ -161,7 +197,9 @@ changes only from its own participant and only while its session is on
 it, an administrator's view goes through one module that refuses to
 answer without a recorded reason and has no code path that writes to a
 dialectic, an administrator's deletion needs its own reason and the name
-typed back and refuses every study record, a development study and an
+typed back and refuses every study record, the sign-up route refuses an
+account that has not accepted the notice and the research export reads
+each owner's choice at the moment it runs, a development study and an
 allocation seed exclude each other
 in the database layer and the mark is fixed once anyone is enrolled, and
 each of these is covered by automated tests that run on

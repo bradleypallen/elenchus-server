@@ -201,6 +201,11 @@ copy**.
 | View another account's practice dialectic under a reason, press **DELETE**, and submit with the reason box empty, then with the name mistyped | Refused both times; the dialectic is still there and the log shows only the view |
 | Give a reason for the deletion and type the name exactly | The dialectic is gone from the list and from its owner's home page; the log has a *delete* entry with your reason, and it stays there |
 | In a development study's record, look for **DELETE** | There is none: study records are never deleted |
+| Open an invitation link and try to create the account **without** ticking *I have read what is recorded* | The button stays disabled; the server refuses it too |
+| Sign in as a practice account that was created **before** this release | The notice appears once, with the research-use box unticked; it does not appear again |
+| As the practice account, open **Privacy**, tick the research-use box, close, reopen | It is still ticked; untick it and it stays unticked |
+| View that account's dialectic as an administrator under a reason, then sign in as the account | The list says *looked at by an administrator 1×*; **ACCESS** in the dialectic shows your name, the time and the kind of reason — not the sentence you typed |
+| **Dialectics** → **RESEARCH USE** with nobody opted in | *0 accounts*; **EXPORT NOW** is disabled. Tick the choice on the practice account and come back: 1 account; the export builds, downloads, and the account's dialectic shows a *records* entry under *Owner agreed to analysis* |
 | From one of your own dialectics, press **Records** in the top bar | An archive downloads: the position, the conversation, the turn log, the state events |
 | **System** → *Consistency check* | Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner |
 
