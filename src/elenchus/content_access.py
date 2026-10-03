@@ -12,7 +12,8 @@ row in an append-only log** — this module.
                         that dialectic for `GRANT_MINUTES`, so reading it
                         and then taking the PDF isn't two interrogations.
   * `find_grant`      — a grant still valid for this actor and this base.
-  * `record`          — one row per fetch (`view` / `pdf` / `records`).
+  * `record`          — one row per fetch (`view` / `pdf` / `records`),
+                        or for the one destructive act, `delete`.
   * `list_log`, `summary_by_base` — what the dashboard shows.
   * `build_records_archive` — the raw records of one dialectic as a
                         tar.gz, for the owner or for a logged admin
@@ -48,6 +49,11 @@ REASON_MIN_CHARS = 10
 REASON_MAX_CHARS = 500
 
 FETCH_ACTIONS = ("view", "pdf", "records")
+# An administrator's deletion of an ordinary dialectic (platform migration
+# 0025, policy version 4): its own reason, its own log row, never a
+# study record. The only act through here that changes anything.
+DELETE_ACTION = "delete"
+LOGGED_ACTIONS = (*FETCH_ACTIONS, DELETE_ACTION)
 
 # The order is the order the prompt offers them in. The keys go in the
 # log; the labels are what the administrator reads.
@@ -55,9 +61,22 @@ CATEGORIES: dict[str, str] = {
     "support_request": "Owner asked for help",
     "problem_report": "Investigating a reported problem",
     "owner_agreed_analysis": "Owner agreed to analysis",
+    "owner_requested_deletion": "Owner asked for it to be removed",
+    "account_closure": "Account closure",
     "policy_concern": "Abuse or policy concern",
     "other": "Other",
 }
+# What a read may be for, and what a deletion may be for: "Owner asked
+# for help" is not a reason to destroy their work, and "account closure"
+# is not a reason to read it.
+VIEW_CATEGORIES = (
+    "support_request",
+    "problem_report",
+    "owner_agreed_analysis",
+    "policy_concern",
+    "other",
+)
+DELETE_CATEGORIES = ("owner_requested_deletion", "account_closure", "policy_concern", "other")
 
 
 def now_utc() -> datetime:
@@ -69,14 +88,17 @@ def iso(ts: datetime | None) -> str | None:
     return ts.strftime("%Y-%m-%dT%H:%M:%SZ") if ts is not None else None
 
 
-def categories() -> list[dict]:
-    return [{"value": k, "label": v} for k, v in CATEGORIES.items()]
+def categories(*, allowed=None) -> list[dict]:
+    return [
+        {"value": k, "label": v} for k, v in CATEGORIES.items() if allowed is None or k in allowed
+    ]
 
 
-def validate_reason(category, reason) -> tuple[str, str]:
-    """A known category and a real sentence. Returns the cleaned pair;
-    raises ValueError with a message fit to show the administrator."""
-    if category not in CATEGORIES:
+def validate_reason(category, reason, *, allowed=None) -> tuple[str, str]:
+    """A known category (from `allowed`, when given) and a real
+    sentence. Returns the cleaned pair; raises ValueError with a message
+    fit to show the administrator."""
+    if category not in CATEGORIES or (allowed is not None and category not in allowed):
         raise ValueError("Choose what this is for.")
     text = " ".join(reason.split()) if isinstance(reason, str) else ""
     if len(text) < REASON_MIN_CHARS:
@@ -192,7 +214,7 @@ def find_grant(con, grant_id: int, *, actor_id: int, base_id: str) -> dict | Non
 def record(con, *, grant: dict, action: str) -> dict:
     """One fetch under a grant. Carries the grant's category and reason
     so the row reads on its own."""
-    if action not in FETCH_ACTIONS:
+    if action not in LOGGED_ACTIONS:
         raise ValueError(f"unknown content-access action: {action}")
     entry = _insert(
         con,

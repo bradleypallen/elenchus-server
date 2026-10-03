@@ -3313,7 +3313,6 @@ function AdminStudyTab({ fs }) {
   // (participant, condition); the same participant gets two tokens for
   // the within-subjects design.
   const [tokens, setTokens] = useState([]);
-  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ study_id: '', condition: 'elenchus', display_name: '' });
@@ -3334,12 +3333,8 @@ function AdminStudyTab({ fs }) {
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const [t, r] = await Promise.all([
-        api('/api/admin/study/tokens'),
-        api('/api/admin/study/reports'),
-      ]);
+      const t = await api('/api/admin/study/tokens');
       setTokens(t.tokens || []);
-      setReports(r.reports || []);
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -3368,13 +3363,6 @@ function AdminStudyTab({ fs }) {
     catch (e) { setError(e.message); }
   };
 
-  const genReport = async (sessionId) => {
-    try {
-      await api(`/api/study/session/${sessionId}/generate-report`, { method: 'POST' });
-      await load();
-    } catch (e) { setError(typeof e.message === 'string' ? e.message : 'Report generation failed'); }
-  };
-
   const runExport = async (studyId) => {
     setExporting(studyId); setError(null); setExportResult(null);
     try {
@@ -3387,8 +3375,6 @@ function AdminStudyTab({ fs }) {
 
   // sessions don't have their own list endpoint; derive the studies in play.
   const studies = [...new Set(tokens.map(t => t.study_id))].sort();
-  const reportBySession = {};
-  reports.forEach(r => { reportBySession[r.session_id] = r; });
 
   const stColor = (status) => ({
     scheduled: 'var(--tension)', active: 'var(--commit)',
@@ -3519,13 +3505,11 @@ function AdminStudyTab({ fs }) {
               <th style={{ padding: '6px 8px', fontWeight: 400 }}>condition</th>
               <th style={{ padding: '6px 8px', fontWeight: 400 }}>status</th>
               <th style={{ padding: '6px 8px', fontWeight: 400 }}>session</th>
-              <th style={{ padding: '6px 8px', fontWeight: 400 }}>report</th>
               <th style={{ padding: '6px 8px', fontWeight: 400 }}></th>
             </tr>
           </thead>
           <tbody>
             {tokens.map(t => {
-              const rep = t.session_id ? reportBySession[t.session_id] : null;
               return (
                 <tr key={t.token} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{t.study_id}</td>
@@ -3533,15 +3517,6 @@ function AdminStudyTab({ fs }) {
                   <td style={{ padding: '8px', color: stColor(t.status), fontFamily: 'var(--sans)' }}>{t.status}</td>
                   <td style={{ padding: '8px', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>
                     {t.session_id || '—'}</td>
-                  <td style={{ padding: '8px' }}>
-                    {rep ? <span style={{ color: 'var(--commit)' }}>✓</span>
-                     : t.session_id ? (
-                        <button onClick={() => genReport(t.session_id)} style={{
-                          background: 'none', border: '1px solid var(--border)', borderRadius: 3,
-                          color: 'var(--accent)', cursor: 'pointer', fontSize: fs(10),
-                          padding: '2px 6px', fontFamily: 'var(--mono)', letterSpacing: 1 }}>GEN</button>
-                       ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                  </td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>
                     {t.status === 'scheduled' && (
                       <button onClick={() => voidToken(t.token)} style={{
@@ -3689,151 +3664,9 @@ function AdminTextJudgingPanel({ fs }) {
 }
 
 function AdminJudgingTab({ fs }) {
-  // Assemble judge packages from generated reports, assign to judges.
-  const [reports, setReports] = useState([]);
-  const [packages, setPackages] = useState([]);
-  const [judges, setJudges] = useState([]);
-  const [error, setError] = useState(null);
-  const [pkgForm, setPkgForm] = useState({ study_id: '', report_id_elenchus: '', report_id_baseline: '' });
-  const [assignForm, setAssignForm] = useState({ package_id: '', judge_actor_id: '' });
-
-  const load = async () => {
-    setError(null);
-    try {
-      const [r, p, u] = await Promise.all([
-        api('/api/admin/study/reports'),
-        api('/api/admin/study/judge-packages'),
-        api('/api/admin/study/judges'),
-      ]);
-      setReports(r.reports || []);
-      setPackages(p.packages || []);
-      setJudges(u.judges || []);
-    } catch (e) { setError(e.message); }
-  };
-  useEffect(() => { load(); }, []);
-
-  const elenchusReports = reports.filter(r => r.condition === 'elenchus');
-  const baselineReports = reports.filter(r => r.condition === 'baseline');
-
-  const createPackage = async () => {
-    if (!pkgForm.study_id.trim() || !pkgForm.report_id_elenchus || !pkgForm.report_id_baseline) return;
-    try {
-      await api('/api/admin/study/judge-packages', {
-        method: 'POST', body: JSON.stringify({
-          study_id: pkgForm.study_id,
-          report_id_elenchus: parseInt(pkgForm.report_id_elenchus, 10),
-          report_id_baseline: parseInt(pkgForm.report_id_baseline, 10),
-        }),
-      });
-      await load();
-    } catch (e) { setError(e.message); }
-  };
-
-  const assign = async () => {
-    if (!assignForm.package_id || !assignForm.judge_actor_id) return;
-    try {
-      await api('/api/admin/study/judge-assignments', {
-        method: 'POST', body: JSON.stringify({
-          package_id: parseInt(assignForm.package_id, 10),
-          judge_actor_id: parseInt(assignForm.judge_actor_id, 10),
-        }),
-      });
-      await load();
-    } catch (e) { setError(e.message); }
-  };
-
-  const sel = (val, set, opts, placeholder) => (
-    <select value={val} onChange={e => set(e.target.value)} style={{
-      padding: '8px 10px', background: 'var(--surface2)', border: '1px solid var(--border)',
-      borderRadius: 4, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)' }}>
-      <option value="">{placeholder}</option>
-      {opts}
-    </select>
-  );
-
-  return (
-    <div>
-      <AdminTextJudgingPanel fs={fs} />
-
-      {/* Legacy: paired structured reports. Not part of the pilot, which
-          rates the participants' own texts (above). */}
-      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', margin: '8px 0 10px' }}>
-        LEGACY — PAIRED STRUCTURED REPORTS (not used in the pilot)
-      </div>
-      <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
-                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
-          ASSEMBLE PACKAGE (slots randomized — judge sees neutral A / B)
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input value={pkgForm.study_id} onChange={e => setPkgForm(f => ({ ...f, study_id: e.target.value }))}
-            placeholder="study id" style={{ flex: '1 1 120px', padding: '8px 10px', background: 'var(--surface2)',
-              border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text)', fontSize: fs(12),
-              fontFamily: 'var(--sans)', outline: 'none' }} />
-          {sel(pkgForm.report_id_elenchus, v => setPkgForm(f => ({ ...f, report_id_elenchus: v })),
-            elenchusReports.map(r => <option key={r.id} value={r.id}>#{r.id} · session {r.session_id}</option>),
-            'elenchus report')}
-          {sel(pkgForm.report_id_baseline, v => setPkgForm(f => ({ ...f, report_id_baseline: v })),
-            baselineReports.map(r => <option key={r.id} value={r.id}>#{r.id} · session {r.session_id}</option>),
-            'baseline report')}
-          <button onClick={createPackage} style={{ padding: '8px 16px', background: 'var(--accent)',
-            border: 'none', borderRadius: 4, color: '#111', fontSize: fs(11), letterSpacing: 1,
-            fontWeight: 500, cursor: 'pointer' }}>CREATE</button>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 24, padding: 16, borderRadius: 6,
-                    background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
-          ASSIGN PACKAGE TO JUDGE
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {sel(assignForm.package_id, v => setAssignForm(f => ({ ...f, package_id: v })),
-            packages.map(p => <option key={p.id} value={p.id}>#{p.id} · {p.study_id}</option>), 'package')}
-          {sel(assignForm.judge_actor_id, v => setAssignForm(f => ({ ...f, judge_actor_id: v })),
-            judges.map(j => <option key={j.id} value={j.id}>{j.display_name} ({j.email})</option>), 'judge')}
-          <button onClick={assign} style={{ padding: '8px 16px', background: 'var(--accent)',
-            border: 'none', borderRadius: 4, color: '#111', fontSize: fs(11), letterSpacing: 1,
-            fontWeight: 500, cursor: 'pointer' }}>ASSIGN</button>
-        </div>
-        {judges.length === 0 && (
-          <div style={{ marginTop: 8, fontSize: fs(10), color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
-            No judge actors yet — invite one from the Invites tab with role "judge".
-          </div>
-        )}
-      </div>
-
-      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
-        PACKAGES ({packages.length})
-      </div>
-      {packages.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontFamily: 'var(--sans)' }}>No packages yet.</div>
-       : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fs(11) }}>
-          <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-            <th style={{ padding: '6px 8px', fontWeight: 400 }}>id</th>
-            <th style={{ padding: '6px 8px', fontWeight: 400 }}>study</th>
-            <th style={{ padding: '6px 8px', fontWeight: 400 }}>slot A</th>
-            <th style={{ padding: '6px 8px', fontWeight: 400 }}>slot B</th>
-          </tr></thead>
-          <tbody>
-            {packages.map(p => (
-              <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '8px', fontFamily: 'var(--mono)' }}>#{p.id}</td>
-                <td style={{ padding: '8px', fontFamily: 'var(--sans)' }}>{p.study_id}</td>
-                <td style={{ padding: '8px', fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
-                  #{p.slot_a_report_id} <span style={{ color: 'var(--text-muted)' }}>({p.slot_a_condition})</span></td>
-                <td style={{ padding: '8px', fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
-                  #{p.slot_b_report_id} <span style={{ color: 'var(--text-muted)' }}>({p.slot_b_condition})</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {error && <div style={{ marginTop: 14, padding: 10, borderRadius: 6, background: '#ef444420',
-                              border: '1px solid #ef444440', color: '#ef4444', fontSize: fs(11),
-                              fontFamily: 'var(--sans)' }}>{error}</div>}
-    </div>
-  );
+  // The panel's judging of the participants' own texts (text_judging.py).
+  // The earlier paired-structured-report flow was retired in 0.12.0.
+  return <AdminTextJudgingPanel fs={fs} />;
 }
 
 // ── Costs (admin only) ──
@@ -4887,7 +4720,61 @@ function AccessReasonModal({ fs, row, action, categories, minChars, minutes, lap
   );
 }
 
-function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onClose }) {
+// Deleting someone else's dialectic: a reason of its own (never the
+// view's grant), the name typed back, and two log rows that outlive it.
+function DeleteDialecticModal({ fs, row, categories, minChars, onCancel, onSubmit }) {
+  const [category, setCategory] = useState(categories[0].value);
+  const [reason, setReason] = useState('');
+  const [typed, setTyped] = useState('');
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const ready = typed === row.name && (row.mine || reason.trim().length >= minChars);
+  const submit = async () => {
+    if (typed !== row.name) { setErr('Type the dialectic\'s name exactly as it is shown.'); return; }
+    if (!row.mine && reason.trim().length < minChars) { setErr(`Say why in a sentence — at least ${minChars} characters. It is recorded.`); return; }
+    setBusy(true); setErr(null);
+    try { await onSubmit(row.mine ? {} : { category, reason: reason.trim() }); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+  const field = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 4, fontSize: fs(12),
+                  fontFamily: 'var(--sans)', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div role="dialog" aria-label="Delete a dialectic" style={{ width: '100%', maxWidth: 460, padding: 20, borderRadius: 8,
+                    background: 'var(--surface)', border: '1px solid var(--deny)' }}>
+        <div style={{ fontSize: fs(14), fontFamily: 'var(--sans)', marginBottom: 6, color: 'var(--deny)' }}>Delete “{row.name}”</div>
+        <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 12 }}>
+          {row.mine ? 'Your own dialectic. ' : <>Owned by {row.owner.display_name || row.owner.email || 'another account'}. </>}
+          This removes the dialectic and everything held about it, and cannot be undone — there is no undo and no bin.
+          {!row.mine && <> The deletion is recorded with your name, the time and this reason, where the other admin can see it;
+          the record stays after the dialectic is gone.</>}
+        </div>
+        {!row.mine && (
+          <>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...field, marginBottom: 8 }}>
+              {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <textarea rows={3} value={reason} autoFocus placeholder="Why — one sentence"
+              onChange={e => { setReason(e.target.value); setErr(null); }} style={{ ...field, resize: 'vertical', marginBottom: 8 }} />
+          </>
+        )}
+        <input value={typed} onChange={e => { setTyped(e.target.value); setErr(null); }} autoFocus={!!row.mine}
+          placeholder={`Type the name to confirm: ${row.name}`} aria-label="Type the dialectic's name to confirm" style={field} />
+        <div style={{ minHeight: 20, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--deny)', margin: '6px 0' }}>{err}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={submit} disabled={busy || !ready} style={{ background: 'var(--deny)', border: 'none', borderRadius: 4, color: '#fff',
+            cursor: busy || !ready ? 'default' : 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1, opacity: busy || !ready ? 0.5 : 1 }}>
+            {busy ? '…' : 'DELETE FOR GOOD'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onDelete, onClose }) {
   const d = view.dialectic;
   const roleMap = { user: 'respondent', assistant: 'opponent' };
   const messages = (d.conversation || []).map(m => ({
@@ -4918,6 +4805,8 @@ function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onClose }) {
         </span>
         <button style={button} disabled={busy} onClick={onPdf}>PDF</button>
         <button style={button} disabled={busy} onClick={onRecords} title="The raw records: state, transcript, turn log, state events, database dump">RECORDS</button>
+        {onDelete && <button style={{ ...button, color: 'var(--deny)', borderColor: 'var(--deny)' }} disabled={busy} onClick={onDelete}
+          title="Delete this dialectic for good — asks for a reason and the name">DELETE</button>}
         <button style={button} onClick={onClose}>CLOSE</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(0, 1fr)' }}>
@@ -4947,6 +4836,7 @@ function AdminDialecticsTab({ fs }) {
   const [pane, setPane] = useState('list');
   const [gate, setGate] = useState(null);   // { row, action, lapsed }
   const [open, setOpen] = useState(null);   // the read-only view
+  const [doomed, setDoomed] = useState(null); // the row a deletion is being confirmed for
   const [log, setLog] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -4990,6 +4880,13 @@ function AdminDialecticsTab({ fs }) {
       else setError(e.message);
     }
     setBusy(false);
+  };
+  // Deletion never rides on the view's grant: its own reason, its own rows.
+  const destroy = async (row, creds) => {
+    await api('/api/admin/dialectics/delete', { method: 'POST',
+      body: JSON.stringify({ base_id: row.base_id, confirm_name: row.name, ...creds }) });
+    setDoomed(null); setOpen(null);
+    load();
   };
 
   const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
@@ -5041,7 +4938,9 @@ function AdminDialecticsTab({ fs }) {
       {pane === 'list' && open && (
         <div style={{ marginBottom: 16 }}>
           <ReadOnlyDialectic fs={fs} view={open} busy={busy}
-            onPdf={() => under('pdf')} onRecords={() => under('records')} onClose={() => setOpen(null)} />
+            onPdf={() => under('pdf')} onRecords={() => under('records')}
+            onDelete={open.row.kind === 'ordinary' ? () => setDoomed(open.row) : null}
+            onClose={() => setOpen(null)} />
         </div>
       )}
 
@@ -5095,6 +4994,7 @@ function AdminDialecticsTab({ fs }) {
             {rows.length} of {data.dialectics.length} dialectics. Search covers names and owners, never what was written.
             Study records are listed and can't be opened here: what a session produced is in the study export.
             A development study's records — the team's own tuning sessions — can be, under a reason, like any other dialectic.
+            Deleting an ordinary dialectic is done from its viewer, under a reason of its own, with the name typed back; study records are never deleted.
           </div>
         </div>
       )}
@@ -5122,6 +5022,11 @@ function AdminDialecticsTab({ fs }) {
                   </tr>))}</tbody>
               </table>}
         </div>
+      )}
+
+      {doomed && (
+        <DeleteDialecticModal fs={fs} row={doomed} categories={data.delete_categories} minChars={data.reason_min_chars}
+          onCancel={() => setDoomed(null)} onSubmit={(creds) => destroy(doomed, creds)} />
       )}
 
       {gate && (
@@ -5619,21 +5524,9 @@ function SurveyRunner({ fs, sessionId, onDone }) {
 
 // ── Blinded judge interface (Sloan) ──
 
-// Quality dimensions presented to the judge. The backend stores
-// whatever keys it's sent under `ratings`, so the dimension set lives
-// here in the frontend and can evolve without a migration.
-const JUDGE_DIMENSIONS = [
-  { key: 'completeness', label: 'Completeness', help: 'Does it cover the important concepts and relationships of the domain?' },
-  { key: 'correctness', label: 'Correctness', help: 'Are the statements and rules accurate?' },
-  { key: 'conciseness', label: 'Conciseness', help: 'Is it free of redundancy and irrelevant material?' },
-  { key: 'fidelity', label: 'Fidelity', help: 'Does it faithfully represent expert understanding of the domain?' },
-  { key: 'coherence', label: 'Reasoning coherence', help: 'Are the inferential relationships well-motivated and mutually supporting?' },
-];
-
 function JudgeInterface({ fs, logout }) {
   // 'queue' | 'pair' (the study: a participant's two texts, labelled A and B)
   //         | 'guesses' (the pass after the queue is done)
-  //         | 'rate' (legacy: a pair of structured reports)
   const [view, setView] = useState('queue');
   const [activeId, setActiveId] = useState(null);
   const home = () => { setView('queue'); setActiveId(null); };
@@ -5658,14 +5551,11 @@ function JudgeInterface({ fs, logout }) {
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {view === 'queue'
           ? <JudgeQueue fs={fs}
-              onOpen={(id) => { setActiveId(id); setView('rate'); }}
               onOpenPair={(id) => { setActiveId(id); setView('pair'); }}
               onGuess={() => setView('guesses')} />
           : view === 'pair'
             ? <JudgeRatePair fs={fs} pairId={activeId} onDone={home} />
-            : view === 'guesses'
-              ? <JudgeGuesses fs={fs} onDone={home} />
-              : <JudgeRate fs={fs} assignmentId={activeId} onDone={home} />}
+            : <JudgeGuesses fs={fs} onDone={home} />}
       </div>
     </div>
   );
@@ -6015,8 +5905,7 @@ function JudgeGuesses({ fs, onDone }) {
   );
 }
 
-function JudgeQueue({ fs, onOpen, onOpenPair, onGuess }) {
-  const [assignments, setAssignments] = useState(null);
+function JudgeQueue({ fs, onOpenPair, onGuess }) {
   const [pairs, setPairs] = useState(null);
   const [guessing, setGuessing] = useState(null);
   const [error, setError] = useState(null);
@@ -6024,261 +5913,15 @@ function JudgeQueue({ fs, onOpen, onOpenPair, onGuess }) {
   useEffect(() => {
     (async () => {
       try {
-        const [t, a] = await Promise.all([api('/api/judge/pairs'), api('/api/judge/queue')]);
+        const t = await api('/api/judge/pairs');
         setPairs(t.pairs || []); setGuessing(t.guessing || null);
-        setAssignments(a.assignments || []);
       } catch (e) { setError(e.message); }
     })();
   }, []);
 
   if (error) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
-  if (!assignments || !pairs) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
-  // The study's judges rate pairs of texts. The paired-report queue
-  // below is the legacy flow; it only shows for a judge who has such items.
-  if (assignments.length === 0) return <JudgePairQueue fs={fs} pairs={pairs} guessing={guessing} onOpenPair={onOpenPair} onGuess={onGuess} />;
-
-  const pending = assignments.filter(a => a.status === 'pending');
-  const done = assignments.filter(a => a.status !== 'pending');
-
-  return (
-    <div>
-    {pairs.length > 0 && <JudgePairQueue fs={fs} pairs={pairs} guessing={guessing} onOpenPair={onOpenPair} onGuess={onGuess} />}
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: 32 }}>
-      <h1 style={{ fontSize: fs(22), fontWeight: 300, marginBottom: 6 }}>Your evaluation queue</h1>
-      <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(12), marginBottom: 24 }}>
-        Each item shows two anonymized outputs. Rate them on the quality dimensions; your judgements are confidential.
-      </p>
-
-      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8 }}>
-        TO DO ({pending.length})
-      </div>
-      {pending.length === 0
-        ? <div style={{ color: 'var(--text-muted)', fontSize: fs(12), fontFamily: 'var(--sans)', marginBottom: 20 }}>Nothing to evaluate right now.</div>
-        : pending.map(a => (
-          <div key={a.id} onClick={() => onOpen(a.id)} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px', marginBottom: 6, borderRadius: 6,
-            background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            <span style={{ fontFamily: 'var(--sans)', fontSize: fs(13) }}>Evaluation #{a.id}</span>
-            <span style={{ fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)', color: 'var(--accent)' }}>OPEN →</span>
-          </div>
-        ))}
-
-      {done.length > 0 && (
-        <>
-          <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', margin: '20px 0 8px' }}>
-            COMPLETED ({done.length})
-          </div>
-          {done.map(a => (
-            <div key={a.id} onClick={() => onOpen(a.id)} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 14px', marginBottom: 4, borderRadius: 6,
-              background: 'var(--surface)', border: '1px solid var(--border)', cursor: 'pointer', opacity: 0.7 }}>
-              <span style={{ fontFamily: 'var(--sans)', fontSize: fs(12) }}>Evaluation #{a.id}</span>
-              <span style={{ fontSize: fs(10), color: 'var(--commit)' }}>✓ submitted</span>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-    </div>
-  );
-}
-
-function JudgeRate({ fs, assignmentId, onDone }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  // form state
-  const [ratings, setRatings] = useState({}); // {dim: {a, b}}
-  const [justA, setJustA] = useState('');
-  const [justB, setJustB] = useState('');
-  const [winner, setWinner] = useState('');
-  const [guessA, setGuessA] = useState('');
-  const [guessB, setGuessB] = useState('');
-  const [confidence, setConfidence] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api(`/api/judge/assignments/${assignmentId}`);
-        setData(d);
-        if (d.rating) {
-          // Pre-fill from a prior submission (editable).
-          setRatings(d.rating.ratings || {});
-          setJustA(d.rating.justification_a || '');
-          setJustB(d.rating.justification_b || '');
-          setWinner(d.rating.pairwise_winner || '');
-          setGuessA(d.rating.condition_guess_a || '');
-          setGuessB(d.rating.condition_guess_b || '');
-          setConfidence(d.rating.confidence ?? null);
-        }
-      } catch (e) { setError(e.message); }
-    })();
-  }, [assignmentId]);
-
-  if (error && !data) return <div style={{ padding: 32 }}><StudyError fs={fs} message={error} /></div>;
-  if (!data) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
-
-  const setDim = (dim, slot, val) => setRatings(r => ({ ...r, [dim]: { ...(r[dim] || {}), [slot]: val } }));
-  const allRated = JUDGE_DIMENSIONS.every(d => Number.isInteger(ratings[d.key]?.a) && Number.isInteger(ratings[d.key]?.b));
-  const canSubmit = allRated && (winner === 'a' || winner === 'b' || winner === 'tie') && !busy;
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setBusy(true); setError(null);
-    try {
-      await api(`/api/judge/assignments/${assignmentId}/rate`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ratings,
-          justification_a: justA,
-          justification_b: justB,
-          pairwise_winner: winner,
-          condition_guess_a: guessA || null,
-          condition_guess_b: guessB || null,
-          confidence: confidence ?? null,
-        }),
-      });
-      onDone();
-    } catch (e) {
-      setError(typeof e.message === 'string' ? e.message : 'Submission failed.');
-    }
-    setBusy(false);
-  };
-
-  const likert = (dim, slot) => (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {[1,2,3,4,5,6,7].map(n => (
-        <button key={n} onClick={() => setDim(dim, slot, n)} style={{
-          width: 28, height: 28, borderRadius: 14,
-          border: '1px solid ' + (ratings[dim]?.[slot] === n ? 'var(--accent)' : 'var(--border)'),
-          background: ratings[dim]?.[slot] === n ? 'var(--accent)' : 'var(--surface2)',
-          color: ratings[dim]?.[slot] === n ? '#111' : 'var(--text-dim)',
-          cursor: 'pointer', fontSize: fs(11), fontFamily: 'var(--mono)' }}>{n}</button>
-      ))}
-    </div>
-  );
-
-  return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: 32 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h1 style={{ fontSize: fs(20), fontWeight: 300 }}>Evaluation #{assignmentId}</h1>
-        <button onClick={onDone} style={{
-          background: 'none', border: '1px solid var(--border)', borderRadius: 4,
-          color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10),
-          padding: '2px 8px', fontFamily: 'var(--mono)', letterSpacing: 1 }}>← QUEUE</button>
-      </div>
-
-      {/* Side-by-side outputs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-        {['a','b'].map(slot => (
-          <div key={slot} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ padding: '8px 14px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)',
-                          fontSize: fs(11), letterSpacing: 2, fontFamily: 'var(--mono)', color: 'var(--opp)' }}>
-              OUTPUT {slot.toUpperCase()}
-            </div>
-            <div style={{ padding: 14, fontSize: fs(12), fontFamily: 'var(--sans)', lineHeight: 1.6,
-                          whiteSpace: 'pre-wrap', maxHeight: 420, overflowY: 'auto' }}>
-              {data[`slot_${slot}`].content}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Dimension ratings */}
-      <div style={{ fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 }}>
-        QUALITY RATINGS (1 = poor, 7 = excellent)
-      </div>
-      {JUDGE_DIMENSIONS.map(d => (
-        <div key={d.key} style={{ marginBottom: 16, padding: 14, borderRadius: 6,
-                                  background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div style={{ fontFamily: 'var(--sans)', fontSize: fs(13), marginBottom: 2 }}>{d.label}</div>
-          <div style={{ fontFamily: 'var(--sans)', fontSize: fs(11), color: 'var(--text-muted)', marginBottom: 10 }}>{d.help}</div>
-          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-            <div><div style={{ fontSize: fs(10), color: 'var(--text-muted)', marginBottom: 5 }}>Output A</div>{likert(d.key, 'a')}</div>
-            <div><div style={{ fontSize: fs(10), color: 'var(--text-muted)', marginBottom: 5 }}>Output B</div>{likert(d.key, 'b')}</div>
-          </div>
-        </div>
-      ))}
-
-      {/* Justifications */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        {[['a', justA, setJustA], ['b', justB, setJustB]].map(([slot, val, set]) => (
-          <div key={slot}>
-            <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>
-              JUSTIFICATION — OUTPUT {slot.toUpperCase()}
-            </div>
-            <textarea value={val} onChange={e => set(e.target.value)} rows={3} style={{
-              width: '100%', padding: 10, background: 'var(--surface)', border: '1px solid var(--border)',
-              borderRadius: 6, color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)',
-              outline: 'none', resize: 'vertical' }} />
-          </div>
-        ))}
-      </div>
-
-      {/* Pairwise winner */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 6 }}>
-          OVERALL — WHICH IS BETTER?
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {[['a','Output A'],['tie','About equal'],['b','Output B']].map(([v,label]) => (
-            <button key={v} onClick={() => setWinner(v)} style={{
-              padding: '8px 16px', borderRadius: 6,
-              border: '1px solid ' + (winner === v ? 'var(--accent)' : 'var(--border)'),
-              background: winner === v ? 'var(--accent)' : 'var(--surface)',
-              color: winner === v ? '#111' : 'var(--text-dim)',
-              cursor: 'pointer', fontSize: fs(12), fontFamily: 'var(--sans)' }}>{label}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Blinding-validation: condition guess + confidence (optional) */}
-      <div style={{ marginBottom: 16, padding: 14, borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)', marginBottom: 4 }}>
-          OPTIONAL — IF YOU HAD TO GUESS
-        </div>
-        <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-muted)', marginBottom: 10 }}>
-          One output was produced through a structured back-and-forth dialogue; the other through free-form chat. Which do you think is which?
-        </div>
-        {[['A', guessA, setGuessA], ['B', guessB, setGuessB]].map(([label, val, set]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ width: 70, fontSize: fs(11), fontFamily: 'var(--sans)' }}>Output {label}</span>
-            {[['elenchus','dialogue'],['baseline','free-form'],['unsure','unsure']].map(([v,lbl]) => (
-              <button key={v} onClick={() => set(val === v ? '' : v)} style={{
-                padding: '4px 10px', borderRadius: 4,
-                border: '1px solid ' + (val === v ? 'var(--accent)' : 'var(--border)'),
-                background: val === v ? 'var(--accent)' : 'var(--surface2)',
-                color: val === v ? '#111' : 'var(--text-dim)',
-                cursor: 'pointer', fontSize: fs(11), fontFamily: 'var(--sans)' }}>{lbl}</button>
-            ))}
-          </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <span style={{ width: 70, fontSize: fs(11), fontFamily: 'var(--sans)' }}>Confidence</span>
-          {[1,2,3,4,5,6,7].map(n => (
-            <button key={n} onClick={() => setConfidence(confidence === n ? null : n)} style={{
-              width: 26, height: 26, borderRadius: 13,
-              border: '1px solid ' + (confidence === n ? 'var(--accent)' : 'var(--border)'),
-              background: confidence === n ? 'var(--accent)' : 'var(--surface2)',
-              color: confidence === n ? '#111' : 'var(--text-dim)',
-              cursor: 'pointer', fontSize: fs(10), fontFamily: 'var(--mono)' }}>{n}</button>
-          ))}
-        </div>
-      </div>
-
-      <button onClick={submit} disabled={!canSubmit} style={{
-        width: '100%', padding: '12px 16px', marginBottom: 40,
-        background: canSubmit ? 'var(--accent)' : 'var(--surface)',
-        border: 'none', borderRadius: 6, color: '#111',
-        fontSize: fs(12), letterSpacing: 1, fontWeight: 500,
-        cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.3 }}>
-        {busy ? '…' : (data.rating ? 'UPDATE EVALUATION' : 'SUBMIT EVALUATION')}
-      </button>
-      {error && <StudyError fs={fs} message={error} />}
-    </div>
-  );
+  if (!pairs) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: fs(12) }}>Loading…</div>;
+  return <JudgePairQueue fs={fs} pairs={pairs} guessing={guessing} onOpenPair={onOpenPair} onGuess={onGuess} />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<AuthGate />);

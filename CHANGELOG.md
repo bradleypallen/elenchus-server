@@ -5,6 +5,38 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **An administrator can delete an ordinary dialectic** — from its
+  read-only view, for a reason of its own (the owner asked for it; their
+  account is being closed; an abuse or policy concern; other), with the
+  dialectic's name typed back. The reason given to look at it does not
+  carry over. The deletion is written to the access log beside the views
+  and the entry outlives the dialectic. Study records — a real study's or
+  a development study's — are never deleted through the application.
+  Platform migration 25.
+
+### Changed
+
+- **[Who Can See What](docs/data-access.md) is at policy version 4**: an
+  administrator's deletion exists and is described; the last staff path
+  to study content outside the export is gone (see *Removed*).
+
+### Removed
+
+- **The legacy paired-report flow.** An earlier design had the LLM distil
+  each study session into a structured report (`generate-report`) and
+  judges compare report pairs (`judge-packages`, `judge-assignments`,
+  `/api/judge/queue`, `/api/judge/assignments/*`). The pilot judges the
+  participants' own texts, and generating a report sent a participant's
+  dialogue to the model at a researcher's request — a staff read of study
+  content outside the export and outside *Who Can See What*. The routes,
+  `study_reports.py`, the Study tab's report column and GEN button, the
+  Judging tab's LEGACY block, the judge's legacy queue and rating view,
+  and the export's `judging.json` / per-session `reports.json` are gone
+  (export format 4). The tables stay in the schema; nothing writes to
+  them.
+
 ## [0.11.0] — 2026-10-02
 
 ### Added

@@ -335,16 +335,18 @@ Runbook §10](OPERATIONS.md)):
       ([EEQ packet](eeq-review.md)).
 - [ ] DPO / ethics approval in hand for a live launch.
 
-## Legacy: structured reports and paired judging
+## Retired: structured reports and paired judging
 
 An earlier design had the LLM distil each session into a uniform
 structured report and judges compare matched `elenchus` / `baseline`
 report *pairs*. The pilot does not use it — the judged artifact has to be
-the participant's own words — but the routes remain
-(`generate-report`, `judge-packages`, `judge-assignments`,
-`/api/judge/queue`, `/api/judge/assignments/*`), are still tested, and
-appear in the Judging tab under a "Legacy" heading. A structured report
-can still be useful as an offline analysis aid.
+the participant's own words — and in 0.12.0 its routes, interface and
+export files were removed: generating a report sent a participant's
+dialogue to the model at a researcher's request, which is a staff read of
+study content outside the export and so outside the
+[access policy](data-access.md). The tables of platform migration 6 stay
+in the schema (migrations are forward-only) but nothing writes to them;
+an export from before 0.12.0 may still carry a `judging.json`.
 
 ## A worked study design
 

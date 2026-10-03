@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import tarfile
 from datetime import timedelta
 
@@ -133,7 +134,10 @@ class TestTheListIsMetadata:
         blob = json.dumps(body)
         assert SECRET not in blob and "occurrence" not in blob
         assert not {"conversation", "commitments", "denials", "tensions"} & set(row)
-        assert [c["value"] for c in body["categories"]] == list(content_access.CATEGORIES)
+        assert [c["value"] for c in body["categories"]] == list(content_access.VIEW_CATEGORIES)
+        assert [c["value"] for c in body["delete_categories"]] == list(
+            content_access.DELETE_CATEGORIES
+        )
         assert body["grant_minutes"] == 30 and body["reason_min_chars"] == 10
 
     def test_listing_writes_nothing(self):
@@ -507,3 +511,133 @@ class TestADevelopmentStudy:
         r = researcher.put("/api/admin/study/DEV/config", json=setup)
         assert r.status_code == 409
         assert researcher.get("/api/admin/study/DEV/config").json()["development"] is True
+
+
+DELETE_REASON = {
+    "category": "owner_requested_deletion",
+    "reason": "Alice asked by email on 3 October for this to be removed",
+}
+
+
+class TestAdminDelete:
+    """The one destructive act an administrator can take on someone
+    else's dialectic (docs/data-access.md, policy version 4): a reason of
+    its own, the name typed back, two log rows that outlive the
+    dialectic. Never a study record."""
+
+    def _exists(self, name: str) -> bool:
+        reg = get_registry()
+        return pdb.find_base(_con(), name) is not None and os.path.exists(reg.db_path(name))
+
+    def test_deletes_under_a_reason_with_the_name_typed_back(self):
+        alice, _ = _alice_with_a_dialectic()
+        admin, admin_id = _as("admin", "admin@example.com")
+        assert self._exists("alice notes")
+        r = admin.post(
+            "/api/admin/dialectics/delete",
+            json={"base_id": "alice notes", "confirm_name": "alice notes", **DELETE_REASON},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"deleted": "alice notes", "logged": True}
+        assert not self._exists("alice notes")
+        assert alice.get("/api/dialectics/alice notes").status_code == 404
+        # Two rows, both carrying the reason, both outliving the dialectic.
+        rows = _log_rows()
+        assert [(a, aid, b, c) for a, aid, b, c, _g in rows] == [
+            ("grant", admin_id, "alice notes", "owner_requested_deletion"),
+            ("delete", admin_id, "alice notes", "owner_requested_deletion"),
+        ]
+        (entry,) = admin.get("/api/admin/access-log").json()["entries"]
+        assert entry["action"] == "delete" and entry["base_exists"] is False
+        assert entry["reason"] == DELETE_REASON["reason"]
+        assert entry["owner_email"] == "alice@example.com"
+
+    @pytest.mark.parametrize(
+        "body, fragment",
+        [
+            ({"confirm_name": "alice notes"}, "what this is for"),
+            (
+                {
+                    "confirm_name": "alice notes",
+                    "category": "support_request",
+                    "reason": "a long enough sentence",
+                },
+                "what this is for",
+            ),
+            ({"confirm_name": "alice notes", "category": "other", "reason": "short"}, "at least"),
+            ({"confirm_name": "Alice notes", **DELETE_REASON}, "exactly as it is shown"),
+            ({**DELETE_REASON}, "exactly as it is shown"),
+        ],
+    )
+    def test_refused_without_a_fit_reason_or_the_exact_name(self, body, fragment):
+        _alice_with_a_dialectic()
+        admin, _ = _as("admin", "admin@example.com")
+        r = admin.post("/api/admin/dialectics/delete", json={"base_id": "alice notes", **body})
+        assert r.status_code == 422, r.text
+        assert fragment in r.json()["detail"]["user_message"]
+        assert self._exists("alice notes") and _log_rows() == []
+
+    def test_a_view_grant_does_not_cover_a_deletion(self):
+        _alice_with_a_dialectic()
+        admin, _ = _as("admin", "admin@example.com")
+        grant = admin.post(
+            "/api/admin/dialectics/view", json={"base_id": "alice notes", **REASON}
+        ).json()["grant"]
+        r = admin.post(
+            "/api/admin/dialectics/delete",
+            json={
+                "base_id": "alice notes",
+                "confirm_name": "alice notes",
+                "grant_id": grant["grant_id"],
+            },
+        )
+        assert r.status_code == 422  # extra="forbid": no grant_id on a deletion
+        assert self._exists("alice notes")
+
+    def test_study_records_are_never_deleted(self):
+        _, task_base, session_id = _study_task_base(development=True)
+        admin, _ = _as("admin", "admin@example.com")
+        for base in (task_base, f"practice-{session_id}"):
+            name = pdb.find_base(_con(), base)["name"]
+            r = admin.post(
+                "/api/admin/dialectics/delete",
+                json={
+                    "base_id": base,
+                    "confirm_name": name,
+                    "category": "policy_concern",
+                    "reason": "cleaning up the dev study",
+                },
+            )
+            assert r.status_code == 409, (base, r.text)
+            assert r.json()["detail"]["user_message"].startswith(
+                "This is a study session's record"
+            )
+            assert self._exists(base)
+        assert _log_rows() == []
+
+    def test_your_own_goes_the_owners_way(self):
+        admin, _ = _as("admin", "admin@example.com")
+        assert admin.post("/api/sessions", json={"name": "mine"}).status_code == 200
+        r = admin.post(
+            "/api/admin/dialectics/delete", json={"base_id": "mine", "confirm_name": "mine"}
+        )
+        assert r.status_code == 200 and r.json() == {"deleted": "mine", "logged": False}
+        assert not self._exists("mine") and _log_rows() == []
+
+    @pytest.mark.parametrize("kind", ["researcher", "user", "judge"])
+    def test_only_admins(self, kind):
+        _alice_with_a_dialectic()
+        other, _ = _as(kind, f"{kind}@example.com")
+        r = other.post(
+            "/api/admin/dialectics/delete",
+            json={"base_id": "alice notes", "confirm_name": "alice notes", **DELETE_REASON},
+        )
+        assert r.status_code == 403 and self._exists("alice notes")
+
+    def test_a_missing_dialectic_is_a_plain_404(self):
+        admin, _ = _as("admin", "admin@example.com")
+        r = admin.post(
+            "/api/admin/dialectics/delete",
+            json={"base_id": "nothing here", "confirm_name": "nothing here", **DELETE_REASON},
+        )
+        assert r.status_code == 404 and _log_rows() == []

@@ -154,7 +154,7 @@ def run_access_probes(harness) -> None:
 
     # ── C. Privilege gating: a logged-in non-admin → 403 ──
     alice.probe("GET", "/api/admin/users", action="admin_gate", expect=403)
-    alice.probe("GET", "/api/judge/queue", action="judge_gate", expect=403)
+    alice.probe("GET", "/api/judge/pairs", action="judge_gate", expect=403)
 
     # ── D. Tenant isolation ──
     alice.probe(

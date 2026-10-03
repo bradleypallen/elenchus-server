@@ -267,3 +267,59 @@ class TestPhaseASchemaExtensions:
             assert apply_migrations(con2, "base") == v
         finally:
             con2.close()
+
+
+class TestContentAccessLogRebuild:
+    """Platform migration 0025 rebuilds `content_access_log` so the CHECK
+    admits `delete` (DuckDB can't alter a constraint): existing rows,
+    their ids and both indexes must survive the rebuild."""
+
+    def test_rows_ids_and_indexes_survive(self, tmp_path):
+        import duckdb
+
+        from elenchus.migrations.runner import list_migrations
+
+        con = duckdb.connect(str(tmp_path / "p.duckdb"))
+        for version, path in list_migrations("platform"):
+            if version > 24:
+                break
+            con.execute("BEGIN")
+            con.execute(path.read_text(encoding="utf-8"))
+            con.execute("DELETE FROM meta WHERE key='schema_version'")
+            con.execute(
+                "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", [str(version)]
+            )
+            con.execute("COMMIT")
+        con.execute(
+            "INSERT INTO content_access_log (at_utc, actor_id, action, base_id, owner_id, "
+            "category, reason, expires_at_utc) VALUES (now(), 1, 'grant', 'b', 2, 'other', "
+            "'a reason long enough', now())"
+        )
+        con.execute(
+            "INSERT INTO content_access_log (at_utc, actor_id, action, base_id, owner_id, "
+            "category, reason, grant_id) VALUES (now(), 1, 'view', 'b', 2, 'other', "
+            "'a reason long enough', 1)"
+        )
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "INSERT INTO content_access_log (at_utc, actor_id, action, base_id, category, "
+                "reason) VALUES (now(), 1, 'delete', 'b', 'other', 'x')"
+            )
+        assert apply_migrations(con, "platform") >= 25
+        assert con.execute("SELECT id, action FROM content_access_log ORDER BY id").fetchall() == [
+            (1, "grant"),
+            (2, "view"),
+        ]
+        con.execute(
+            "INSERT INTO content_access_log (at_utc, actor_id, action, base_id, category, "
+            "reason) VALUES (now(), 1, 'delete', 'b', 'other', 'gone')"
+        )
+        assert con.execute("SELECT COUNT(*) FROM content_access_log").fetchone()[0] == 3
+        indexes = {
+            r[0]
+            for r in con.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name='content_access_log'"
+            ).fetchall()
+        }
+        assert indexes == {"content_access_log_base_idx", "content_access_log_at_idx"}
+        con.close()

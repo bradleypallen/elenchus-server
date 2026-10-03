@@ -19,7 +19,6 @@ analyze downstream. Layout inside the archive:
       participants.json              — enrolled participants: code, cell
                                        (first condition × first topic),
                                        allocation method — no names
-      judging.json                   — packages, assignments, ratings
       sessions/{pseudonym}-{cond}/   — one directory per session
         deviations.json              — this session's protocol deviations
         session.json                 — lifecycle row (pseudonymized), with the
@@ -34,7 +33,6 @@ analyze downstream. Layout inside the archive:
                                        parse path, state before/after, timing
         state_events.json            — every state transition, with its
                                        source (opponent / ui / direct) and turn
-        reports.json                 — generated structured report(s)
         surveys.json                 — questionnaire submissions
         integrity.json               — usage stats + content metrics
         base/                        — DuckDB EXPORT DATABASE dump
@@ -74,7 +72,9 @@ logger = logging.getLogger(__name__)
 # "2": sessions carry the participant code, period and allocation
 # (crossover linkage), the submitted text and its draft history, and the
 # capture log; `participants.json` added; session tokens no longer exported.
-EXPORT_FORMAT_VERSION = "3"
+# "4": the legacy paired-report flow is gone — no `judging.json`, no
+# per-session `reports.json`, no `judge_packages` in the manifest.
+EXPORT_FORMAT_VERSION = "4"
 
 
 def _versions(con) -> dict:
@@ -135,11 +135,6 @@ def _build_pseudonyms(con, study_id: str) -> dict[int, str]:
 
     judge_ids: set[int] = set()
     staff_ids: set[int] = set()
-    for package in pdb.list_judge_packages(con, study_id=study_id):
-        staff_ids.add(package["created_by"])
-        for assignment in pdb.list_assignments_for_package(con, package["id"]):
-            judge_ids.add(assignment["judge_actor_id"])
-            staff_ids.add(assignment["assigned_by"])
     for token in pdb.list_participant_tokens(con, study_id=study_id):
         staff_ids.add(token["issued_by"])
     for participant in pdb.list_study_participants(con, study_id):
@@ -235,19 +230,6 @@ def export_study(
                 logger.exception("Export failed for session %d", session["id"])
                 failed.append({"session_id": session["id"], "label": label, "error": str(e)})
 
-        # Study-level judging data (unblinded — this is the analysis set).
-        judging = []
-        for package in pdb.list_judge_packages(con, study_id=study_id):
-            assignments = []
-            for assignment in pdb.list_assignments_for_package(con, package["id"]):
-                rating = pdb.find_rating_for_assignment(con, assignment["id"])
-                assignments.append({"assignment": assignment, "rating": rating})
-            judging.append({"package": package, "assignments": assignments})
-        _write_json(
-            os.path.join(staging, "judging.json"),
-            _pseudonymize(judging, pseudonyms),
-        )
-
         manifest = {
             "study_id": study_id,
             # A development study is the team's own tuning material, not a
@@ -264,7 +246,6 @@ def export_study(
             "server_timezone": con.execute("SELECT current_setting('TimeZone')").fetchone()[0],
             "sessions_exported": exported,
             "sessions_failed": failed,
-            "judge_packages": len(judging),
             "pseudonymization": (
                 "Actor identities are replaced by opaque IDs (P-*, J-*, R-*). "
                 "The identity mapping is held separately by the research team "
@@ -510,13 +491,6 @@ def _export_one_session(reg, con, session: dict, pseudonyms: dict[int, str], des
     _write_json(
         os.path.join(dest, "text.json"),
         _pseudonymize(pdb.find_study_text_for_session(con, sid), pseudonyms),
-    )
-    _write_json(
-        os.path.join(dest, "reports.json"),
-        _pseudonymize(
-            [r for r in pdb.list_study_reports(con) if r["session_id"] == sid],
-            pseudonyms,
-        ),
     )
     _write_json(
         os.path.join(dest, "surveys.json"),

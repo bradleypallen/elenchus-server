@@ -2,7 +2,8 @@
 
 *Decision record, 2026-10-02. Status: policy adopted; the first two of
 four work packages built (0.9.5, 0.10.0), plus the development study
-(0.11.0). The user-facing statement of the policy is
+(0.11.0), the retirement of the legacy report flow and the
+administrator's delete (0.12.0). The user-facing statement of the policy is
 [docs/data-access.md](../docs/data-access.md).*
 
 ## 1. How the question came up
@@ -139,6 +140,7 @@ analysis.
    study-report routes** to staff (`generate-report` / `report` still
    admit a researcher — they belong to the retired paired-report flow,
    and shutting them means retiring that flow and its tests together).
+   Both were done in 0.12.0 — see 2c and 2d below.
 
    **2b. The development study — built, 0.11.0 (platform migration 24,
    policy version 3).** The study team has to read whole sessions to
@@ -160,6 +162,26 @@ analysis.
    own ordinary dialectics — was kept too (it needs nothing), but it
    does not exercise the study flow, which is where the prompt is
    actually used.
+   **2c. The legacy paired-report flow retired — 0.12.0.** Not brought
+   under the access log but removed: `generate-report` sent a
+   participant's dialogue to the model at a researcher's request, and a
+   reason-gated route that *also* ships study content to a third party
+   is a bigger question than a log row answers; nothing needed the
+   output. Routes, module, UI, export files and tests went together;
+   the tables stay (migrations are forward-only) and nothing writes to
+   them. This closed the last path to study content outside the export.
+
+   **2d. An administrator's delete — 0.12.0 (platform migration 25,
+   policy version 4).** `POST /api/admin/dialectics/delete`: a reason of
+   its own from a narrower set (the owner asked; account closure; abuse
+   or policy concern; other) — a reason given to *look* never covers
+   destroying — the dialectic's name typed back, and two log rows (the
+   grant and `delete`) that outlive it. Study records, real or
+   development, are refused as they are everywhere. The question of a
+   second administrator's confirmation was settled for now in favour of
+   the log: at the pilot's scale one administrator's logged act with the
+   name typed is proportionate, and the other administrator sees it.
+   Revisit if the instance ever has more than a handful of staff.
 3. **Owner-side transparency — planned.** The owner sees when an
    administrator viewed their dialectic; a "who can see this" link to the
    policy page from inside the application.
@@ -189,12 +211,8 @@ analysis.
 
 - How long the access log is kept, and whether the owner is told at the
   time or only on looking (package 3).
-- The legacy study-report routes still let a researcher generate a
-  report from a study session's base — a path to study content outside
-  the export. Retire the paired-report flow, or bring those routes under
-  the access log.
-- An administrator's delete of an ordinary dialectic: its own change.
 - Retention of backups, which hold everything: a policy for the
   production host rather than for the code.
-- Whether an admin's deletion of an ordinary dialectic (abuse, account
-  closure) needs a second admin's confirmation, or the log suffices.
+- Whether an administrator's deletion should one day need a second
+  administrator's confirmation (settled for the pilot: the log suffices;
+  see 2d).
