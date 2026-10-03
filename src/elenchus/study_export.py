@@ -85,6 +85,7 @@ def _versions(con) -> dict:
     import duckdb
 
     from . import __version__ as elenchus_version
+    from . import prompts
     from .migrations.runner import current_schema_version
     from .text_judging import RUBRIC_VERSION
 
@@ -99,6 +100,9 @@ def _versions(con) -> dict:
         "platform_schema": current_schema_version(con),
         "rubric": RUBRIC_VERSION,
         "export_format": EXPORT_FORMAT_VERSION,
+        # The prompts in force when the export was taken: label + hash per
+        # family. Each turn carries its own; this is the "frozen as" line.
+        "prompts": prompts.versions(),
     }
 
 
@@ -246,6 +250,10 @@ def export_study(
 
         manifest = {
             "study_id": study_id,
+            # A development study is the team's own tuning material, not a
+            # registered run (migration 0024); an analysis must not
+            # mistake its export for one.
+            "development": bool((pdb.find_study_config(con, study_id) or {}).get("development")),
             "export_format_version": EXPORT_FORMAT_VERSION,
             "versions": _versions(con),
             "exported_at": ts,

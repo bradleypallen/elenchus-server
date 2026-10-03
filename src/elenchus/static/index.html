@@ -2897,7 +2897,7 @@ function AdminUsersTab({ fs }) {
 // and topic come first (permuted blocks), which keeps the four cells
 // balanced and the two sessions linked in the data.
 function AdminEnrolmentPanel({ fs, onChanged }) {
-  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48, max_gap_days: 21, task_minutes: '' };
+  const blank = { study_id: '', topic_a_title: '', topic_a_brief: '', topic_b_title: '', topic_b_brief: '', min_gap_hours: 48, max_gap_days: 21, task_minutes: '', development: false };
   const [studies, setStudies] = useState([]);
   const [studyId, setStudyId] = useState('');
   const [cfg, setCfg] = useState(blank);
@@ -2942,6 +2942,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
       study_id: st.study_id, min_gap_hours: st.min_gap_hours,
       max_gap_days: st.max_gap_days === null || st.max_gap_days === undefined ? 21 : st.max_gap_days,
       task_minutes: st.task_minutes === null || st.task_minutes === undefined ? '' : String(st.task_minutes),
+      development: !!st.development,
       topic_a_title: st.topics.A.title, topic_a_brief: st.topics.A.brief,
       topic_b_title: st.topics.B.title, topic_b_brief: st.topics.B.brief,
     });
@@ -3058,6 +3059,11 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
             {studies.map(st => <option key={st.study_id} value={st.study_id}>{st.study_id}</option>)}
           </select>
           <button onClick={() => { setCfg(blank); setShowSetup(true); }} style={smallBtn}>NEW STUDY</button>
+          {selected && selected.development && (
+            <span title="A development study: run by the team to tune the system. Its sessions can be opened in the Dialectics tab. It can't carry an allocation seed."
+                  style={{ fontSize: fs(9), letterSpacing: 2, padding: '3px 8px', borderRadius: 3, border: '1px solid var(--border)',
+                           color: 'var(--text-dim)', fontFamily: 'var(--sans)', cursor: 'help' }}>DEVELOPMENT</span>
+          )}
           {roster && (
             <span title={Object.entries(roster.cell_counts).map(([k, n]) => `${k}: ${n}`).join('\n')}
                   style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', cursor: 'help' }}>
@@ -3095,6 +3101,25 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                 onChange={e => setCfg(c => ({ ...c, task_minutes: e.target.value }))} style={{ ...input, width: 80 }} />
               <span style={{ color: 'var(--text-muted)' }}> — leave empty for the usual {defaultTaskMinutes}. Use 5 for a practice study.</span>
             </label>
+            {(() => {
+              const seeded = !!(selected && selected.allocation && selected.allocation.seeded && selected.study_id === cfg.study_id.trim());
+              const enrolled = !!(roster && selected && selected.study_id === cfg.study_id.trim() && roster.participants.length > 0);
+              const fixed = seeded || (enrolled && !cfg.development);
+              return (
+                <label style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', display: 'flex', gap: 8, alignItems: 'flex-start',
+                                opacity: fixed ? 0.6 : 1 }}>
+                  <input type="checkbox" checked={!!cfg.development} disabled={fixed}
+                    onChange={e => setCfg(c => ({ ...c, development: e.target.checked }))} style={{ marginTop: 3 }} />
+                  <span>
+                    <b>Development study</b> — run by the team to tune the system. Its sessions go through the whole participant
+                    flow, and their records <b>can be opened in the Dialectics tab</b> under a reason, logged. It can't carry an
+                    allocation seed, and the choice is fixed once anyone is enrolled.
+                    {seeded && <span style={{ color: 'var(--text-muted)' }}> This study has a seed: it is a registered study.</span>}
+                    {!seeded && enrolled && !cfg.development && <span style={{ color: 'var(--text-muted)' }}> Participants are enrolled: set up a new study instead.</span>}
+                  </span>
+                </label>
+              );
+            })()}
             <div style={{ marginTop: 6, padding: '10px 12px', borderRadius: 4, background: 'var(--surface2)', border: '1px solid var(--border)',
                           fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6 }}>
               <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 6 }}>ALLOCATION</div>
@@ -3108,6 +3133,8 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                   </div>
                   <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>These two hashes are what is deposited with the registration.</div>
                 </div>
+              ) : cfg.development ? (
+                <div>A development study carries no allocation seed: enrolment draws each cell and shows it at once.</div>
               ) : (
                 <div>
                   <div style={{ marginBottom: 6 }}>
@@ -4676,6 +4703,21 @@ function AdminSystemTab({ fs }) {
                 {sys.llm.has_api_key && !sys.llm.key_persisted && <span style={{ color: 'var(--tension)' }}> · the key will be lost when the server restarts</span>}
                 <div style={note_}>Change these with the gear icon on the home page. Don’t change the model while a study is running.</div>
               </td></tr>
+          {sys.prompts && (
+            <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Prompts</td>
+              <td style={td}>
+                {Object.entries(sys.prompts.versions).map(([family, v]) => (
+                  <div key={family} style={{ fontFamily: 'var(--mono)' }} title={`sha256 ${v.sha256}`}>
+                    {v.version}{v.overridden && <span style={{ color: 'var(--tension)' }}> · OVERRIDE — not the packaged prompt</span>}
+                  </div>
+                ))}
+                <div style={note_}>
+                  {sys.prompts.override_active
+                    ? 'A prompt directory is in force (ELENCHUS_PROMPT_DIR): this is a development instance. Every exchange records the label and hash of the prompt it ran under.'
+                    : 'The packaged prompts. Every exchange records the label and hash of the prompt it ran under.'}
+                </div>
+              </td></tr>
+          )}
           <tr style={{ borderTop: '1px solid var(--border)' }}><td style={{ ...td, color: 'var(--text-muted)' }}>Email</td>
               <td style={td}>
                 {ok(sys.email.enabled && !(sys.email.last_delivery && !sys.email.last_delivery.ok),
@@ -4745,7 +4787,7 @@ function AdminSystemTab({ fs }) {
                 <tr key={e.id} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{when(e.at_utc)}</td>
                   <td style={td}>{e.actor_name} · {e.action}</td>
-                  <td style={td}>{e.base_name} <span style={{ color: 'var(--text-muted)' }}>({e.owner_name || e.owner_email || 'owner unknown'})</span></td>
+                  <td style={td}>{e.base_name}{e.base_kind === 'study_dev' && <span style={{ color: 'var(--text-muted)' }}> (development study)</span>} <span style={{ color: 'var(--text-muted)' }}>({e.owner_name || e.owner_email || 'owner unknown'})</span></td>
                   <td style={td}><span style={{ color: 'var(--text-dim)' }}>{e.category_label}</span> — {e.reason}</td>
                 </tr>))}</tbody>
             </table>}
@@ -5035,7 +5077,7 @@ function AdminDialecticsTab({ fs }) {
                   <td style={td}>{r.owner.display_name}{r.mine && <span style={{ color: 'var(--text-muted)' }}> · you</span>}
                     {r.owner.email && <div style={{ color: 'var(--text-muted)' }}>{r.owner.email}</div>}</td>
                   <td style={{ ...td, color: r.kind === 'ordinary' ? 'var(--text-dim)' : 'var(--tension)', whiteSpace: 'nowrap' }}>
-                    {kindLabel[r.kind]}{r.study && <div style={{ color: 'var(--text-muted)' }}>{r.study.study_id}{r.study.period ? ` · session ${r.study.period}` : ''}</div>}</td>
+                    {kindLabel[r.kind]}{r.study && r.study.development && ' (development)'}{r.study && <div style={{ color: 'var(--text-muted)' }}>{r.study.study_id}{r.study.period ? ` · session ${r.study.period}` : ''}</div>}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }} title={when(r.last_activity_at_utc || r.created_at_utc)}>{ago(r.last_activity_at_utc || r.created_at_utc)}</td>
                   <td style={td}>{r.calls}</td>
                   <td style={td}>${r.cost_usd.toFixed(2)}</td>
@@ -5052,6 +5094,7 @@ function AdminDialecticsTab({ fs }) {
           <div style={{ ...note_, marginTop: 10 }}>
             {rows.length} of {data.dialectics.length} dialectics. Search covers names and owners, never what was written.
             Study records are listed and can't be opened here: what a session produced is in the study export.
+            A development study's records — the team's own tuning sessions — can be, under a reason, like any other dialectic.
           </div>
         </div>
       )}
@@ -5073,7 +5116,7 @@ function AdminDialecticsTab({ fs }) {
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>{when(e.at_utc)}</td>
                     <td style={td}>{e.actor_name}</td>
                     <td style={td}>{e.action}</td>
-                    <td style={td}>{e.base_name}{!e.base_exists && <span style={{ color: 'var(--text-muted)' }}> (deleted)</span>}</td>
+                    <td style={td}>{e.base_name}{e.base_kind === 'study_dev' && <span style={{ color: 'var(--text-muted)' }}> (development study)</span>}{!e.base_exists && <span style={{ color: 'var(--text-muted)' }}> (deleted)</span>}</td>
                     <td style={td}>{e.owner_name || e.owner_email || '—'}</td>
                     <td style={td}><span style={{ color: 'var(--text-dim)' }}>{e.category_label}</span> — {e.reason}</td>
                   </tr>))}</tbody>

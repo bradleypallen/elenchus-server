@@ -1,7 +1,8 @@
 # Who may see or change a dialectic
 
 *Decision record, 2026-10-02. Status: policy adopted; the first two of
-four work packages built (0.9.5, 0.10.0). The user-facing statement of the policy is
+four work packages built (0.9.5, 0.10.0), plus the development study
+(0.11.0). The user-facing statement of the policy is
 [docs/data-access.md](../docs/data-access.md).*
 
 ## 1. How the question came up
@@ -138,6 +139,27 @@ analysis.
    study-report routes** to staff (`generate-report` / `report` still
    admit a researcher — they belong to the retired paired-report flow,
    and shutting them means retiring that flow and its tests together).
+
+   **2b. The development study — built, 0.11.0 (platform migration 24,
+   policy version 3).** The study team has to read whole sessions to
+   tune the opponent's prompt before the main study, and the policy
+   closes real study records to staff absolutely. The two are
+   reconciled by making the *study* say whose records it holds: a study
+   set up with `development` ticked is one the team runs on itself —
+   the identical participant flow (practice, task, clock, freeze), so
+   what is tuned is what participants will meet — and its records are
+   the team's own material, opened in the Dialectics tab like an
+   ordinary dialectic (reason, read-only, logged, the log row marked
+   `study_dev`). What keeps this from becoming a side door: the mark
+   and the allocation seed exclude each other (a seeded study is a
+   registered one and can never be marked; a development study can
+   never be seeded), and the mark is fixed once anyone is enrolled or
+   issued a link, so a study with real participants cannot be opened by
+   editing its setup later. The export of a development study says
+   what it is in its manifest. The alternative — tuning on the team's
+   own ordinary dialectics — was kept too (it needs nothing), but it
+   does not exercise the study flow, which is where the prompt is
+   actually used.
 3. **Owner-side transparency — planned.** The owner sees when an
    administrator viewed their dialectic; a "who can see this" link to the
    policy page from inside the application.

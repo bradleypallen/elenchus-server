@@ -92,6 +92,7 @@ def record_turn(
     summary_included: bool | None = None,
     system_prompt_name: str | None = None,
     system_prompt_sha256: str | None = None,
+    system_prompt_version: str | None = None,
     state_before: dict | None = None,
     state_after: dict | None = None,
     raw_text: str | None = None,
@@ -119,8 +120,8 @@ def record_turn(
         "raw_text, parse_strategy, parsed, user_conversation_id, "
         "assistant_conversation_id, model, attempts, latency_ms, prompt_tokens, "
         "completion_tokens, error_category, error_message, "
-        "response_model, request_id, temperature, max_tokens) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "response_model, request_id, temperature, max_tokens, system_prompt_version) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             turn_id,
             now_utc(),
@@ -152,10 +153,11 @@ def record_turn(
             getattr(chat_result, "request_id", None) or None,
             getattr(chat_result, "temperature", None),
             getattr(chat_result, "max_tokens", None),
+            system_prompt_version,
         ],
     )
     logger.info(
-        "turn_log #%d: mode=%s outcome=%s parse=%s model=%s latency_ms=%s tokens=%s/%s",
+        "turn_log #%d: mode=%s outcome=%s parse=%s model=%s latency_ms=%s tokens=%s/%s prompt=%s",
         turn_id,
         mode,
         outcome,
@@ -164,6 +166,7 @@ def record_turn(
         getattr(chat_result, "latency_ms", None),
         getattr(chat_result, "prompt_tokens", None),
         getattr(chat_result, "completion_tokens", None),
+        system_prompt_version,
     )
     return turn_id
 

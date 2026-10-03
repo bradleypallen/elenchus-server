@@ -4,7 +4,7 @@ This page says what Elenchus records about your work, who can see it, and
 under what conditions. It applies to every instance run from this code;
 the people running an instance may add to it, never take away from it.
 
-*Policy version 2 — in force from release 0.10.0. (Version 1, from 0.9.5, had no administrator view at all.)*
+*Policy version 3 — in force from release 0.11.0: it adds the development study. (Version 2, from 0.10.0, introduced the administrator's view; version 1, from 0.9.5, had none.)*
 
 ## The short version
 
@@ -63,6 +63,18 @@ to names is a separate file that only an administrator can download, and
 each download is recorded. A study session's practice and task records
 cannot be deleted through the application by anyone.
 
+The one exception is a **development study**: a study the team sets up
+and runs *on itself* to tune the system — the same sessions, clock and
+writing task a participant would get, with team members in the chair.
+Its records are the team's own material, so an administrator may open
+them like any other dialectic: under a reason, read-only, and logged,
+with the log saying the record came from a development study. A study is
+marked as a development study when it is set up; the mark cannot be
+changed once anyone is enrolled in it, and a development study can never
+carry an allocation seed — the thing that makes a study a registered
+one. A real study's records are never opened in the application, and a
+development study's export says what it is.
+
 ### When an administrator looks at your dialectic
 
 An administrator's dashboard lists every dialectic by name and owner —
@@ -81,7 +93,7 @@ the dialectic, its owner and the reason. The log cannot be edited, the
 other administrator sees it, and it outlives the dialectic. An
 administrator's own dialectics are simply theirs and leave no entry.
 
-This is not offered for study records at all.
+This is not offered for study records, except a development study's.
 
 ### Your own records
 
@@ -127,7 +139,9 @@ list of dialectics contains only the caller's own, a study record takes
 changes only from its own participant and only while its session is on
 it, an administrator's view goes through one module that refuses to
 answer without a recorded reason and has no code path that writes to a
-dialectic, and each of these is covered by automated tests that run on
+dialectic, a development study and an allocation seed exclude each other
+in the database layer and the mark is fixed once anyone is enrolled, and
+each of these is covered by automated tests that run on
 every change. The system's consistency check reports any working session
 held by someone other than a dialectic's owner.
 

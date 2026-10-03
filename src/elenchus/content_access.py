@@ -243,6 +243,8 @@ def list_log(con, *, limit: int = 200, fetches_only: bool = True) -> list[dict]:
                 "base_id": entry["base_id"],
                 "base_name": row[14] or entry["base_id"],
                 "base_exists": row[14] is not None,
+                # 'ordinary', or 'study_dev' for a development study's record.
+                "base_kind": entry["base_kind"] or "ordinary",
                 "actor_id": entry["actor_id"],
                 "actor_name": row[11] or f"actor {entry['actor_id']}",
                 "owner_id": entry["owner_id"],

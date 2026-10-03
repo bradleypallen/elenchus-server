@@ -206,7 +206,8 @@ during a session cannot be recovered afterwards.** Each session records:
 - **Every exchange with the LLM**, in both conditions: the participant's
   message, exactly what the LLM was shown, its **verbatim** output, which
   parse-recovery path was used, the dialectical state before and after,
-  the system prompt's name and hash, and model / latency / tokens.
+  the system prompt's name, [version label and hash](prompts.md), and
+  model / latency / tokens.
   Exchanges whose LLM call *failed* are recorded too.
 - **Every change to the position**: commits, denials, retractions,
   refinements, tensions proposed / accepted / contested — each with its

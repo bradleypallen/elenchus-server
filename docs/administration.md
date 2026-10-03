@@ -108,6 +108,19 @@ The **Dialectics** tab is the deliberate exception.
 - **Study records** appear in the list, by participant code, and cannot
   be opened here. What a session produced reaches you through the study
   export.
+- **A development study's records** are the exception. When the team
+  wants to read whole sessions to tune the system — the opponent's
+  prompt, above all — it sets up a study with *Development study* ticked
+  (Study tab, setup) and runs the sessions itself: the same practice,
+  task, clock and writing pane a participant gets. Those records are
+  listed as *study · task (development)* and can be opened like any
+  other dialectic, under a reason, with the access log saying what they
+  are. A development study cannot carry an allocation seed, and the mark
+  is fixed once anyone is enrolled — so a real study can never be turned
+  into one afterwards. The System tab's *Prompts* row shows which prompt
+  versions the instance is running, and whether a development instance's
+  prompt directory is in force; see
+  [The Opponent's Prompts](prompts.md).
 
 The whole policy, written for the people whose work it concerns, is
 [Who Can See What](data-access.md).
