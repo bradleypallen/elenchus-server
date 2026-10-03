@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-10-03
+
 ### Added
 
 - **The notice.** No account opens without its holder having read what
