@@ -33,7 +33,9 @@ from . import (
     auth,
     content_access,
     invites,
+    notice,
     prompts,
+    research_export,
     secretbox,
     study_enrolment,
     study_text,
@@ -437,6 +439,14 @@ class SignupRequest(BaseModel):
     display_name: str
     password: str
     email_override: str | None = None
+    # The notice (notice.py) must be accepted to open an account; the
+    # research-use choice defaults to no (docs/data-access.md).
+    accept_terms: bool = False
+    research_use: bool = False
+
+
+class ResearchUseRequest(BaseModel):
+    research_use: bool
 
 
 class ChangePasswordRequest(BaseModel):
@@ -651,11 +661,21 @@ def peek_invite(token: str):
 def signup(req: SignupRequest, response: Response):
     """Consume an invite, create the actor it authorizes, and start a
     session in one atomic step."""
+    if not req.accept_terms:
+        raise HTTPException(
+            422,
+            {
+                "user_message": "To open an account you need to have read the notice about "
+                "what is recorded and who can see it."
+            },
+        )
     result = invites.signup_with_invite(
         token=req.token,
         display_name=req.display_name,
         password=req.password,
         email_override=req.email_override,
+        notice_version=notice.NOTICE_VERSION,
+        research_use=req.research_use,
     )
     _set_session_cookie(response, result["session_token"])
     return {"actor_id": result["actor_id"], "role": result["role"]}
@@ -729,7 +749,56 @@ def me(actor: dict = Depends(auth.current_actor)):
         "email": actor["email"],
         "display_name": actor["display_name"],
         "must_change_password": bool(actor.get("must_change_password")),
+        # The notice and the research-use choice (docs/data-access.md).
+        # A participant is not an account holder: the gate never shows.
+        "terms_version": actor.get("terms_version"),
+        "terms_current": actor["kind"] == "participant"
+        or notice.is_current(actor.get("terms_version")),
+        "research_use": bool(actor.get("research_use")),
     }
+
+
+@app.get("/api/notice")
+def get_notice():
+    """The notice every account holder accepts — public, so the sign-up
+    form can show it before there is an account."""
+    return notice.payload()
+
+
+@app.post("/api/auth/accept-terms")
+def accept_terms(req: ResearchUseRequest, actor: dict = Depends(auth.current_actor)):
+    """An existing account accepts the current notice (first sign-in
+    after the notice arrived, or after a rewording) and makes the
+    research-use choice in the same breath."""
+    if actor["kind"] == "participant":
+        raise HTTPException(400, "Study participants are not asked to accept the notice.")
+    reg = get_registry()
+    with reg.platform_lock:
+        con = reg.platform_con()
+        pdb.record_terms_acceptance(con, actor["id"], notice.NOTICE_VERSION)
+        pdb.set_research_use(con, actor["id"], req.research_use, notice.NOTICE_VERSION)
+    logger.info(
+        "Notice v%s accepted by actor %s (research_use=%s)",
+        notice.NOTICE_VERSION,
+        actor["id"],
+        req.research_use,
+    )
+    return {"terms_version": notice.NOTICE_VERSION, "research_use": req.research_use}
+
+
+@app.put("/api/auth/research-use")
+def set_research_use_route(req: ResearchUseRequest, actor: dict = Depends(auth.current_actor)):
+    """Turn the research-use choice on or off. Either way is recorded;
+    from 'off' on, nothing of the person's goes into a research export."""
+    if actor["kind"] == "participant":
+        raise HTTPException(400, "Study participants have no research-use choice to make here.")
+    reg = get_registry()
+    with reg.platform_lock:
+        pdb.set_research_use(
+            reg.platform_con(), actor["id"], req.research_use, notice.NOTICE_VERSION
+        )
+    logger.info("Research use set to %s by actor %s", req.research_use, actor["id"])
+    return {"research_use": req.research_use}
 
 
 @app.post("/api/auth/forgot-password")
@@ -2952,22 +3021,9 @@ def _study_session_for_base(con, name: str) -> dict | None:
     (`practice-{session_id}`, owned by the session's own actor) or its
     task base — or None for an ordinary dialectic. Found by what makes it
     a study session (the token), never by "the newest session on this
-    base"."""
-    if name.startswith("practice-"):
-        try:
-            session = pdb.find_study_session(con, int(name.split("-", 1)[1]))
-        except ValueError:
-            return None
-        base = pdb.find_base(con, name)
-        if (
-            session is None
-            or not session.get("study_token")
-            or base is None
-            or base["owner_id"] != session["actor_id"]
-        ):
-            return None  # somebody's ordinary dialectic that happens to be called practice-N
-        return session
-    return pdb.find_session_by_base(con, name)
+    base". Lives in `pdb.study_session_for_base`; kept here by name for
+    the routes."""
+    return pdb.study_session_for_base(con, name)
 
 
 def _study_of_session(con, session: dict | None) -> dict | None:
@@ -3416,6 +3472,7 @@ def list_dialectics(actor: dict = Depends(auth.current_actor)):
     reg = get_registry()
     rows = pdb.list_bases_for_actor(reg.platform_con(), actor["id"])
     basenames = [r["id"] for r in rows]
+    looked_at = content_access.summary_by_base(reg.platform_con())
 
     result = []
     for basename in basenames:
@@ -3430,6 +3487,7 @@ def list_dialectics(actor: dict = Depends(auth.current_actor)):
                     "denials": len(d["denials"]),
                     "tensions": len(d["tensions"]),
                     "implications": len(d["implications"]),
+                    "looked_at": _owner_looked_at(looked_at.get(basename)),
                 }
             )
         except Exception:
@@ -3442,9 +3500,34 @@ def list_dialectics(actor: dict = Depends(auth.current_actor)):
                     "denials": 0,
                     "tensions": 0,
                     "implications": 0,
+                    "looked_at": _owner_looked_at(looked_at.get(basename)),
                 }
             )
     return result
+
+
+def _owner_looked_at(summary: dict | None) -> dict | None:
+    """What the owner is told in a list: how often an administrator
+    fetched this dialectic's content and when last — never by whom or
+    why in the list; the dialectic's own access notes say who."""
+    if not summary:
+        return None
+    return {"count": summary["count"], "last_at_utc": summary["last_at_utc"]}
+
+
+@app.get("/api/dialectics/{name}/access")
+def owner_access_notes(name: str, actor: dict = Depends(auth.current_actor)):
+    """When an administrator looked at one of the caller's **own**
+    dialectics: the time, what they fetched, who, and what it was for
+    (the category, not the sentence — that may name a third party and
+    stays with the administrators). Policy version 5."""
+    _authorize_base_access(name, actor)
+    con = get_registry().platform_con()
+    return {
+        "name": name,
+        "entries": content_access.entries_for_owner(con, name),
+        "policy_url": notice.POLICY_URL,
+    }
 
 
 @app.get("/api/dialectics/{name}")
@@ -4017,6 +4100,84 @@ def admin_delete_dialectic(req: ContentDeleteRequest, actor: dict = Depends(auth
     return {"deleted": base["id"], "logged": True}
 
 
+# ── Research use of ordinary dialectics (docs/data-access.md § Research use) ──
+#
+# Only the dialectics of account holders whose research-use choice is on
+# at the moment of export. The archive holds pseudonyms; the key is a
+# separate, admin-only file, served the way a study's is.
+
+
+def _data_dir() -> str:
+    return os.path.dirname(get_registry().platform_path)
+
+
+@app.get("/api/admin/research-exports")
+def admin_list_research_exports(actor: dict = Depends(auth.require_admin)):
+    """How many people have agreed and how many dialectics that covers,
+    and the archives already made."""
+    con = get_registry().platform_con()
+    return {
+        "opted_in": research_export.opted_in(con),
+        "exports": research_export.list_exports(_data_dir()),
+    }
+
+
+@app.post("/api/admin/research-export")
+def admin_build_research_export(actor: dict = Depends(auth.require_admin)):
+    """Build the archive of every ordinary dialectic whose owner's
+    research-use choice is on now. Each one is logged as a records fetch
+    under *Owner agreed to analysis*, so its owner can see it happened."""
+    reg = get_registry()
+    con = reg.platform_con()
+    if research_export.opted_in(con)["dialectics"] == 0:
+        raise HTTPException(
+            409,
+            {
+                "user_message": "Nobody has agreed to research use yet, so there is nothing to export."
+            },
+        )
+    result = research_export.export_research(
+        reg, con, data_dir=_data_dir(), exported_by=actor["id"]
+    )
+    return {
+        "name": result["name"],
+        "accounts": result["accounts"],
+        "dialectics": len(result["dialectics"]),
+        "skipped": result["skipped"],
+        "exports": research_export.list_exports(_data_dir()),
+    }
+
+
+@app.get("/api/admin/research-exports/{name}")
+def admin_download_research_export(name: str, actor: dict = Depends(auth.require_admin)):
+    """Download one research archive. Pseudonyms only."""
+    if name not in {e["name"] for e in research_export.list_exports(_data_dir())}:
+        raise HTTPException(404, "No such research export")
+    logger.info("Research export downloaded: file=%s by actor=%d", name, actor["id"])
+    return FileResponse(
+        os.path.join(research_export.exports_dir(_data_dir()), name),
+        media_type="application/gzip",
+        filename=name,
+    )
+
+
+@app.get("/api/admin/research-exports/{name}/pseudonyms")
+def admin_download_research_pseudonyms(name: str, actor: dict = Depends(auth.require_admin)):
+    """The key from U-* pseudonyms back to accounts. Admin only; it must
+    never travel with the archive."""
+    match = next((e for e in research_export.list_exports(_data_dir()) if e["name"] == name), None)
+    if match is None or not match["pseudonym_file"]:
+        raise HTTPException(404, "No pseudonym map for this export")
+    logger.warning(
+        "Research export pseudonym map downloaded: file=%s by actor=%d", name, actor["id"]
+    )
+    return FileResponse(
+        os.path.join(research_export.exports_dir(_data_dir()), match["pseudonym_file"]),
+        media_type="application/json",
+        filename=match["pseudonym_file"],
+    )
+
+
 @app.get("/api/admin/access-log")
 def admin_access_log(limit: int = 200, actor: dict = Depends(auth.require_admin)):
     """Every time someone other than its owner fetched a dialectic's
@@ -4059,6 +4220,7 @@ def list_sessions_route(actor: dict = Depends(auth.current_actor)):
     reg = get_registry()
     con = reg.platform_con()
     bases = [r["id"] for r in pdb.list_bases_for_actor(con, actor["id"])]
+    looked_at = content_access.summary_by_base(con)
 
     existing = {
         s["base_id"]: s["id"]
@@ -4090,7 +4252,14 @@ def list_sessions_route(actor: dict = Depends(auth.current_actor)):
                 "tensions": 0,
                 "implications": 0,
             }
-        result.append({"session_id": sid, "name": base_id, **counts})
+        result.append(
+            {
+                "session_id": sid,
+                "name": base_id,
+                **counts,
+                "looked_at": _owner_looked_at(looked_at.get(base_id)),
+            }
+        )
     return result
 
 
@@ -4140,6 +4309,11 @@ def session_report_pdf_route(session_id: int, actor: dict = Depends(auth.current
 @app.get("/api/sessions/{session_id}/records")
 def session_records_route(session_id: int, actor: dict = Depends(auth.current_actor)):
     return download_records(_resolve_session_base(session_id, actor), actor)
+
+
+@app.get("/api/sessions/{session_id}/access")
+def session_access_notes_route(session_id: int, actor: dict = Depends(auth.current_actor)):
+    return owner_access_notes(_resolve_session_base(session_id, actor), actor)
 
 
 @app.delete("/api/sessions/{session_id}")

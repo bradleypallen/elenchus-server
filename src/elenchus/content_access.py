@@ -281,6 +281,30 @@ def list_log(con, *, limit: int = 200, fetches_only: bool = True) -> list[dict]:
     return out
 
 
+def entries_for_owner(con, base_id: str) -> list[dict]:
+    """What the owner of a dialectic is shown about administrators'
+    access to it (policy version 5): each fetch or deletion with the
+    time, the action, who, and what it was for — the **category**, never
+    the sentence, which may name a third party and stays with the
+    administrators. Newest first."""
+    rows = con.execute(
+        "SELECT l.at_utc, l.action, l.category, a.display_name "
+        "FROM content_access_log l LEFT JOIN actors a ON a.id = l.actor_id "
+        "WHERE l.base_id = ? AND l.action <> 'grant' ORDER BY l.id DESC",
+        [base_id],
+    ).fetchall()
+    return [
+        {
+            "at_utc": iso(at),
+            "action": action,
+            "by": by or "an administrator",
+            "category": category,
+            "category_label": CATEGORIES.get(category, category),
+        }
+        for at, action, category, by in rows
+    ]
+
+
 def summary_by_base(con) -> dict[str, dict]:
     """Per dialectic: how many times it was fetched by a non-owner, and
     the last time — for the list's "viewed" column."""

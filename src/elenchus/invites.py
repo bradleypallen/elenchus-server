@@ -126,9 +126,13 @@ def signup_with_invite(
     display_name: str,
     password: str,
     email_override: str | None = None,
+    notice_version: str | None = None,
+    research_use: bool = False,
 ) -> dict:
     """Atomically consume an invite and create the actor it authorizes.
-    Returns `{actor_id, session_token, role}`.
+    Returns `{actor_id, session_token, role}`. `notice_version` is the
+    notice the person accepted on the form (recorded with the account,
+    docs/data-access.md); `research_use` their choice on it.
 
     Raises HTTPException(400) if the invite is invalid (unknown,
     consumed, or expired). The signup also creates an auth session so
@@ -185,6 +189,9 @@ def signup_with_invite(
             "UPDATE invites SET consumed_by = ? WHERE token = ?",
             [actor_id, token],
         )
+        if notice_version:
+            pdb.record_terms_acceptance(con, actor_id, notice_version)
+            pdb.set_research_use(con, actor_id, research_use, notice_version)
 
         session_token = auth.generate_token()
         pdb.create_auth_session(con, token=session_token, actor_id=actor_id)

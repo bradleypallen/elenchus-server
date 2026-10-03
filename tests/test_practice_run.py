@@ -198,6 +198,7 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
             "email_override": "admin@example.org",
             "display_name": "Practice Judge",
             "password": "a-practice-password",
+            "accept_terms": True,
         },
     )
     assert refused.status_code == 409, refused.text
@@ -210,6 +211,7 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
                 "email_override": "judge@example.org",
                 "display_name": "Practice Judge",
                 "password": "a-practice-password",
+                "accept_terms": True,
             },
         )
     )
