@@ -4720,7 +4720,61 @@ function AccessReasonModal({ fs, row, action, categories, minChars, minutes, lap
   );
 }
 
-function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onClose }) {
+// Deleting someone else's dialectic: a reason of its own (never the
+// view's grant), the name typed back, and two log rows that outlive it.
+function DeleteDialecticModal({ fs, row, categories, minChars, onCancel, onSubmit }) {
+  const [category, setCategory] = useState(categories[0].value);
+  const [reason, setReason] = useState('');
+  const [typed, setTyped] = useState('');
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const ready = typed === row.name && (row.mine || reason.trim().length >= minChars);
+  const submit = async () => {
+    if (typed !== row.name) { setErr('Type the dialectic\'s name exactly as it is shown.'); return; }
+    if (!row.mine && reason.trim().length < minChars) { setErr(`Say why in a sentence — at least ${minChars} characters. It is recorded.`); return; }
+    setBusy(true); setErr(null);
+    try { await onSubmit(row.mine ? {} : { category, reason: reason.trim() }); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+  const field = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 4, fontSize: fs(12),
+                  fontFamily: 'var(--sans)', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div role="dialog" aria-label="Delete a dialectic" style={{ width: '100%', maxWidth: 460, padding: 20, borderRadius: 8,
+                    background: 'var(--surface)', border: '1px solid var(--deny)' }}>
+        <div style={{ fontSize: fs(14), fontFamily: 'var(--sans)', marginBottom: 6, color: 'var(--deny)' }}>Delete “{row.name}”</div>
+        <div style={{ fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 12 }}>
+          {row.mine ? 'Your own dialectic. ' : <>Owned by {row.owner.display_name || row.owner.email || 'another account'}. </>}
+          This removes the dialectic and everything held about it, and cannot be undone — there is no undo and no bin.
+          {!row.mine && <> The deletion is recorded with your name, the time and this reason, where the other admin can see it;
+          the record stays after the dialectic is gone.</>}
+        </div>
+        {!row.mine && (
+          <>
+            <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...field, marginBottom: 8 }}>
+              {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <textarea rows={3} value={reason} autoFocus placeholder="Why — one sentence"
+              onChange={e => { setReason(e.target.value); setErr(null); }} style={{ ...field, resize: 'vertical', marginBottom: 8 }} />
+          </>
+        )}
+        <input value={typed} onChange={e => { setTyped(e.target.value); setErr(null); }} autoFocus={!!row.mine}
+          placeholder={`Type the name to confirm: ${row.name}`} aria-label="Type the dialectic's name to confirm" style={field} />
+        <div style={{ minHeight: 20, fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--deny)', margin: '6px 0' }}>{err}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={submit} disabled={busy || !ready} style={{ background: 'var(--deny)', border: 'none', borderRadius: 4, color: '#fff',
+            cursor: busy || !ready ? 'default' : 'pointer', fontSize: fs(10), padding: '6px 12px', letterSpacing: 1, opacity: busy || !ready ? 0.5 : 1 }}>
+            {busy ? '…' : 'DELETE FOR GOOD'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onDelete, onClose }) {
   const d = view.dialectic;
   const roleMap = { user: 'respondent', assistant: 'opponent' };
   const messages = (d.conversation || []).map(m => ({
@@ -4751,6 +4805,8 @@ function ReadOnlyDialectic({ fs, view, busy, onPdf, onRecords, onClose }) {
         </span>
         <button style={button} disabled={busy} onClick={onPdf}>PDF</button>
         <button style={button} disabled={busy} onClick={onRecords} title="The raw records: state, transcript, turn log, state events, database dump">RECORDS</button>
+        {onDelete && <button style={{ ...button, color: 'var(--deny)', borderColor: 'var(--deny)' }} disabled={busy} onClick={onDelete}
+          title="Delete this dialectic for good — asks for a reason and the name">DELETE</button>}
         <button style={button} onClick={onClose}>CLOSE</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(0, 1fr)' }}>
@@ -4780,6 +4836,7 @@ function AdminDialecticsTab({ fs }) {
   const [pane, setPane] = useState('list');
   const [gate, setGate] = useState(null);   // { row, action, lapsed }
   const [open, setOpen] = useState(null);   // the read-only view
+  const [doomed, setDoomed] = useState(null); // the row a deletion is being confirmed for
   const [log, setLog] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -4823,6 +4880,13 @@ function AdminDialecticsTab({ fs }) {
       else setError(e.message);
     }
     setBusy(false);
+  };
+  // Deletion never rides on the view's grant: its own reason, its own rows.
+  const destroy = async (row, creds) => {
+    await api('/api/admin/dialectics/delete', { method: 'POST',
+      body: JSON.stringify({ base_id: row.base_id, confirm_name: row.name, ...creds }) });
+    setDoomed(null); setOpen(null);
+    load();
   };
 
   const heading = { fontSize: fs(10), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 10 };
@@ -4874,7 +4938,9 @@ function AdminDialecticsTab({ fs }) {
       {pane === 'list' && open && (
         <div style={{ marginBottom: 16 }}>
           <ReadOnlyDialectic fs={fs} view={open} busy={busy}
-            onPdf={() => under('pdf')} onRecords={() => under('records')} onClose={() => setOpen(null)} />
+            onPdf={() => under('pdf')} onRecords={() => under('records')}
+            onDelete={open.row.kind === 'ordinary' ? () => setDoomed(open.row) : null}
+            onClose={() => setOpen(null)} />
         </div>
       )}
 
@@ -4928,6 +4994,7 @@ function AdminDialecticsTab({ fs }) {
             {rows.length} of {data.dialectics.length} dialectics. Search covers names and owners, never what was written.
             Study records are listed and can't be opened here: what a session produced is in the study export.
             A development study's records — the team's own tuning sessions — can be, under a reason, like any other dialectic.
+            Deleting an ordinary dialectic is done from its viewer, under a reason of its own, with the name typed back; study records are never deleted.
           </div>
         </div>
       )}
@@ -4955,6 +5022,11 @@ function AdminDialecticsTab({ fs }) {
                   </tr>))}</tbody>
               </table>}
         </div>
+      )}
+
+      {doomed && (
+        <DeleteDialecticModal fs={fs} row={doomed} categories={data.delete_categories} minChars={data.reason_min_chars}
+          onCancel={() => setDoomed(null)} onSubmit={(creds) => destroy(doomed, creds)} />
       )}
 
       {gate && (

@@ -3645,6 +3645,16 @@ def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
     session's record is never deleted this way."""
     _authorize_base_access(name, actor)
     _refuse_study_record_deletion(name)
+    if _delete_base(name):
+        return {"deleted": name}
+    raise HTTPException(404, f"Dialectic '{name}' not found")
+
+
+def _delete_base(name: str) -> bool:
+    """Remove a dialectic: the registry's handle, the per-base file and
+    the platform `bases` row. Returns whether the file existed. The
+    authorization — the owner, or an administrator under a logged reason
+    — is the caller's; the study-record refusal is too."""
     reg = get_registry()
     reg.remove(name)  # idempotent
     path = reg.db_path(name)
@@ -3653,9 +3663,7 @@ def delete_dialectic(name: str, actor: dict = Depends(auth.current_actor)):
         os.remove(path)
     with reg.platform_lock:
         pdb.delete_base(reg.platform_con(), name)
-    if file_existed:
-        return {"deleted": name}
-    raise HTTPException(404, f"Dialectic '{name}' not found")
+    return file_existed
 
 
 def _records_response(filename: str, data: bytes) -> Response:
@@ -3784,7 +3792,9 @@ def _admin_content_access(
                 )
         else:
             try:
-                category, reason = content_access.validate_reason(req.category, req.reason)
+                category, reason = content_access.validate_reason(
+                    req.category, req.reason, allowed=content_access.VIEW_CATEGORIES
+                )
             except ValueError as e:
                 raise HTTPException(422, {"user_message": str(e)}) from e
             grant = content_access.open_grant(
@@ -3874,7 +3884,8 @@ def admin_list_dialectics(actor: dict = Depends(auth.require_admin)):
         )
     return {
         "dialectics": out,
-        "categories": content_access.categories(),
+        "categories": content_access.categories(allowed=content_access.VIEW_CATEGORIES),
+        "delete_categories": content_access.categories(allowed=content_access.DELETE_CATEGORIES),
         "grant_minutes": content_access.GRANT_MINUTES,
         "reason_min_chars": content_access.REASON_MIN_CHARS,
     }
@@ -3935,6 +3946,75 @@ def admin_dialectic_records(req: ContentAccessRequest, actor: dict = Depends(aut
         reg, reg.platform_con(), base=base, exported_by="administrator"
     )
     return _records_response(filename, data)
+
+
+class ContentDeleteRequest(BaseModel):
+    """Body of `POST /api/admin/dialectics/delete`: a reason of its own
+    (never a grant from a view), and the dialectic's name typed back."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_id: str
+    category: str | None = None
+    reason: str | None = None
+    confirm_name: str = ""
+
+
+@app.post("/api/admin/dialectics/delete")
+def admin_delete_dialectic(req: ContentDeleteRequest, actor: dict = Depends(auth.require_admin)):
+    """Delete one **ordinary** dialectic that isn't yours — the one
+    destructive act an administrator can take on someone else's work
+    (docs/data-access.md, policy version 4). It needs its own reason
+    from `DELETE_CATEGORIES`, the dialectic's exact name typed back, and
+    it writes two log rows that outlive the dialectic: the grant and the
+    deletion. A study record — a real study's or a development study's —
+    is never deleted through the API. The administrator's own dialectic
+    goes the owner's way: no reason, no row."""
+    reg = get_registry()
+    con = reg.platform_con()
+    base = pdb.find_base(con, req.base_id)
+    if base is None:
+        raise HTTPException(404, {"user_message": "That dialectic no longer exists."})
+    _refuse_study_record_deletion(base["id"])
+    if req.confirm_name.strip() != base["name"]:
+        raise HTTPException(
+            422,
+            {
+                "user_message": "Type the dialectic's name exactly as it is shown, "
+                "to confirm you mean this one."
+            },
+        )
+    if base["owner_id"] == actor["id"]:
+        _delete_base(base["id"])
+        logger.info("Dialectic %r deleted by its owner (actor %s)", base["id"], actor["id"])
+        return {"deleted": base["id"], "logged": False}
+    try:
+        category, reason = content_access.validate_reason(
+            req.category, req.reason, allowed=content_access.DELETE_CATEGORIES
+        )
+    except ValueError as e:
+        raise HTTPException(422, {"user_message": str(e)}) from e
+    with reg.platform_lock:
+        grant = content_access.open_grant(
+            con,
+            actor_id=actor["id"],
+            base_id=base["id"],
+            owner_id=base["owner_id"],
+            category=category,
+            reason=reason,
+        )
+    logger.warning(
+        "Dialectic %r (owner %s) is being deleted by administrator %s: %s — %s",
+        base["id"],
+        base["owner_id"],
+        actor["id"],
+        category,
+        reason,
+    )
+    _delete_base(base["id"])
+    with reg.platform_lock:
+        content_access.record(con, grant=grant, action=content_access.DELETE_ACTION)
+    return {"deleted": base["id"], "logged": True}
 
 
 @app.get("/api/admin/access-log")

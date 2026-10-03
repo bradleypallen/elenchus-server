@@ -4,7 +4,7 @@ This page says what Elenchus records about your work, who can see it, and
 under what conditions. It applies to every instance run from this code;
 the people running an instance may add to it, never take away from it.
 
-*Policy version 3 — in force from release 0.11.0: it adds the development study. (Version 2, from 0.10.0, introduced the administrator's view; version 1, from 0.9.5, had none.)*
+*Policy version 4 — in force from release 0.12.0: it adds an administrator's deletion of an ordinary dialectic under a reason, and retires the last staff path to study content outside the export. (Version 3, from 0.11.0, added the development study; version 2, from 0.10.0, the administrator's view; version 1, from 0.9.5, had none.)*
 
 ## The short version
 
@@ -18,6 +18,12 @@ the people running an instance may add to it, never take away from it.
   about one of your dialectics — whenever you like.
 - **A study session's record is frozen** once the session moves on, for
   everyone: the participant, the researchers and the administrators.
+- **Nothing is deleted quietly.** You can delete your own dialectics. An
+  administrator can delete one of yours only for a stated reason — your
+  own request, the closing of your account, or an abuse or policy
+  concern — with its name typed back, and the deletion is recorded where
+  it can be seen after the dialectic is gone. Study records are never
+  deleted through the application.
 
 ## What is recorded
 
@@ -50,10 +56,12 @@ resets.
 
 Two rules sit above the table.
 
-**Nobody but the owner writes.** No role can add to, change or delete
-another person's dialectic through the application. An administrator who
-asks for someone else's dialectic gets the same "not found" as anyone
-else.
+**Nobody but the owner writes.** No role can add to or change another
+person's dialectic through the application. An administrator who asks
+for someone else's dialectic on the working routes gets the same "not
+found" as anyone else. The one thing an administrator can do *to* a
+dialectic that isn't theirs is delete it, and only as described under
+[Deleting](#deleting).
 
 **Study records are not opened by staff.** While a session is running
 and after it ends, the team does not look at a participant's dialogue in
@@ -131,6 +139,19 @@ replaced. If you took part in a study and want your data withdrawn, ask
 the study team: study records are kept or removed according to the
 study's consent terms, not through the application.
 
+An administrator can delete an ordinary dialectic that isn't theirs —
+because you asked for it to be removed, because your account is being
+closed, or because of an abuse or policy concern — and only that way:
+from the read-only view, with the reason chosen and written in a
+sentence, and the dialectic's name typed back. A reason given to *look*
+at a dialectic does not cover deleting it. The deletion is written to the
+same log as a view, with the administrator's name, the time, the
+dialectic, its owner and the reason, and the entry stays after the
+dialectic is gone. There is no bin and no undo; backups are the only
+copy, and they are not a way to bring a dialectic back for its owner.
+Study records — a real study's or a development study's — cannot be
+deleted through the application by anyone.
+
 ## How this is enforced
 
 The rules above are implemented in the application, not left to
@@ -139,7 +160,9 @@ list of dialectics contains only the caller's own, a study record takes
 changes only from its own participant and only while its session is on
 it, an administrator's view goes through one module that refuses to
 answer without a recorded reason and has no code path that writes to a
-dialectic, a development study and an allocation seed exclude each other
+dialectic, an administrator's deletion needs its own reason and the name
+typed back and refuses every study record, a development study and an
+allocation seed exclude each other
 in the database layer and the mark is fixed once anyone is enrolled, and
 each of these is covered by automated tests that run on
 every change. The system's consistency check reports any working session

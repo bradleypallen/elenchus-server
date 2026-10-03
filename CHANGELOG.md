@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **An administrator can delete an ordinary dialectic** — from its
+  read-only view, for a reason of its own (the owner asked for it; their
+  account is being closed; an abuse or policy concern; other), with the
+  dialectic's name typed back. The reason given to look at it does not
+  carry over. The deletion is written to the access log beside the views
+  and the entry outlives the dialectic. Study records — a real study's or
+  a development study's — are never deleted through the application.
+  Platform migration 25.
+
+### Changed
+
+- **[Who Can See What](docs/data-access.md) is at policy version 4**: an
+  administrator's deletion exists and is described; the last staff path
+  to study content outside the export is gone (see *Removed*).
+
 ### Removed
 
 - **The legacy paired-report flow.** An earlier design had the LLM distil

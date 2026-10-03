@@ -105,9 +105,17 @@ The **Dialectics** tab is the deliberate exception.
   why. It can be downloaded, cannot be edited, and the latest entries
   also show in the System tab. Your own dialectics need no reason and
   leave no entry.
+- **Delete**, in the viewer, removes an ordinary dialectic for good. It
+  asks for a reason of its own — the owner asked for it; their account is
+  being closed; an abuse or policy concern; other — and for the
+  dialectic's name typed back; the reason you gave to look at it does
+  not carry over. The deletion goes into the access log beside the views,
+  and the entry stays after the dialectic is gone. There is no bin: a
+  mistaken deletion is a restore from backup, by whoever has the server.
+  Your own dialectics delete with the name typed and no reason.
 - **Study records** appear in the list, by participant code, and cannot
-  be opened here. What a session produced reaches you through the study
-  export.
+  be opened here or deleted by anyone. What a session produced reaches
+  you through the study export.
 - **A development study's records** are the exception. When the team
   wants to read whole sessions to tune the system — the opponent's
   prompt, above all — it sets up a study with *Development study* ticked

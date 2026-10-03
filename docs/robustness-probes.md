@@ -198,6 +198,9 @@ copy**.
 | On that development study, try **Set seed**; on a study that has a seed, try to tick **Development study** | Both refused: a development study never carries a seed, and a seeded study is a registered one |
 | Enrol someone in an ordinary practice study, then try to tick **Development study** on it | Refused: the choice is fixed once anyone is enrolled |
 | Open one of **your own** dialectics from the list | No reason asked, and no entry in the log |
+| View another account's practice dialectic under a reason, press **DELETE**, and submit with the reason box empty, then with the name mistyped | Refused both times; the dialectic is still there and the log shows only the view |
+| Give a reason for the deletion and type the name exactly | The dialectic is gone from the list and from its owner's home page; the log has a *delete* entry with your reason, and it stays there |
+| In a development study's record, look for **DELETE** | There is none: study records are never deleted |
 | From one of your own dialectics, press **Records** in the top bar | An archive downloads: the position, the conversation, the turn log, the state events |
 | **System** → *Consistency check* | Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner |
 
