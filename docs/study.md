@@ -39,9 +39,22 @@ once in each **condition**, on a **different topic** each time:
 | `baseline` | An ordinary chat assistant. The participant asks, directs, and keeps what is useful. |
 | `elenchus` | A Socratic *opponent*. As the participant states a position, the system reads it as explicit commitments and denials and proposes **tensions** — places where two things they have said may not both hold — which they accept, refine, or contest. |
 
-The writing pane, the task wording and the timer are identical in both.
-Neither condition supplies content: the concepts, definitions and
-commitments in the finished text are the participant's.
+The writing pane, the task wording and the timer are identical in both,
+and so is the shape of the task: **the participant's first draft is the
+positum.** The task opens on the editor with the conversation locked;
+once a first draft exists (fifty words or three sentences) the
+participant presses *Begin dialogue* and the draft is sent as the
+opening of the conversation — the opponent extracts the initial
+position from it, the assistant reads it. Every later turn carries the
+text as it stands, so the conversation is about the introduction being
+written. In the Elenchus condition the text is the authoritative
+statement of the position: a claim added to the draft is a commitment,
+one removed a retraction, and the opponent may raise tensions within the
+draft and between the draft and what was said. The opponent never writes
+prose for the participant; the baseline assistant helps with the text as
+an assistant would, drafting included — that is the comparator. The
+design and its reasons are in
+[design-notes/text-as-positum.md](https://github.com/bradleypallen/elenchus-server/blob/main/design-notes/text-as-positum.md).
 
 A blinded panel of domain experts then rates each **text**, on its own
 merits, for coverage, correctness, concision, and whether the reasoning
@@ -157,7 +170,11 @@ home screen.
 **The writing pane** sits beside the dialogue throughout the tutorial and
 the task. It shows the topic, the brief and the standing instruction, and
 holds an editor that **saves automatically**; a reload, or resuming on
-another device, restores the draft.
+another device, restores the draft. Until the first draft has opened the
+dialogue the pane says so, counts words and sentences against the
+minimum, and carries the *Begin dialogue* button (the tutorial's minimum
+is lower: twenty words or two sentences). The draft sent to the model on
+each turn is the draft as last saved, and a turn saves first.
 
 **The clock is guidance, not a cutoff.** It shows time on task against the
 intended length, warns softly ten minutes before and again at the limit,

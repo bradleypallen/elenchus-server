@@ -48,12 +48,16 @@ an export can state, in one line, which prompt a registered study used.
 
 | Label | SHA-256 of the text | First shipped | What changed |
 | --- | --- | --- | --- |
-| `elenchus/2026-06-10` | `9980b4e85362740c36fbb218c7b090af966f5b7007f4cc0cdfc7c8146e3c0f50` | 0.2.0 (unchanged since; as a file from 0.11.0) | The Elenchus-condition opponent as frozen for the Sloan Foundation-funded study: the six speech acts, tension construction, the UI-driven-actions rule. Unchanged since the Phase B firewall of 2026-06-10. |
-| `baseline/2026-09-19` | `ac7119d9bd28700c913fef51e4ce4b7fa01ae0325cc1a97cc62969040dd1bb20` | 0.4.0 (as a file from 0.11.0) | The baseline assistant for the prose-introduction task, rewritten when the writing pane arrived. The hash is of the template; each session's recorded hash includes its topic. |
+| `elenchus/2026-10-07` | `f17ed75472408458357a65ad2a4d3263090717507f9e0f84d4e43386c2ac5758` | 0.14.0 | **THE TEXT.** The respondent's written draft is the authoritative statement of their position: the first draft is the positum, changes to the draft are speech acts marked `"source": "text"`, tensions may be raised within the draft and between draft and position, the opponent never writes prose for the respondent ([design note](https://github.com/bradleypallen/elenchus-server/blob/main/design-notes/text-as-positum.md)). Speech acts, tension construction and UI-driven actions unchanged. |
+| `baseline/2026-10-07` | `10ca0bbfe36a495f19d113af68caa8129311f3d450386f9c4dd3870137787bac` | 0.14.0 | The assistant sees the expert's draft — the first message is the first draft, later ones carry the text as it stands — and may help with it as an assistant would, drafting included: the natural comparator. |
+| `elenchus/2026-06-10` | `9980b4e85362740c36fbb218c7b090af966f5b7007f4cc0cdfc7c8146e3c0f50` | 0.2.0 (through 0.13.1; as a file from 0.11.0) | The Elenchus-condition opponent as frozen for the Sloan Foundation-funded study: the six speech acts, tension construction, the UI-driven-actions rule. Unchanged since the Phase B firewall of 2026-06-10. |
+| `baseline/2026-09-19` | `ac7119d9bd28700c913fef51e4ce4b7fa01ae0325cc1a97cc62969040dd1bb20` | 0.4.0 (through 0.13.1; as a file from 0.11.0) | The baseline assistant for the prose-introduction task, rewritten when the writing pane arrived. The hash is of the template; each session's recorded hash includes its topic. |
 | `phase_b/2026-06-10` | `85b67c96f7a8638b1cec8aa32b3052e7afc06f509a0d77b06dd5e3ee88f8bf9c` | 0.2.0 (as a file from 0.11.0) | The Elenchus prompt plus `ASSERT_IMPLICATION` / `INTRODUCE_BEARER` / `RETRACT_IMPLICATION`. Off by default. |
 
 Turns recorded before 0.11.0 carry the hash but no label; the hashes
-above identify them.
+above identify them. `phase_b` is still a full copy of the 2026-06-10
+Elenchus text plus its extra acts; it is off by default, never used in
+the study, and did not get THE TEXT section.
 
 ## Revising a prompt
 

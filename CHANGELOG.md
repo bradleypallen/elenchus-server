@@ -5,6 +5,27 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The first draft is the positum** (both conditions;
+  [design note](design-notes/text-as-positum.md)). The task — and the
+  tutorial — opens on the editor with the conversation locked; once a
+  first draft exists (fifty words or three sentences; twenty or two in
+  the tutorial) the participant presses *Begin dialogue* and the draft is
+  sent as the opening of the conversation. Every later turn carries the
+  text as it stands and, for the opponent, the text as of its last turn.
+  In the Elenchus condition the text is the authoritative statement of
+  the position: a claim added to the draft is a commitment, one removed a
+  retraction (logged with source `text`), and the opponent may raise
+  tensions within the draft and between draft and conversation — but
+  never writes prose for the participant. The baseline assistant sees the
+  draft and helps with it as an assistant would, drafting included. The
+  ordinary interface keeps its chat-box positum and is unchanged.
+- **Prompts** `elenchus/2026-10-07` (THE TEXT section) and
+  `baseline/2026-10-07` (sees the draft); the previous labels stay in the
+  history. Base migration 7 records which draft each turn was shown
+  (`turn_log.draft_snapshot_id`).
+
 ## [0.13.1] — 2026-10-03
 
 ### Fixed

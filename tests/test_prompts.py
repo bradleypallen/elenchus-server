@@ -24,12 +24,12 @@ from elenchus.server import _settle_prompt_override, app
 # the file header and docs/prompts.md together when a prompt changes.
 PINNED = {
     "elenchus": (
-        "elenchus/2026-06-10",
-        "9980b4e85362740c36fbb218c7b090af966f5b7007f4cc0cdfc7c8146e3c0f50",
+        "elenchus/2026-10-07",
+        "f17ed75472408458357a65ad2a4d3263090717507f9e0f84d4e43386c2ac5758",
     ),
     "baseline": (
-        "baseline/2026-09-19",
-        "ac7119d9bd28700c913fef51e4ce4b7fa01ae0325cc1a97cc62969040dd1bb20",
+        "baseline/2026-10-07",
+        "10ca0bbfe36a495f19d113af68caa8129311f3d450386f9c4dd3870137787bac",
     ),
     "phase_b": (
         "phase_b/2026-06-10",
@@ -69,19 +69,19 @@ class TestThePinnedPrompts:
         opp = opponent.Opponent(api_key="test-key", model="test-model")
         assert opp._system_prompt() == prompts.load("elenchus").text
         name, sha, version = opp._prompt_identity("elenchus")
-        assert (name, version) == ("sloan", "elenchus/2026-06-10")
+        assert (name, version) == ("sloan", "elenchus/2026-10-07")
         assert sha == PINNED["elenchus"][1]
         name, sha, version = opp._prompt_identity(
             "baseline", opponent.baseline_system_prompt("Tides")
         )
-        assert (name, version) == ("baseline", "baseline/2026-09-19")
+        assert (name, version) == ("baseline", "baseline/2026-10-07")
         assert sha != PINNED["baseline"][1]  # the hash is of the text sent, topic included
 
     def test_versions_block(self):
         v = prompts.versions()
         assert set(v) == set(prompts.FAMILIES)
         assert v["elenchus"] == {
-            "version": "elenchus/2026-06-10",
+            "version": "elenchus/2026-10-07",
             "sha256": PINNED["elenchus"][1],
             "overridden": False,
         }
@@ -176,4 +176,4 @@ class TestTheOverride:
         client.cookies.set(auth.SESSION_COOKIE, auth.create_session(admin_id))
         body = client.get("/api/admin/system").json()["prompts"]
         assert body["override_active"] is False
-        assert body["versions"]["elenchus"]["version"] == "elenchus/2026-06-10"
+        assert body["versions"]["elenchus"]["version"] == "elenchus/2026-10-07"

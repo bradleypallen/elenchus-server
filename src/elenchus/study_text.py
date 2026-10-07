@@ -29,11 +29,14 @@ EDITOR_EVENT_SEQ = "editor_event_seq"
 # key or a pasted document can't bloat the base file.
 MAX_TEXT_CHARS = 20_000
 
-SNAPSHOT_TRIGGERS = frozenset({"autosave", "blur", "paste", "submit", "timeout"})
+SNAPSHOT_TRIGGERS = frozenset({"autosave", "blur", "paste", "positum", "submit", "timeout"})
 # The two that end the task: pressed by the participant, or reached by
 # the clock. Both are always stored, even when identical to the last
 # draft, so the submitted text is a row of its own.
 FINAL_TRIGGERS = frozenset({"submit", "timeout"})
+# Stored even when identical to the last autosave, like the final ones:
+# the positum row marks *that the dialogue began from this text*.
+ALWAYS_STORED_TRIGGERS = FINAL_TRIGGERS | {"positum"}
 
 # What the editor may report, and the payload keys kept for each. The
 # allow-list is what enforces "length and time only" for pastes: a
@@ -45,16 +48,86 @@ EDITOR_EVENT_PAYLOAD_KEYS = {
 MAX_EVENTS_PER_REQUEST = 50
 
 _WORD_RE = re.compile(r"\S+")
+_SENTENCE_END_RE = re.compile(r"[.!?]+(?:\s|$)")
+
+# The first draft is the positum (design-notes/text-as-positum.md): the
+# dialogue cannot begin until the participant has written at least this
+# much — enough to hold a position, not enough to eat the clock. Either
+# bound suffices. The tutorial's bar is lower: it exists to show the
+# mechanism, not to produce a text.
+POSITUM_MIN_WORDS, POSITUM_MIN_SENTENCES = 50, 3
+TUTORIAL_POSITUM_MIN_WORDS, TUTORIAL_POSITUM_MIN_SENTENCES = 20, 2
 
 
 def word_count(text: str) -> int:
     return len(_WORD_RE.findall(text))
 
 
+def sentence_count(text: str) -> int:
+    """Sentences as a participant would count them: runs of text ended
+    by . ! or ?, plus a trailing run with no terminator."""
+    text = text.strip()
+    if not text:
+        return 0
+    ends = len(_SENTENCE_END_RE.findall(text))
+    return ends + (0 if _SENTENCE_END_RE.search(text[-2:] + " ") else 1)
+
+
+def positum_minimum(*, tutorial: bool) -> dict:
+    words, sentences = (
+        (TUTORIAL_POSITUM_MIN_WORDS, TUTORIAL_POSITUM_MIN_SENTENCES)
+        if tutorial
+        else (POSITUM_MIN_WORDS, POSITUM_MIN_SENTENCES)
+    )
+    return {"words": words, "sentences": sentences}
+
+
+def positum_ready(text: str, *, tutorial: bool) -> bool:
+    """Whether a draft is enough to start the dialogue from."""
+    m = positum_minimum(tutorial=tutorial)
+    return word_count(text) >= m["words"] or sentence_count(text) >= m["sentences"]
+
+
 def latest_snapshot(con) -> dict | None:
     row = con.execute(
         "SELECT id, at_utc, trigger, content, char_count, word_count "
         "FROM text_snapshots ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "at_utc": row[1],
+        "trigger": row[2],
+        "content": row[3],
+        "char_count": row[4],
+        "word_count": row[5],
+    }
+
+
+def find_snapshot(con, snapshot_id: int) -> dict | None:
+    row = con.execute(
+        "SELECT id, at_utc, trigger, content, char_count, word_count "
+        "FROM text_snapshots WHERE id = ?",
+        [snapshot_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "at_utc": row[1],
+        "trigger": row[2],
+        "content": row[3],
+        "char_count": row[4],
+        "word_count": row[5],
+    }
+
+
+def positum_snapshot(con) -> dict | None:
+    """The snapshot that opened the dialogue, or None if it hasn't."""
+    row = con.execute(
+        "SELECT id, at_utc, trigger, content, char_count, word_count "
+        "FROM text_snapshots WHERE trigger = 'positum' ORDER BY id LIMIT 1"
     ).fetchone()
     if row is None:
         return None
@@ -83,7 +156,11 @@ def save_snapshot(con, content: str, *, trigger: str, actor_id: int | None = Non
         raise ValueError(f"Text is longer than {MAX_TEXT_CHARS} characters")
 
     previous = latest_snapshot(con)
-    if trigger not in FINAL_TRIGGERS and previous is not None and previous["content"] == content:
+    if (
+        trigger not in ALWAYS_STORED_TRIGGERS
+        and previous is not None
+        and previous["content"] == content
+    ):
         previous.pop("content")
         return {**previous, "stored": False}
 

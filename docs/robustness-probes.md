@@ -189,6 +189,10 @@ copy**.
 | On your home page, look for **anyone else's dialectic** — a participant's task or practice record, another account's | Not there: your list is your own, as an admin too |
 | With a practice participant mid-task in a private window, put `/api/dialectics/` plus their task's name into the address bar of **your** admin window | *Not found* — the answer anyone who isn't its owner gets |
 | After a practice session is complete, reopen its link and try to change anything in its record | You are past the task; nothing can be changed, by the participant or by you |
+| In the tutorial or the task, try to send a message **before** writing anything | The message box is locked and says why; the writing pane counts words and sentences and *Begin dialogue* stays grey |
+| Write one line and press **Begin dialogue** | Refused with the minimum in plain words (fifty words or three sentences; twenty or two in the tutorial) |
+| Write enough, press **Begin dialogue**, then reload | The first reply is about your draft; after the reload the folded *Your first draft* is the first thing in the conversation and the box is open |
+| Edit the text, then send a message | What the AI says fits the edited text, not the earlier one (it is shown the draft as last saved, and a message saves first) |
 | **Dialectics** → search for a word that only appears *inside* someone's dialogue | Nothing: the search covers names and owners, never what was written |
 | **Dialectics** → **View** on another account's dialectic, and submit with no reason, then a three-letter one | Refused both times; nothing is shown and nothing appears in the access log |
 | Give a real reason and view it; look for any way to type, accept, contest, retract or delete | There is none: the view is read-only |

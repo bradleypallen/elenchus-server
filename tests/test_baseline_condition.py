@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from elenchus import auth
+from elenchus import auth, study_text
 from elenchus.db import get_registry
 from elenchus.db import platform as pdb
 from elenchus.dialectical_state import DialecticalState
@@ -310,7 +310,12 @@ class TestMessageRouteDispatch:
         reg = get_registry()
         path = reg.db_path("participant-base", actor_id=actor_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        DialecticalState.create(path, "participant-base").base.con.close()
+        state = DialecticalState.create(path, "participant-base")
+        # A study turn is refused until the first draft has opened the
+        # dialogue (design-notes/text-as-positum.md); this is the dispatch
+        # test, so the positum is written directly.
+        study_text.save_snapshot(state.base.con, "A first draft of the text.", trigger="positum")
+        state.base.con.close()
         return c, "participant-base"
 
     def test_baseline_session_routes_to_baseline_respond(self):

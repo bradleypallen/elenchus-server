@@ -93,6 +93,7 @@ def record_turn(
     system_prompt_name: str | None = None,
     system_prompt_sha256: str | None = None,
     system_prompt_version: str | None = None,
+    draft_snapshot_id: int | None = None,
     state_before: dict | None = None,
     state_after: dict | None = None,
     raw_text: str | None = None,
@@ -120,8 +121,9 @@ def record_turn(
         "raw_text, parse_strategy, parsed, user_conversation_id, "
         "assistant_conversation_id, model, attempts, latency_ms, prompt_tokens, "
         "completion_tokens, error_category, error_message, "
-        "response_model, request_id, temperature, max_tokens, system_prompt_version) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "response_model, request_id, temperature, max_tokens, system_prompt_version, "
+        "draft_snapshot_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             turn_id,
             now_utc(),
@@ -154,6 +156,7 @@ def record_turn(
             getattr(chat_result, "temperature", None),
             getattr(chat_result, "max_tokens", None),
             system_prompt_version,
+            draft_snapshot_id,
         ],
     )
     logger.info(
