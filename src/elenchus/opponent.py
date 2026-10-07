@@ -440,6 +440,24 @@ class Opponent:
             raise LLMCallError(result)
         return result.text
 
+    @staticmethod
+    def _draft_section(draft: str | None, previous_draft: str | None, positum: bool) -> str:
+        """The respondent's text as the model is shown it: the current
+        draft, and the draft as of the model's last turn — or that it is
+        unchanged — so the differences can be read as speech acts. Empty
+        when there is no draft (the ordinary interface) and on the positum
+        turn, whose message is the draft."""
+        if draft is None or positum:
+            return ""
+        current = (
+            f'\n\nCURRENT DRAFT (the respondent\'s introduction as it stands):\n"""\n{draft}\n"""'
+        )
+        if previous_draft is None:
+            return current
+        if previous_draft == draft:
+            return current + "\n(unchanged since your last turn)"
+        return current + f'\n\nPREVIOUS DRAFT (as of your last turn):\n"""\n{previous_draft}\n"""'
+
     def _build_request_messages(
         self,
         user_message: str,
@@ -462,10 +480,21 @@ class Opponent:
         state: DialecticalState,
         context_turns: int,
         action_context: dict | None,
+        *,
+        draft: str | None = None,
+        previous_draft: str | None = None,
+        positum: bool = False,
     ) -> tuple[list[dict], dict]:
         """`_build_request_messages`, plus what the turn log records
         about the request: the state as the LLM saw it, the exact final
-        user message, and how much history rode along."""
+        user message, and how much history rode along.
+
+        `draft` is the respondent's written text as it stands (the study
+        flow; design-notes/text-as-positum.md) and `previous_draft` the
+        text as shown at the last turn, so the opponent can parse the
+        changes as speech acts; `positum` marks the opening turn, whose
+        message *is* the first draft. Without a draft the request is
+        exactly what it was before 0.14.0."""
         s = state.to_dict()
         row = state.base.con.execute("SELECT COALESCE(MAX(id), 0) FROM tensions").fetchone()
         tid = row[0]
@@ -518,9 +547,16 @@ Retracted:{self._fmt_list(s["retracted"], atom_ids)}"""
 [NOTE: This action was applied via the UI — the state above already reflects it.{detail} This is the respondent's JUST-MADE decision. Do NOT say it was "already done" or "already processed." Respond as if they just told you their decision in conversation. Discuss the philosophical implications.{id_reminder}]
 """
 
-        user_content = f"""{formal_state}
+        if positum:
+            says = (
+                "RESPONDENT'S FIRST DRAFT (the positum — their introduction as first "
+                f'written; extract the initial position from it):\n"""\n{user_message}\n"""'
+            )
+        else:
+            says = f'RESPONDENT SAYS: "{user_message}" {ui_action_note}'
+        user_content = f"""{formal_state}{self._draft_section(draft, previous_draft, positum)}
 
-RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
+{says}"""
 
         # Windowed conversation history. The formal state above makes the
         # full history unnecessary — we only need recent turns for
@@ -561,6 +597,10 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         action_context: dict | None = None,
         actor_id: int | None = None,
         base_id: str | None = None,
+        draft: str | None = None,
+        previous_draft: str | None = None,
+        positum: bool = False,
+        draft_snapshot_id: int | None = None,
     ) -> dict:
         """Sync entry point. Used by the CLI and any blocking caller.
 
@@ -573,8 +613,17 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         recorder so this call is attributed correctly. Both default to
         None for CLI use (no platform DB).
         """
-        messages, turn = self._build_request(user_message, state, context_turns, action_context)
+        messages, turn = self._build_request(
+            user_message,
+            state,
+            context_turns,
+            action_context,
+            draft=draft,
+            previous_draft=previous_draft,
+            positum=positum,
+        )
         turn["actor_id"] = actor_id
+        turn["draft_snapshot_id"] = draft_snapshot_id
         try:
             raw_text = self._chat(
                 messages,
@@ -598,6 +647,10 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         lock: asyncio.Lock | None = None,
         actor_id: int | None = None,
         base_id: str | None = None,
+        draft: str | None = None,
+        previous_draft: str | None = None,
+        positum: bool = False,
+        draft_snapshot_id: int | None = None,
     ) -> dict:
         """Async entry point. Used by FastAPI route handlers so the event
         loop can service other requests during the 5–30 s LLM call.
@@ -618,8 +671,17 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         serialization. Route handlers pass `handle.lock` from the
         DBRegistry.
         """
-        messages, turn = self._build_request(user_message, state, context_turns, action_context)
+        messages, turn = self._build_request(
+            user_message,
+            state,
+            context_turns,
+            action_context,
+            draft=draft,
+            previous_draft=previous_draft,
+            positum=positum,
+        )
         turn["actor_id"] = actor_id
+        turn["draft_snapshot_id"] = draft_snapshot_id
         try:
             raw_text = await self._async_chat(
                 messages,
@@ -649,6 +711,10 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         lock: asyncio.Lock | None = None,
         actor_id: int | None = None,
         base_id: str | None = None,
+        draft: str | None = None,
+        previous_draft: str | None = None,
+        positum: bool = False,
+        draft_snapshot_id: int | None = None,
     ) -> dict:
         """Baseline (AI-as-tool) chat path for Sloan-condition participants.
 
@@ -668,15 +734,36 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
         if context_turns > 0:
             history = history[-(context_turns * 2) :]
         messages = list(history)
-        messages.append({"role": "user", "content": user_message})
+        # The study flow shows the assistant the expert's draft (design-
+        # notes/text-as-positum.md): the first message *is* the first
+        # draft; later ones carry the text as it stands.
+        if positum:
+            request_content = (
+                f'Here is my first draft of the introduction:\n"""\n{user_message}\n"""'
+            )
+        elif draft is not None:
+            changed = (
+                ""
+                if previous_draft is None
+                else " (unchanged since your last reply)"
+                if previous_draft == draft
+                else " (changed since your last reply)"
+            )
+            request_content = (
+                f'MY DRAFT AS IT STANDS{changed}:\n"""\n{draft}\n"""\n\n{user_message}'
+            )
+        else:
+            request_content = user_message
+        messages.append({"role": "user", "content": request_content})
 
         system = baseline_system_prompt(state.base.name)
         turn = {
             "actor_id": actor_id,
-            "request_content": user_message,
+            "request_content": request_content,
             "history_window": len(history),
             "summary_included": False,
             "system_prompt": system,
+            "draft_snapshot_id": draft_snapshot_id,
         }
         try:
             raw_text = await self._async_chat(
@@ -767,6 +854,7 @@ RESPONDENT SAYS: "{user_message}" {ui_action_note}"""
             "system_prompt_name": name,
             "system_prompt_sha256": sha,
             "system_prompt_version": version,
+            "draft_snapshot_id": turn.get("draft_snapshot_id"),
             "state_before": turn.get("state_before"),
             "chat_result": turn.get("chat_result"),
         }
@@ -1095,9 +1183,24 @@ Recent exchanges:
                 note=note,
             )
 
+        turn_event = event
         for act in parsed.get("speech_acts", []):
             atype = act.get("type", "")
             prop = act.get("proposition", "")
+            # An act the opponent read off a change in the respondent's
+            # written draft (design-notes/text-as-positum.md §3) is logged
+            # with source 'text': the move log then says which commitments
+            # came from writing and which from conversation. The state
+            # effect is the same either way.
+            event = (
+                EventContext(
+                    source="text",
+                    turn_id=turn_event.turn_id if turn_event else None,
+                    actor_id=turn_event.actor_id if turn_event else None,
+                )
+                if act.get("source") == "text" and turn_event is not None
+                else turn_event
+            )
 
             if atype == "COMMIT" and prop:
                 state.commit(prop, event=event)

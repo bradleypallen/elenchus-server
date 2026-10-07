@@ -2910,6 +2910,10 @@ def _study_session_payload(session: dict) -> dict:
         "topic_brief": token.get("topic_brief", ""),
         "practice_topic_title": PRACTICE_TOPIC_TITLE,
         "practice_topic_brief": PRACTICE_TOPIC_BRIEF,
+        # The first draft is the positum; the dialogue is locked until it
+        # exists (design-notes/text-as-positum.md). Read from the working
+        # base's snapshots, so a reload or another device sees the truth.
+        **_positum_status(session),
         "task_minutes": task_minutes,
         "soft_warning_minutes": sorted({max(1, task_minutes - 10), task_minutes}),
         "state_elapsed_seconds": pdb.session_state_elapsed_seconds(con, session["id"]),
@@ -2921,6 +2925,23 @@ def _study_session_payload(session: dict) -> dict:
     # The token is the participant's credential; the page doesn't need it back.
     payload.pop("study_token", None)
     return payload
+
+
+def _positum_status(session: dict) -> dict:
+    """`positum_done` (the working base's dialogue has begun from a
+    draft) and `positum_min` (what a draft needs before it can). Both
+    None outside the two working states."""
+    if session.get("state") not in ("tutorial", "active"):
+        return {"positum_done": None, "positum_min": None}
+    tutorial = session["state"] == "tutorial"
+    try:
+        base = _study_working_base(session)
+        handle = get_registry().get_handle(base)
+        done = study_text.positum_snapshot(handle.state.base.con) is not None
+    except Exception:
+        logger.debug("Could not read positum status for session %s", session.get("id"))
+        done = False
+    return {"positum_done": done, "positum_min": study_text.positum_minimum(tutorial=tutorial)}
 
 
 # ── The hard stop (Registered Report §2.4) ───────────────────────────
@@ -3143,6 +3164,71 @@ async def study_text_save(req: StudyTextRequest, actor: dict = Depends(auth.curr
     except ValueError as e:
         raise HTTPException(413, {"user_message": str(e)}) from None
     return snapshot
+
+
+_POSITUM_REQUIRED = {
+    "positum_required": True,
+    "user_message": "Write a first draft of your introduction first — the conversation "
+    "starts from it.",
+}
+
+
+@app.post("/api/study/session/positum")
+async def study_positum(actor: dict = Depends(auth.current_actor)):
+    """Begin the dialogue from the draft as saved: the participant's
+    first draft is the positum (design-notes/text-as-positum.md). The
+    latest saved text must meet the minimum; it is stored as a `positum`
+    snapshot and sent as the opening turn — the opponent extracts the
+    initial position from it, the baseline assistant reads it. Once per
+    working base; refused after the task length like any change."""
+    session = _live_study_session(actor)
+    if _time_is_up(session):
+        raise HTTPException(409, _TASK_ENDED)
+    name = _study_working_base(session)
+    tutorial = session["state"] == "tutorial"
+    is_baseline = _is_baseline_for_actor_and_base(actor["id"], name)
+    with get_registry().hold(name) as handle:
+        async with handle.lock:
+            con = handle.state.base.con
+            if study_text.positum_snapshot(con) is not None:
+                raise HTTPException(
+                    409, {"user_message": "The conversation has already begun from your draft."}
+                )
+            latest = study_text.latest_snapshot(con)
+            content = latest["content"] if latest else ""
+            if not study_text.positum_ready(content, tutorial=tutorial):
+                m = study_text.positum_minimum(tutorial=tutorial)
+                raise HTTPException(
+                    422,
+                    {
+                        "positum_short": True,
+                        "user_message": f"Write a little more first — at least {m['words']} words "
+                        f"or {m['sentences']} sentences — so the conversation has a position "
+                        "to start from.",
+                    },
+                )
+            snapshot = study_text.save_snapshot(
+                con, content, trigger="positum", actor_id=actor["id"]
+            )
+        logger.info(
+            "Positum: session=%s base=%r words=%d condition=%s",
+            session["id"],
+            name,
+            snapshot["word_count"],
+            "baseline" if is_baseline else "elenchus",
+        )
+        result = await _send_message_held(
+            handle,
+            name,
+            MessageRequest(message=content),
+            actor,
+            is_baseline,
+            draft=content,
+            previous_draft=None,
+            positum=True,
+            draft_snapshot_id=snapshot["id"],
+        )
+    return {**result, "session": _study_session_payload(session)}
 
 
 @app.post("/api/study/session/text/events")
@@ -3574,12 +3660,53 @@ async def send_message(
     # after the LLM call, which runs without the per-base lock, and a
     # pinned handle is never closed by the registry's sweep.
     with get_registry().hold(name) as handle:
-        return await _send_message_held(handle, name, req, actor, is_baseline)
+        draft_kwargs = _draft_for_turn(handle, name, actor)
+        return await _send_message_held(handle, name, req, actor, is_baseline, **draft_kwargs)
+
+
+def _draft_for_turn(handle, name: str, actor: dict) -> dict:
+    """What a study participant's turn carries of their written text
+    (design-notes/text-as-positum.md): the draft as last saved and the
+    draft the model saw at its previous turn. An ordinary dialectic
+    carries nothing. Refuses a study turn before the positum."""
+    con = get_registry().platform_con()
+    session = _study_session_for_base(con, name)
+    if session is None:
+        return {}
+    bcon = handle.state.base.con
+    if study_text.positum_snapshot(bcon) is None:
+        raise HTTPException(409, _POSITUM_REQUIRED)
+    latest = study_text.latest_snapshot(bcon)
+    previous_id = bcon.execute(
+        "SELECT draft_snapshot_id FROM turn_log WHERE draft_snapshot_id IS NOT NULL "
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    previous = study_text.find_snapshot(bcon, previous_id[0]) if previous_id else None
+    return {
+        "draft": latest["content"] if latest else "",
+        "previous_draft": previous["content"] if previous else None,
+        "draft_snapshot_id": latest["id"] if latest else None,
+    }
 
 
 async def _send_message_held(
-    handle, name: str, req: MessageRequest, actor: dict, is_baseline: bool
+    handle,
+    name: str,
+    req: MessageRequest,
+    actor: dict,
+    is_baseline: bool,
+    *,
+    draft: str | None = None,
+    previous_draft: str | None = None,
+    positum: bool = False,
+    draft_snapshot_id: int | None = None,
 ) -> dict:
+    draft_kwargs = {
+        "draft": draft,
+        "previous_draft": previous_draft,
+        "positum": positum,
+        "draft_snapshot_id": draft_snapshot_id,
+    }
     try:
         if is_baseline:
             result = await opponent.async_baseline_respond(
@@ -3588,6 +3715,7 @@ async def _send_message_held(
                 lock=handle.lock,
                 actor_id=actor["id"],
                 base_id=name,
+                **draft_kwargs,
             )
         else:
             result = await opponent.async_respond(
@@ -3597,6 +3725,7 @@ async def _send_message_held(
                 lock=handle.lock,
                 actor_id=actor["id"],
                 base_id=name,
+                **draft_kwargs,
             )
         return {
             "response": result.get("response", ""),

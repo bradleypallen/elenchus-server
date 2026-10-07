@@ -161,7 +161,27 @@ class StudyHarness:
             return
         practice_base = body["practice_base_id"]
 
-        # 4. One tutorial turn (warm-up).
+        # 4. The tutorial: the dialogue is locked until a first draft is
+        # written (design-notes/text-as-positum.md) — probe that, then
+        # write a short positum, then one warm-up turn.
+        participant.probe(
+            "POST",
+            f"/api/dialectics/{practice_base}/message",
+            json={"message": "hello?"},
+            action="turn_before_positum_probe",
+            expect=409,
+            note="no dialogue before the first draft",
+        )
+        participant.put(
+            "/api/study/session/text",
+            json={
+                "content": self.driver.participant_positum(persona, cond, tutorial=True),
+                "trigger": "autosave",
+            },
+            action="autosave_text",
+            note="tutorial positum",
+        )
+        participant.post("/api/study/session/positum", action="positum", note="tutorial")
         participant.post(
             f"/api/dialectics/{practice_base}/message",
             json={"message": self.driver.participant_tutorial_message(persona)},
@@ -174,8 +194,35 @@ class StudyHarness:
             return
         task_base = body["task_base_id"]
 
-        # 6. Task turns.
-        state = {}
+        # 6. The task opens on the editor: a first draft below the
+        # minimum is refused, the full positum opens the dialogue.
+        text = self.driver.participant_text(persona, cond, {}, topic=planned["topic_title"])
+        participant.put(
+            "/api/study/session/text",
+            json={"content": "Too short.", "trigger": "autosave"},
+            action="autosave_text",
+            note="one line",
+        )
+        participant.probe(
+            "POST",
+            "/api/study/session/positum",
+            action="positum_short_probe",
+            expect=422,
+            note="a one-line positum is refused",
+        )
+        participant.put(
+            "/api/study/session/text",
+            json={
+                "content": self.driver.participant_positum(persona, cond, tutorial=False),
+                "trigger": "autosave",
+            },
+            action="autosave_text",
+            note="positum",
+        )
+        st, body = participant.post("/api/study/session/positum", action="positum")
+        state = body.get("state", {}) if st == 200 and body else {}
+
+        # 6a. Task turns.
         st, body = participant.post(
             f"/api/dialectics/{task_base}/message",
             json={"message": self.driver.participant_task_message(persona, cond, 0, state)},
@@ -209,9 +256,9 @@ class StudyHarness:
             note="turn 2",
         )
 
-        # 7. The writing pane: an autosaved draft, a paste event, then
-        # the submitted text. The text is the judged artifact, so the
-        # task can't be left without one — probe that first.
+        # 7. The writing pane: the draft grows, a paste event, then the
+        # submitted text. The text is the judged artifact, so the task
+        # can't be left without one — probe that first.
         text = self.driver.participant_text(persona, cond, state, topic=planned["topic_title"])
         participant.put(
             "/api/study/session/text",

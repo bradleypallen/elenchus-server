@@ -183,6 +183,23 @@ class ScriptedDriver:
         msgs = persona.scripted_task_messages
         return msgs[min(turn_idx, len(msgs) - 1)] if msgs else "Continue."
 
+    def participant_positum(
+        self, persona: ParticipantPersona, condition: str, *, tutorial: bool
+    ) -> str:
+        """The first draft the dialogue starts from (design-notes/
+        text-as-positum.md). The tutorial's is short; the task's clears
+        the minimum. Topic-only, like the submitted text."""
+        if tutorial:
+            return "A practice topic has a few core concepts. They are related. That is all."
+        topic = _topic_for(persona, condition)
+        return (
+            f"{topic} is best introduced through its core concepts. Each concept is defined "
+            f"partly by its relation to the others, so none can be stated alone. The "
+            f"boundaries between them are where practitioners disagree. A newcomer should "
+            f"learn the concepts first and the boundaries second. What follows from drawing "
+            f"the boundaries one way rather than another is the subject of the field."
+        )
+
     def participant_text(
         self, persona: ParticipantPersona, condition: str, state: dict, topic: str | None = None
     ) -> str:
@@ -238,6 +255,22 @@ class LLMDriver:
 
     def participant_tutorial_message(self, persona: ParticipantPersona) -> str:
         return persona.tutorial_message
+
+    def participant_positum(
+        self, persona: ParticipantPersona, condition: str, *, tutorial: bool
+    ) -> str:
+        if tutorial:
+            return ScriptedDriver().participant_positum(persona, condition, tutorial=True)
+        domain = persona.elenchus_domain if condition == "elenchus" else persona.baseline_domain
+        system = (
+            f"You are a domain expert in {domain}, writing the first draft of a short "
+            f"introduction to it for a well-informed colleague. Write 60–120 words of plain "
+            f"prose stating your view of the core concepts and where the boundaries lie. "
+            f"No headings, no lists, no meta-commentary."
+        )
+        result = self._chat("Write the first draft now.", system=system, max_tokens=300)
+        text = result.text.strip() if result.ok else ""
+        return text or ScriptedDriver().participant_positum(persona, condition, tutorial=False)
 
     def participant_task_message(
         self, persona: ParticipantPersona, condition: str, turn_idx: int, state: dict
