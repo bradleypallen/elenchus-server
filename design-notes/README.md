@@ -93,6 +93,22 @@ the alternatives rejected, the four work packages (the first built in
 0.9.5) and the rules for whoever adds a route. The user-facing statement
 is [docs/data-access.md](../docs/data-access.md).
 
+### [The text as the positum](text-as-positum.md)
+
+A design note on a problem in the study task: the dialogue and the
+written introduction sit side by side with nothing connecting them, and
+the two conditions are asymmetric about the deliverable (the baseline
+assistant is told about the text; the opponent is not; neither sees it).
+Proposes that the participant's first draft *is* the positum in both
+conditions, that the dialogue cannot begin until it is written, and that
+every turn thereafter sees the current draft — with, in the Elenchus
+condition, changes to the text parsed as speech acts (`source = 'text'`)
+so the text is the authoritative statement of the position and the
+dialogue the place it is tested. Lists the decisions it forces (where the
+position lives; whether the baseline may draft prose; the minimum
+positum; the ordinary interface), what building it involves, and what it
+means for the registration. Proposed, not built.
+
 ### [Architecture vision](architecture-vision.md)
 
 The broader conceptual framing the speech-act and NMMS_Onto extensions sit
