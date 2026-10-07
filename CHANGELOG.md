@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-10-07
+
 ### Changed
 
 - **The first draft is the positum** (both conditions;
