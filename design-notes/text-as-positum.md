@@ -1,8 +1,10 @@
 # The text as the positum
 
-*Design note, 2026-10-07. Status: proposed, not built. Decisions 1–4 in
-§4 are the principal investigator's; the registration text is affected
-(§6). Nothing here applies to a study whose allocation seed is set.*
+*Design note, 2026-10-07. Status: **built in 0.14.0** with decisions 1
+(the text is authoritative) and 2 (the natural comparator) taken by the
+principal investigator on 2026-10-07, and 3–5 as recommended. The
+registration text is affected (§6). Nothing here applies to a study whose
+allocation seed is set.*
 
 ## 1. The problem
 

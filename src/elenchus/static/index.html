@@ -1243,7 +1243,15 @@ function App() {
   // The participant's text (the writing pane's content). Held here
   // because FINISH SESSION, in the header, is what submits it.
   const [studyText, setStudyText] = useState('');
+  // The writing pane registers its save-now here, so a turn never goes
+  // to the model with an unsaved draft (the model is shown the text as
+  // last saved — design-notes/text-as-positum.md).
+  const flushDraft = useRef(null);
   const isParticipant = actor?.kind === 'participant';
+  // The dialogue is locked until the first draft has opened it.
+  const positumPending = isParticipant
+    && (studySession?.state === 'tutorial' || studySession?.state === 'active')
+    && studySession?.positum_done === false;
   const isBaseline = studySession?.condition === 'baseline';
   const [displayPrefs, setDisplayPrefs] = useState(() => {
     try {
@@ -1526,9 +1534,14 @@ function App() {
       // just the `response` field, tolerating prose preambles and
       // un-fenced JSON the same way opponent.py's parser does.
       const roleMap = { user: 'respondent', assistant: 'opponent' };
+      let firstUser = true;
       const history = (s.conversation || []).map(m => {
         const content = m.role === 'assistant' ? extractResponseText(m.content) : m.content;
-        return { role: roleMap[m.role] || m.role, content };
+        // In the study flow the first user message *is* the first draft
+        // (the positum); it is shown folded, not as a chat bubble.
+        const positum = isParticipant && m.role === 'user' && firstUser;
+        if (m.role === 'user') firstUser = false;
+        return { role: roleMap[m.role] || m.role, content, ...(positum ? { positum: true } : {}) };
       });
       setMessages([
         { role: 'system', content: `Resumed dialectic: ${s.name}` },
@@ -1555,6 +1568,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      if (isParticipant && flushDraft.current) await flushDraft.current();
       const res = await api(dxPath('/message'), {
         method: 'POST', body: JSON.stringify({ message: msg })
       });
@@ -1587,6 +1601,31 @@ function App() {
     setInput('');
     setView('dialogue');
     await sendMessage(msg);
+  };
+
+  // The first draft opens the dialogue (design-notes/text-as-positum.md):
+  // save it, send it as the positum, show the model's opening reply.
+  const studyBeginDialogue = async () => {
+    if (loading) return;
+    setLoading(true); setError(null);
+    try {
+      if (flushDraft.current) await flushDraft.current();
+      const res = await api('/api/study/session/positum', { method: 'POST' });
+      setState(res.state);
+      setStudySession(res.session);
+      const opening = res.response
+        || (res.new_tensions?.length ? '(Proposed a new tension — see the Tensions pane.)'
+            : (res.speech_acts?.length ? '(Read your draft and updated the position.)' : ''));
+      setMessages(prev => [
+        ...prev,
+        { role: 'respondent', content: studyText, positum: true },
+        ...(opening ? [{ role: 'opponent', content: opening, acts: res.speech_acts, tensions: res.new_tensions }] : []),
+      ]);
+    } catch (e) {
+      setError(e.message);
+      setMessages(prev => [...prev, { role: 'error', content: e.message }]);
+    }
+    setLoading(false);
   };
 
   const acceptTension = async (t) => {
@@ -1905,7 +1944,7 @@ function App() {
             <p style={{ marginBottom: 12 }}>The session has three parts:</p>
             <ol style={{ paddingLeft: 22, marginBottom: 12 }}>
               <li style={{ marginBottom: 6 }}><b>Tutorial</b> (~15 minutes) — practice with the interface on a warm-up topic.</li>
-              <li style={{ marginBottom: 6 }}><b>Main task</b> (about {studySession.task_minutes || 60} minutes) — write your introduction in the panel on the right, beside your conversation with the AI. A clock shows your time. You can end the task yourself once your text is ready; when the time is up, it is submitted as it stands.</li>
+              <li style={{ marginBottom: 6 }}><b>Main task</b> (about {studySession.task_minutes || 60} minutes) — start by writing a first draft of your introduction in the panel on the right; the conversation with the AI begins from that draft, and you keep editing the text as you talk. A clock shows your time. You can end the task yourself once your text is ready; when the time is up, it is submitted as it stands.</li>
               <li style={{ marginBottom: 6 }}><b>Questionnaires</b> (~10–15 minutes) — four short instruments about your experience.</li>
             </ol>
             <p style={{ marginBottom: 12 }}>
@@ -2515,7 +2554,8 @@ function App() {
         <div style={{ gridColumn: '-3 / -2', gridRow: '2 / 4', background: 'var(--border)' }} />
       )}
       {showWritingPane && (
-        <WritingPane fs={fs} studySession={studySession} text={studyText} setText={setStudyText} />
+        <WritingPane fs={fs} studySession={studySession} text={studyText} setText={setStudyText}
+          flushRef={flushDraft} onBeginDialogue={studyBeginDialogue} busy={loading} />
       )}
 
       {/* Input */}
@@ -2529,10 +2569,12 @@ function App() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
-          disabled={loading}
-          placeholder={isBaseline
-            ? 'Message the assistant…'
-            : 'Speak naturally — commit, deny, respond to tensions, refine your position...'}
+          disabled={loading || positumPending}
+          placeholder={positumPending
+            ? 'Write a first draft of your introduction in the editor — the conversation starts from it.'
+            : isBaseline
+              ? 'Message the assistant…'
+              : 'Speak naturally — commit, deny, respond to tensions, refine your position...'}
           rows={2}
           style={{
             flex: 1, padding: '10px 14px', background: 'var(--surface)',
@@ -2543,10 +2585,10 @@ function App() {
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={!input.trim() || loading}
+          disabled={!input.trim() || loading || positumPending}
           style={{
             padding: '10px 20px', height: 44,
-            background: input.trim() && !loading ? 'var(--accent)' : 'var(--surface2)',
+            background: input.trim() && !loading && !positumPending ? 'var(--accent)' : 'var(--surface2)',
             border: 'none', borderRadius: 6,
             color: input.trim() && !loading ? '#111' : 'var(--text-muted)',
             fontSize: fs(12), cursor: input.trim() ? 'pointer' : 'default',
@@ -2676,6 +2718,26 @@ function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) 
   );
 }
 
+// The first draft, as the opening of a study dialogue: folded, since the
+// text itself is in the editor beside the conversation.
+function PositumMessage({ msg, fs, who }) {
+  const [open, setOpen] = useState(false);
+  const words = countWords(msg.content);
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '82%', padding: '8px 14px', borderRadius: 10, background: 'var(--surface2)',
+                    border: '1px solid var(--border)', fontFamily: 'var(--sans)' }}>
+        <div style={{ fontSize: fs(9), letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>{who}</div>
+        <div onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer', fontSize: fs(12), color: 'var(--text-dim)', marginTop: 2 }}>
+          Your first draft ({words} word{words === 1 ? '' : 's'}) — the conversation starts from it.{' '}
+          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: fs(10) }}>{open ? 'HIDE' : 'SHOW'}</span>
+        </div>
+        {open && <div style={{ marginTop: 8, fontSize: fs(12), lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>{msg.content}</div>}
+      </div>
+    </div>
+  );
+}
+
 function Message({ msg, fs, baseline }) {
   if (msg.role === 'system' || msg.role === 'error') {
     return (
@@ -2689,6 +2751,7 @@ function Message({ msg, fs, baseline }) {
   const isOpp = msg.role === 'opponent';
   // The baseline condition is an ordinary assistant: no protocol vocabulary.
   const who = baseline ? (isOpp ? 'Assistant' : 'You') : (isOpp ? 'Opponent' : 'Respondent');
+  if (msg.positum) return <PositumMessage msg={msg} fs={fs} who={who} />;
   return (
     <div style={{ display: 'flex', justifyContent: isOpp ? 'flex-start' : 'flex-end' }}>
       <div style={{
@@ -5409,6 +5472,12 @@ function minutesPhrase(n) {
   return n === 1 ? 'The 1 minute is' : `The ${n} minutes are`;
 }
 
+function countSentences(text) {
+  const t = (text || '').trim();
+  if (!t) return 0;
+  const ends = (t.match(/[.!?]+(?:\s|$)/g) || []).length;
+  return ends + (/[.!?]\s*$/.test(t) ? 0 : 1);
+}
 function countWords(text) {
   const m = text.match(/\S+/g);
   return m ? m.length : 0;
@@ -5431,8 +5500,12 @@ function useTaskClock(studySession) {
   return elapsed;
 }
 
-function WritingPane({ fs, studySession, text, setText }) {
+function WritingPane({ fs, studySession, text, setText, flushRef, onBeginDialogue, busy }) {
   const isTutorial = studySession.state === 'tutorial';
+  // Until the first draft has opened the dialogue, the pane is where the
+  // session starts (design-notes/text-as-positum.md).
+  const positumPending = studySession.positum_done === false;
+  const positumMin = studySession.positum_min || { words: 50, sentences: 3 };
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState('saved'); // 'saved' | 'unsaved' | 'saving' | 'error'
   const [briefOpen, setBriefOpen] = useState(true);
@@ -5474,6 +5547,17 @@ function WritingPane({ fs, studySession, text, setText }) {
     }
     saving.current = false;
   }, [loaded]);
+
+  // Save now, waiting out a save in flight — what a turn to the model
+  // calls first, so the draft it is shown is the draft on screen.
+  const flush = useCallback(async () => {
+    for (let i = 0; i < 50 && saving.current; i++) await new Promise(r => setTimeout(r, 100));
+    await save('autosave');
+  }, [save]);
+  useEffect(() => {
+    if (flushRef) flushRef.current = flush;
+    return () => { if (flushRef) flushRef.current = null; };
+  }, [flush, flushRef]);
 
   // Autosave: shortly after typing pauses, and at least every 10 s
   // while typing continues.
@@ -5549,6 +5633,8 @@ function WritingPane({ fs, studySession, text, setText }) {
   const title = isTutorial ? studySession.practice_topic_title : studySession.topic_title;
   const brief = isTutorial ? studySession.practice_topic_brief : studySession.topic_brief;
   const words = countWords(text);
+  const sentences = countSentences(text);
+  const positumReady = words >= positumMin.words || sentences >= positumMin.sentences;
   const saveLabel = { saved: 'Saved', unsaved: 'Unsaved changes…', saving: 'Saving…',
                       error: 'Not saved — will retry' }[saveState];
 
@@ -5590,6 +5676,17 @@ function WritingPane({ fs, studySession, text, setText }) {
         )}
       </div>
 
+      {positumPending && (
+        <div role="status" style={{
+          margin: '10px 14px 0', padding: '8px 10px', borderRadius: 4,
+          fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.5,
+          color: 'var(--text)', background: 'var(--surface2)', border: '1px solid var(--border)',
+        }}>
+          <b>Start by writing a first draft.</b> The conversation begins from it — press <b>Begin dialogue</b> once you
+          have at least {positumMin.words} words or {positumMin.sentences} sentences. You can keep editing throughout.
+        </div>
+      )}
+
       {warning && (
         <div role="status" style={{
           margin: '10px 14px 0', padding: '8px 10px', borderRadius: 4,
@@ -5618,11 +5715,27 @@ function WritingPane({ fs, studySession, text, setText }) {
       />
 
       <div style={{
-        padding: '0 14px 12px', display: 'flex', justifyContent: 'space-between',
+        padding: '0 14px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
         fontFamily: 'var(--mono)', fontSize: fs(10), color: 'var(--text-muted)',
       }}>
-        <span>{words} word{words === 1 ? '' : 's'}</span>
-        <span style={{ color: saveState === 'error' ? 'var(--deny)' : 'var(--text-muted)' }}>{saveLabel}</span>
+        <span>
+          {words} word{words === 1 ? '' : 's'}
+          {positumPending && <span> · {sentences} sentence{sentences === 1 ? '' : 's'} · need {positumMin.words} words or {positumMin.sentences} sentences</span>}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: saveState === 'error' ? 'var(--deny)' : 'var(--text-muted)' }}>{saveLabel}</span>
+          {positumPending && (
+            <button onClick={onBeginDialogue} disabled={!positumReady || busy || !loaded || timeUp}
+              title={positumReady ? 'Send this draft as your opening position and start the conversation' : 'Write a little more first'}
+              style={{
+                padding: '6px 12px', border: 'none', borderRadius: 4, letterSpacing: 1, fontWeight: 500,
+                fontSize: fs(10), fontFamily: 'var(--mono)',
+                background: positumReady && !busy ? 'var(--accent)' : 'var(--surface2)',
+                color: positumReady && !busy ? '#111' : 'var(--text-muted)',
+                cursor: positumReady && !busy ? 'pointer' : 'default',
+              }}>{busy ? '…' : 'BEGIN DIALOGUE'}</button>
+          )}
+        </span>
       </div>
     </div>
   );

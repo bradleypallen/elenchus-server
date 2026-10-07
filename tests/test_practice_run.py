@@ -24,9 +24,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from elenchus import auth
+from elenchus import server as srv
 from elenchus.db import get_registry
 from elenchus.db import platform as pdb
 from elenchus.server import app
+from elenchus.sim.driver import CannedLLMClient
 
 
 @pytest.fixture(autouse=True)
@@ -69,6 +71,13 @@ def _ok(response, *codes):
         f"{response.status_code} {response.text[:300]}"
     )
     return response.json()
+
+
+@pytest.fixture(autouse=True)
+def _canned_model(monkeypatch):
+    """The practice run talks to the AI twice (Begin dialogue in the
+    tutorial, one message); the canned client answers for free."""
+    monkeypatch.setattr(srv.opponent, "_llm_client", CannedLLMClient())
 
 
 def test_the_runbooks_practice_run_needs_only_an_admin_account():
@@ -117,14 +126,40 @@ def test_the_runbooks_practice_run_needs_only_an_admin_account():
     # reload and closing the window.
     window = TestClient(app)
     _ok(window.post(f"/api/study/{first['token']}"))
-    _ok(window.post("/api/study/session/begin-tutorial"))
+    tutorial = _ok(window.post("/api/study/session/begin-tutorial"))
+    # The conversation is locked until a first draft has opened it.
+    assert tutorial["positum_done"] is False
+    practice = tutorial["practice_base_id"]
+    assert (
+        window.post(f"/api/dialectics/{practice}/message", json={"message": "hi"}).status_code
+        == 409
+    )
+    _ok(window.put("/api/study/session/text", json={"content": "Clouds are water. They float."}))
+    opened = _ok(window.post("/api/study/session/positum"))
+    assert opened["session"]["positum_done"] is True and opened["response"]
+    _ok(
+        window.post(
+            f"/api/dialectics/{practice}/message", json={"message": "I'd add that they move."}
+        )
+    )
     task = _ok(window.post("/api/study/session/begin-task"))
     assert task["task_minutes"] == 5 and task["soft_warning_minutes"] == [1, 5]
+    assert task["positum_done"] is False and task["positum_min"] == {"words": 50, "sentences": 3}
     _ok(window.put("/api/study/session/text", json={"content": "Tides rise and fall."}))
+    short = window.post("/api/study/session/positum")
+    assert short.status_code == 422 and "50 words" in short.json()["detail"]["user_message"]
+    _ok(
+        window.put(
+            "/api/study/session/text",
+            json={"content": "Tides rise and fall. The Moon drives them. The Sun helps."},
+        )
+    )
+    _ok(window.post("/api/study/session/positum"))
     assert "Tides rise" in _ok(window.get("/api/study/session/text"))["content"]
     reopened = TestClient(app)
     _ok(reopened.post(f"/api/study/{first['token']}"))
-    assert _ok(reopened.get("/api/study/session"))["state"] == "active"
+    resumed = _ok(reopened.get("/api/study/session"))
+    assert resumed["state"] == "active" and resumed["positum_done"] is True
     assert "Tides rise" in _ok(reopened.get("/api/study/session/text"))["content"]
 
     # 7. The clock runs out: the task ends by itself, the text goes in as it

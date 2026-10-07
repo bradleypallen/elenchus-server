@@ -278,9 +278,15 @@ takes about half an hour, and nothing in it needs anyone else's help.
 3. Copy **session 2's** link and open it in a **private / incognito
    window**. Read the refusal. Close it.
 4. Open **session 1's** link in the private window. Go through the
-   welcome and the tutorial; type something in the practice text box.
-5. Start the main task. Write two sentences. **Reload the page** — the
-   text is still there and the clock kept going.
+   welcome. In the tutorial the conversation is locked until you have
+   written a first draft: write a couple of sentences in the practice
+   text box and press **Begin dialogue** — the AI's first reply is about
+   what you wrote. Send one message.
+5. Start the main task. Write a first draft of two or three sentences,
+   watch the word and sentence counts under the editor, and press
+   **Begin dialogue** once it allows (fifty words or three sentences).
+   **Reload the page** — the text and the conversation are still there
+   and the clock kept going.
 6. Close the window entirely. Open the same link again — you're back in
    the task.
 7. Wait for the time reminder — with a five-minute task it comes at one
