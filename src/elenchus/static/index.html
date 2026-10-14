@@ -1284,7 +1284,7 @@ function App() {
   // has no formal panes at all: no badges to open them, and none shown
   // even if this browser opened them in an earlier Elenchus session —
   // a crossover participant on the same laptop must never see
-  // "Commitments" or "No sequents yet" in the condition without them.
+  // "Commitments" or "No implications yet" in the condition without them.
   const showLeft = leftVisible && !isBaseline;
   const showRight = rightVisible && !isBaseline;
   const dragging = useRef(null); // 'left' | 'right' | null
@@ -2331,7 +2331,7 @@ function App() {
           {!isBaseline && (
           <button
             onClick={() => setRightVisible(v => !v)}
-            title={rightVisible ? 'Hide sequents pane' : 'Show sequents pane'}
+            title={rightVisible ? 'Hide implications pane' : 'Show implications pane'}
             style={{
               background: rightVisible ? 'var(--surface)' : 'none',
               border: '1px solid var(--border)', borderRadius: 4,
@@ -2339,7 +2339,7 @@ function App() {
               fontSize: fs(10), padding: '2px 8px', lineHeight: 1.4,
               letterSpacing: 1, fontFamily: 'var(--mono)', outline: 'none',
             }}
-          >SEQUENTS T:{openTensionCount} I:{s.implications.length}</button>
+          >IMPLICATIONS T:{openTensionCount} I:{s.implications.length}</button>
           )}
           {!isParticipant && (
           <button
@@ -2521,17 +2521,17 @@ function App() {
            onMouseLeave={e => e.currentTarget.style.background = 'var(--border)'} />
       )}
 
-      {/* Right: Sequents (focal tension only; rest are queued) */}
+      {/* Right: Implications — the focal tension (the rest are queued) and the accepted implications */}
       {showRight && (
         <div style={{ padding: 14, overflowY: 'auto' }}>
           <div style={{ fontSize: fs(9), letterSpacing: 2, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
-            Sequents
+            Implications
           </div>
           {s.tensions.length === 0 && s.implications.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No sequents yet</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: fs(11), fontStyle: 'italic' }}>No implications yet</div>
           )}
           {s.tensions.map(t => (
-            <SequentCard key={'t'+t.id} item={t} type="tension" onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} atomIds={s.atom_ids} />
+            <ImplicationCard key={'t'+t.id} item={t} type="tension" onAccept={() => acceptTension(t)} onContest={() => contestTension(t)} loading={loading} fs={fs} atomIds={s.atom_ids} />
           ))}
           {queuedTensions.length > 0 && (
             <div style={{
@@ -2544,7 +2544,7 @@ function App() {
             </div>
           )}
           {s.implications.map((imp, i) => (
-            <SequentCard key={'i'+i} item={imp} type="implication" loading={loading} fs={fs} atomIds={s.atom_ids} />
+            <ImplicationCard key={'i'+i} item={imp} type="implication" loading={loading} fs={fs} atomIds={s.atom_ids} />
           ))}
         </div>
       )}
@@ -2640,7 +2640,7 @@ function PositionList({ title, color, bgColor, items, onRetract, loading, fs, at
   );
 }
 
-function SequentCard({ item, type, onAccept, onContest, loading, fs, atomIds }) {
+function ImplicationCard({ item, type, onAccept, onContest, loading, fs, atomIds }) {
   const isTension = type === 'tension';
   const color = isTension ? 'var(--tension)' : 'var(--imp)';
   const bg = isTension ? 'var(--tension-bg)' : 'var(--imp-bg)';

@@ -63,7 +63,7 @@ walk-through of both conditions on 2026-09-26.
 |---|---|---|
 | §2.1 Two-period, two-condition within-subjects crossover; every participant does both | One participant row, two tokens with `period` 1 and 2 and opposite conditions | code |
 | §2.1 Same model in both conditions; baseline is a separate mode of the same application | One `Opponent` / `LLMClient`; the message route dispatches on the session's condition | code, browser |
-| §2.1 Interface of comparable visual design; the model supplies no content in either | Same layout, editor, brief, clock and reminders in both; the only differences are the two position/sequents badges and the message-box placeholder (and the pane leak, fixed on `fix/baseline-pane-leak`) | browser |
+| §2.1 Interface of comparable visual design; the model supplies no content in either | Same layout, editor, brief, clock and reminders in both; the only differences are the two position/implications badges and the message-box placeholder (and the pane leak, fixed on `fix/baseline-pane-leak`) | browser |
 | §2.1 Task identical in both; topic + brief; two or three paragraphs, own words, no reference material | The writing pane's brief text; the topic title and brief copied onto the token at enrolment | browser |
 | §2.1 Four sequences: condition order × topic assignment | `ALL_CELLS` is exactly that 2×2 | code |
 | §2.1 Permuted blocks of four in enrolment order | `next_cell`: each block of four holds each cell once | code, tests |

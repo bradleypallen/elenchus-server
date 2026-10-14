@@ -2,9 +2,9 @@
 pdf_report.py — PDF report generation for Elenchus dialectics
 
 Generates a structured PDF matching the UI display: summary,
-position (commitments/denials with atom IDs), sequents (tensions
-and implications as cards with numbered atoms), and conversation
-transcript.
+position (commitments/denials with atom IDs), implications (open
+tensions and accepted implications as cards with numbered atoms), and
+conversation transcript.
 """
 
 import logging
@@ -193,8 +193,8 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.multi_cell(w=pdf.w - pdf.get_x() - 20, text=text)
         pdf.ln(1)
 
-    def sequent_card(seq_id, label, gamma_list, delta_list, atom_ids):
-        """Render a sequent card matching the UI display."""
+    def implication_card(seq_id, label, gamma_list, delta_list, atom_ids):
+        """Render an implication card (a tension or an accepted implication) matching the UI display."""
         set_mono(9)
         pdf.set_text_color(60, 60, 80)
         pdf.set_x(pdf.get_x() + 6)
@@ -312,9 +312,9 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
         pdf.ln(5)
     pdf.ln(3)
 
-    # ── Sequents ──
+    # ── Implications ──
 
-    section_title("SEQUENTS")
+    section_title("IMPLICATIONS")
 
     # PDF preserves the full record: combine focal + queued open tensions
     open_tensions = s["tensions"] + s.get("queued_tensions", [])
@@ -326,7 +326,7 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     pdf.ln(8)
     if implications:
         for imp in implications:
-            sequent_card(imp.get("id", ""), "I", imp["gamma"], imp["delta"], atom_ids)
+            implication_card(imp.get("id", ""), "I", imp["gamma"], imp["delta"], atom_ids)
     else:
         set_body(10)
         pdf.set_x(pdf.get_x() + 6)
@@ -342,7 +342,7 @@ def generate_pdf_report(state: DialecticalState, summary: str) -> bytes:
     pdf.ln(8)
     if open_tensions:
         for t in open_tensions:
-            sequent_card(t["id"], "T", t["gamma"], t["delta"], atom_ids)
+            implication_card(t["id"], "T", t["gamma"], t["delta"], atom_ids)
     else:
         set_body(10)
         pdf.set_x(pdf.get_x() + 6)

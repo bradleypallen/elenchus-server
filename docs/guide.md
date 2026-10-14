@@ -123,10 +123,12 @@ The conversation with the opponent. Your messages appear on the right, the oppon
 
 Type naturally in the input box at the bottom. Press Enter to send (Shift+Enter for newlines).
 
-#### Right Column — Tensions & Implications
+#### Right Column — Implications
 
-- **Open Tensions (T)** — displayed as sequent cards with Accept/Contest buttons. Each shows the premises (from your commitments) above a turnstile line, and the conclusions below.
-- **Material Implications (I)** — accepted tensions, displayed in the same sequent card format.
+The **IMPLICATIONS** button in the top bar (with counts of open tensions, T, and accepted implications, I) shows or hides this pane.
+
+- **Open Tensions (T)** — displayed as implication cards with Accept/Contest buttons. Each shows the premises (from your commitments) above a turnstile line, and the conclusions below. A tension is an implication the opponent proposes; accepting it makes it part of your position.
+- **Material Implications (I)** — accepted tensions, displayed in the same card format.
 - **Contested** — tensions you've rejected, shown in grey.
 
 ### Tension Resolution
