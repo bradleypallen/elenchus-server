@@ -1,0 +1,1799 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://bradleypallen.github.io/elenchus-server/robustness-probes/">
+      
+      
+        <link rel="prev" href="../judge-guide/">
+      
+      
+        <link rel="next" href="../deployment/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Trying to Break It - Elenchus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#trying-to-break-it" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Elenchus" class="md-header__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Elenchus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Trying to Break It
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Elenchus" class="md-nav__button md-logo" aria-label="Elenchus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Elenchus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bradleypallen/elenchus-server" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bradleypallen/elenchus-server
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../motivation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Motivation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../administration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Who Can See What
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running a Study
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running a Study
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How the study works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../study-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Study Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../judge-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide for Judges
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trying to Break It
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trying to Break It
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ground-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ground rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ground rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-robust-means-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "robust" means here
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recording-a-finding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recording a finding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-participants-session-under-bad-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The participant's session under bad conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#links-and-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Links and gating
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-ai-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the AI fails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two at once
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The judge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-was-captured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What was captured
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#money-and-alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Money and alerts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-admin-side" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The admin side
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-cant-probe-from-the-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can't probe from the browser
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cloud-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Opponent's Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ards-study-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ARDS Study (example design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eeq-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EEQ Review Packet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-api-migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session API Migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ground-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ground rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ground rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-robust-means-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "robust" means here
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recording-a-finding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recording a finding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-participants-session-under-bad-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The participant's session under bad conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#links-and-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Links and gating
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-ai-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the AI fails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two at once
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The judge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-was-captured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What was captured
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#money-and-alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Money and alerts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-admin-side" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The admin side
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-cant-probe-from-the-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you can't probe from the browser
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="trying-to-break-it">Trying to Break It</h1>
+<p>For the person who will run the study, <strong>after</strong> the
+<a href="../study-runbook/#practice-run">practice run</a>: a list of things to do
+to the system on purpose, what should happen, and where to look to see
+whether it did. Everything here is done from a browser, as an admin or
+researcher; nothing needs the server.</p>
+<p>The point is not to find that it works. It is to find where it
+doesn't — before a participant does.</p>
+<h2 id="ground-rules">Ground rules</h2>
+<ul>
+<li><strong>Only on the practice site, never with real participants.</strong> Make a
+  study of your own for this (<code>PROBE-1</code>, <code>PROBE-2</code>, … — one per
+  session of probing), so that <code>TRAINING</code> stays as you left it and the
+  real study's data is never mixed with experiments. Practice sessions
+  cost real money — about two dollars each — and that is fine; it shows
+  up under <em>Studies</em> in the Costs tab.</li>
+<li><strong>Two windows.</strong> Your own window for the dashboard, and a <strong>private /
+  incognito</strong> window for the participant or judge. Two private windows
+  (or two browsers) when a probe needs two people at once.</li>
+<li><strong>Write down what you did as you go</strong>, with the participant code, the
+  session number and the time. The system records the session in great
+  detail; matching its record to what you did is how a finding gets
+  confirmed.</li>
+</ul>
+<h3 id="what-robust-means-here">What "robust" means here</h3>
+<p>A probe passes when all of these hold; any one failing is a finding:</p>
+<ol>
+<li><strong>Nothing is lost.</strong> Text, turns and decisions survive whatever you
+   did to the browser or the connection.</li>
+<li><strong>Nothing lies.</strong> When something fails, the person is told so in
+   plain words (the messages in <a href="../study-runbook/#7-when-something-goes-wrong">section 7 of the runbook</a>),
+   never a spinner forever or a silent success.</li>
+<li><strong>Nothing leaks.</strong> A judge can't learn who wrote a text or how; a
+   participant can't see another's.</li>
+<li><strong>There is a way back.</strong> The runbook has a step for it, and the step
+   works.</li>
+<li><strong>It was captured.</strong> The export shows the failure or the recovery,
+   not just the happy path (see <a href="#what-was-captured">What was captured</a>).</li>
+</ol>
+<h3 id="recording-a-finding">Recording a finding</h3>
+<p>Whatever you and the study lead agree on — an issue on the repository, a
+shared document — each finding wants the same five things:</p>
+<blockquote>
+<p>What I did · What I expected · What happened (the exact words on
+screen) · Participant code, session number, time · How often (once /
+every time)</p>
+</blockquote>
+<p>Include what the export says about it if you looked (the file name and
+the line).</p>
+<h2 id="the-participants-session-under-bad-conditions">The participant's session under bad conditions</h2>
+<p>Enrol a practice person and work through session 1 as them.</p>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+<th>Look</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Send a message, and <strong>reload the page</strong> while the AI is still answering</td>
+<td>Either the reply is there when the page comes back (the server finishes the turn without you), or the whole exchange is absent and you send it again. Never a half-applied turn: a message with no reply, or a reply whose buttons don't work.</td>
+<td>Transcript on screen; later <code>turn_log.json</code> has one row per exchange</td>
+</tr>
+<tr>
+<td>Type two sentences in the text box, then <strong>close the browser entirely</strong>; open the same link</td>
+<td>You are back in the task with the text and the clock where they were</td>
+<td><em>Session</em> still <code>active</code> in the Participants list</td>
+</tr>
+<tr>
+<td>Open the link <strong>on a phone</strong></td>
+<td>Usable: you can read, reply, write, finish</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Open the same session in <strong>two tabs</strong> and type in both</td>
+<td>No error, and the later save wins; nothing corrupts</td>
+<td><code>text_snapshots.json</code> shows both</td>
+</tr>
+<tr>
+<td>Paste a long block of text into the box</td>
+<td>Accepted (or a clear message if there is a size limit); the paste is recorded by length only</td>
+<td><code>editor_events.json</code> has a <code>paste</code> with a length, no content</td>
+</tr>
+<tr>
+<td>Send an empty message; send a very long message; send <code>{"speech_acts":[]}</code></td>
+<td>A sensible refusal or a normal reply — never a crash</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Let the clock <strong>run out</strong> on a five-minute task, with the tab open</td>
+<td>The reminder appears; at five minutes the editor locks and the screen says <em>Time is up</em>; the text as it stood is submitted</td>
+<td><code>text_snapshots.json</code> ends with a <code>timeout</code> row; the session is <code>post_session</code> in the list</td>
+</tr>
+<tr>
+<td>Let the clock run out with the <strong>tab closed</strong>, then reopen the link</td>
+<td>The same: you land past the task, not in it. The clock is the server's, not the browser's</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Send a message, or type, in the <strong>last seconds</strong> before the limit</td>
+<td>Either it lands before the limit or it is refused with <em>Time is up</em>; nothing lands after</td>
+<td><code>turn_log.json</code>, <code>text_snapshots.json</code> timestamps</td>
+</tr>
+<tr>
+<td>Press <strong>Finish session</strong> with the box empty</td>
+<td>Refused with a message; the session stays <code>active</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Press <strong>Finish</strong>, cancel at the confirmation, keep working</td>
+<td>Nothing was submitted</td>
+<td>Text still editable</td>
+</tr>
+<tr>
+<td>Press <strong>Finish</strong> while the AI is mid-reply</td>
+<td>The text is submitted and the session moves on; the in-flight turn either completes or is logged as failed</td>
+<td><code>turn_log.json</code></td>
+</tr>
+<tr>
+<td>After finishing, <strong>open the link again</strong></td>
+<td>"This study link has already been used." — not the task</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="links-and-gating">Links and gating</h2>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Open <strong>session 2's</strong> link before session 1 was started</td>
+<td>Told to do session 1 first; the Participants list says <em>waiting: session 1 not started</em></td>
+</tr>
+<tr>
+<td>Open session 2 while session 1 is at <code>tutorial</code> or <code>active</code></td>
+<td>Told session 1 is still open; the list says <em>waiting: session 1 still open</em></td>
+</tr>
+<tr>
+<td>Set the study's gap to 48 hours, finish session 1, open link 2</td>
+<td>Told the moment it opens — <strong>in your time zone</strong> in the list, in the participant's on their screen. Set the gap back to 0 and try again: opens immediately</td>
+</tr>
+<tr>
+<td><strong>Void</strong> a link from the list and open it</td>
+<td>Refused; the list shows <code>voided</code>. Void the <em>first</em> link of a pair: does the second still open? (It should — a voided first token doesn't hold the second.)</td>
+</tr>
+<tr>
+<td>Open one link in <strong>two browsers</strong> at once</td>
+<td>Both show the same session; no second session is created</td>
+</tr>
+<tr>
+<td>Close an in-progress session with <strong>Close as interrupted</strong>, then open its link</td>
+<td>Refused; the list shows <code>interrupted</code>; <strong>everything captured so far is in the export</strong></td>
+</tr>
+<tr>
+<td>In a study with an <strong>allocation seed</strong>, enrol someone and look for their order or their links anywhere — the roster, the balance line, the export</td>
+<td>Nothing until you press <strong>Schedule session 1</strong>; then the order and both links appear, and the export's <code>allocation.json</code> gives their sequence letter</td>
+</tr>
+<tr>
+<td>Try to set the seed <strong>twice</strong>, or after someone is enrolled</td>
+<td>Refused, with the reason</td>
+</tr>
+<tr>
+<td>Make a <strong>typo in a topic</strong> after someone is enrolled, then enrol another</td>
+<td>The first keeps the old wording; the new one gets the new. (The runbook says: tell the study lead first.)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="when-the-ai-fails">When the AI fails</h2>
+<p>This is the one fault you can inject yourself. It affects everyone using
+the site while it is in place, so do it on the practice site only, and
+put it back.</p>
+<ol>
+<li>As admin, open the gear-icon <strong>Settings</strong> and change the model name
+   to something that doesn't exist (<code>claude-nonexistent</code>). Save.</li>
+<li>As a participant, send a message. <strong>Expect:</strong> one of the messages in
+   runbook section 7 (<em>Couldn't reach the AI service…</em>, <em>Something went
+   wrong…</em>), the text you had typed still there, the clock still running.</li>
+<li>Send another. Reload. Send another. <strong>Expect:</strong> the same, every time;
+   never a blank reply that looks like success.</li>
+<li><strong>System</strong> tab → <em>Alerts</em>: an alert for the failure, with the time.</li>
+<li>Put the model name back. Send a message. <strong>Expect:</strong> a normal reply,
+   and the conversation continues from where it was — the failed
+   attempts are not in the transcript.</li>
+<li>Later, in the export: <code>turn_log.json</code> has a row for <strong>each failed
+   attempt</strong> with <code>outcome: llm_error</code>, and the Costs tab's <em>waste</em>
+   figure counts them.</li>
+</ol>
+<p>Also worth doing once: enrol two practice people, note which
+<strong>condition</strong> each has first, and do a session in each. In the
+<em>elenchus</em> condition the AI proposes tensions and there are accept /
+contest buttons; in <em>baseline</em> it is an ordinary assistant and there
+are none. The writing box, the clock and the questionnaires are the
+same in both — if you can tell the conditions apart from anything
+<strong>other</strong> than the conversation, that is a finding (a judge must not be
+able to).</p>
+<h2 id="two-at-once">Two at once</h2>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Two practice people in two private windows, sending messages at the same time</td>
+<td>Both get replies; neither sees the other's conversation; both sessions progress in the list</td>
+</tr>
+<tr>
+<td>A judge rating a text while a participant is mid-session</td>
+<td>Both work</td>
+</tr>
+<tr>
+<td><strong>Export</strong> the study while a session is in progress</td>
+<td>The export completes; the in-progress session is in it as far as it got</td>
+</tr>
+<tr>
+<td><strong>Back up now</strong> (System tab) while a session is in progress</td>
+<td>The backup appears in the list; the participant notices nothing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-judge">The judge</h2>
+<p>Sign up as the judge from an invitation, assign the complete pairs, and:</p>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Look at everything on the judge's screens for a clue to <strong>who wrote a text, in which condition, or when</strong></td>
+<td>Nothing: only the two topics, the two texts and the forms. The pair ids are your own; do the <em>A</em>/<em>B</em> labels or the order tell you anything?</td>
+</tr>
+<tr>
+<td>Assign pairs to a judge <strong>before</strong> a participant has finished session 2</td>
+<td>That participant isn't offered yet; they appear once both texts are in, and pressing the button again adds exactly them</td>
+</tr>
+<tr>
+<td>Rate one text of a pair, <strong>reload mid-form</strong></td>
+<td>The unsaved form is gone (a pair is saved only on the button); nothing else changes</td>
+</tr>
+<tr>
+<td>Try to submit with a dimension unrated, a sentence missing, or no choice of the better text</td>
+<td>The button stays grey until all of it is there</td>
+</tr>
+<tr>
+<td>Submit a pair, reopen, <strong>revise</strong> a rating and the ranking</td>
+<td>Both versions are kept; the newest counts. <code>text_judging.json</code> in the export shows the history for the ratings and the rankings</td>
+</tr>
+<tr>
+<td>Press <strong>assign</strong> twice for the same judge</td>
+<td>No duplicates — the second press adds nothing</td>
+</tr>
+<tr>
+<td>A second judge on the same pairs</td>
+<td>Their queue is in a <strong>different order</strong>, and the same two texts may carry the <strong>other</strong> labels</td>
+</tr>
+<tr>
+<td>Look for the <em>one last step</em> box before the queue is done</td>
+<td>It isn't there; it appears when every pair is done, and the guesses it asks for are per text, each shown again above its question, with a confidence</td>
+</tr>
+<tr>
+<td>Give a guess, come back, change it</td>
+<td>The newest counts; both are in <code>condition_guesses</code> in the export</td>
+</tr>
+<tr>
+<td>As the judge, look for any way into the study side — a button, a menu, a URL</td>
+<td>There is none; anything you find is a finding</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-was-captured">What was captured</h2>
+<p>After any of the above, <strong>Export</strong> the study, press <strong>downloads</strong>, open
+the archive and find the session under <code>sessions/</code>. Check the record
+against what you did:</p>
+<ul>
+<li><code>transcript.json</code> — every exchange you had, none you didn't.</li>
+<li><code>turn_log.json</code> — one row per exchange <strong>including the failed ones</strong>
+  (<code>outcome</code>), with what the AI actually returned (<code>raw_text</code>).</li>
+<li><code>state_events.json</code> — every accept, contest, retract and commitment,
+  with <code>source</code> (<code>opponent</code> or <code>ui</code>) — did the button you pressed
+  produce an event?</li>
+<li><code>text_snapshots.json</code> — the drafts, ending with the one marked
+  <code>submit</code>; <code>editor_events.json</code> — your pastes (length only) and the
+  reminders you saw.</li>
+<li><code>integrity.json</code> — under <code>capture</code>, <strong><code>uncaptured_assistant_turns</code>
+  must be 0</strong>. Any other number means an exchange whose raw output
+  can't be recovered, which is a finding in itself.</li>
+<li><code>surveys.json</code> — the questionnaires you filled in.</li>
+<li><code>text_judging.json</code> (at the top of the archive) — every rating with its four sentences, every ranking with which text each judge saw as <em>A</em>, every guess; all unblinded.</li>
+</ul>
+<p>Then, as admin, download the <strong>names key</strong> once, confirm it maps the
+pseudonyms in the archive to the accounts you used, and <strong>delete your
+copy</strong>.</p>
+<h2 id="money-and-alerts">Money and alerts</h2>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Costs</strong> tab → <em>Studies</em></td>
+<td>Your probe study, its sessions by condition, a cost per finished session in the range the study lead told you</td>
+</tr>
+<tr>
+<td>Set the <strong>daily spend alert</strong> to <code>$1</code>, do a couple of turns, look at <strong>System</strong> → <em>Alerts</em></td>
+<td>An alert for crossing the threshold; press <em>Reset</em> afterwards to go back to the default</td>
+</tr>
+<tr>
+<td>Enter a <strong>budget</strong> and an infrastructure charge, then void the charge</td>
+<td>The bars move; the voided entry stays visible but is no longer counted</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-admin-side">The admin side</h2>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Expect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Change a <strong>judge's role</strong> once texts are assigned to them</td>
+<td>Refused, with a reason</td>
+</tr>
+<tr>
+<td>Change <strong>your own</strong> role, or the <strong>last admin's</strong></td>
+<td>Refused</td>
+</tr>
+<tr>
+<td><strong>Revoke</strong> an invitation and open its link</td>
+<td>Refused; the row says <code>expired</code></td>
+</tr>
+<tr>
+<td>Issue an invitation <strong>without an email</strong>; open it</td>
+<td>Sign-up asks for the email</td>
+</tr>
+<tr>
+<td><strong>Reset password</strong> for a practice account and use the link</td>
+<td>Works once; the second use is refused</td>
+</tr>
+<tr>
+<td><strong>Deactivate</strong> the practice judge, then sign in as them</td>
+<td>Refused; their ratings are still in the export</td>
+</tr>
+<tr>
+<td>On your home page, look for <strong>anyone else's dialectic</strong> — a participant's task or practice record, another account's</td>
+<td>Not there: your list is your own, as an admin too</td>
+</tr>
+<tr>
+<td>With a practice participant mid-task in a private window, put <code>/api/dialectics/</code> plus their task's name into the address bar of <strong>your</strong> admin window</td>
+<td><em>Not found</em> — the answer anyone who isn't its owner gets</td>
+</tr>
+<tr>
+<td>After a practice session is complete, reopen its link and try to change anything in its record</td>
+<td>You are past the task; nothing can be changed, by the participant or by you</td>
+</tr>
+<tr>
+<td>In the tutorial or the task, try to send a message <strong>before</strong> writing anything</td>
+<td>The message box is locked and says why; the writing pane counts words and sentences and <em>Begin dialogue</em> stays grey</td>
+</tr>
+<tr>
+<td>Write one line and press <strong>Begin dialogue</strong></td>
+<td>Refused with the minimum in plain words (fifty words or three sentences; twenty or two in the tutorial)</td>
+</tr>
+<tr>
+<td>Write enough, press <strong>Begin dialogue</strong>, then reload</td>
+<td>The first reply is about your draft; after the reload the folded <em>Your first draft</em> is the first thing in the conversation and the box is open</td>
+</tr>
+<tr>
+<td>Edit the text, then send a message</td>
+<td>What the AI says fits the edited text, not the earlier one (it is shown the draft as last saved, and a message saves first)</td>
+</tr>
+<tr>
+<td><strong>Dialectics</strong> → search for a word that only appears <em>inside</em> someone's dialogue</td>
+<td>Nothing: the search covers names and owners, never what was written</td>
+</tr>
+<tr>
+<td><strong>Dialectics</strong> → <strong>View</strong> on another account's dialectic, and submit with no reason, then a three-letter one</td>
+<td>Refused both times; nothing is shown and nothing appears in the access log</td>
+</tr>
+<tr>
+<td>Give a real reason and view it; look for any way to type, accept, contest, retract or delete</td>
+<td>There is none: the view is read-only</td>
+</tr>
+<tr>
+<td>In the viewer, take the <strong>PDF</strong> and the <strong>Records</strong>; then open <strong>Access log</strong></td>
+<td>Three entries — view, pdf, records — with your name, the owner, the time and your reason; the same three under <em>Content access</em> in <strong>System</strong></td>
+</tr>
+<tr>
+<td>Filter to <strong>Study records</strong> and try to open one</td>
+<td>No <em>View</em> at all: the row says <em>via export</em></td>
+</tr>
+<tr>
+<td>Set up a study with <strong>Development study</strong> ticked, run a session in it yourself, then find it under <strong>Study records</strong></td>
+<td>The kind reads <em>study · task (development)</em> and <strong>View</strong> is there; it opens under a reason, and the access log entry says <em>(development study)</em></td>
+</tr>
+<tr>
+<td>On that development study, try <strong>Set seed</strong>; on a study that has a seed, try to tick <strong>Development study</strong></td>
+<td>Both refused: a development study never carries a seed, and a seeded study is a registered one</td>
+</tr>
+<tr>
+<td>Enrol someone in an ordinary practice study, then try to tick <strong>Development study</strong> on it</td>
+<td>Refused: the choice is fixed once anyone is enrolled</td>
+</tr>
+<tr>
+<td>Open one of <strong>your own</strong> dialectics from the list</td>
+<td>No reason asked, and no entry in the log</td>
+</tr>
+<tr>
+<td>View another account's practice dialectic under a reason, press <strong>DELETE</strong>, and submit with the reason box empty, then with the name mistyped</td>
+<td>Refused both times; the dialectic is still there and the log shows only the view</td>
+</tr>
+<tr>
+<td>Give a reason for the deletion and type the name exactly</td>
+<td>The dialectic is gone from the list and from its owner's home page; the log has a <em>delete</em> entry with your reason, and it stays there</td>
+</tr>
+<tr>
+<td>In a development study's record, look for <strong>DELETE</strong></td>
+<td>There is none: study records are never deleted</td>
+</tr>
+<tr>
+<td>Open an invitation link and try to create the account <strong>without</strong> ticking <em>I have read what is recorded</em></td>
+<td>The button stays disabled; the server refuses it too</td>
+</tr>
+<tr>
+<td>Sign in as a practice account that was created <strong>before</strong> this release</td>
+<td>The notice appears once, with the research-use box unticked; it does not appear again</td>
+</tr>
+<tr>
+<td>As the practice account, open <strong>Privacy</strong>, tick the research-use box, close, reopen</td>
+<td>It is still ticked; untick it and it stays unticked</td>
+</tr>
+<tr>
+<td>View that account's dialectic as an administrator under a reason, then sign in as the account</td>
+<td>The list says <em>looked at by an administrator 1×</em>; <strong>ACCESS</strong> in the dialectic shows your name, the time and the kind of reason — not the sentence you typed</td>
+</tr>
+<tr>
+<td><strong>Dialectics</strong> → <strong>RESEARCH USE</strong> with nobody opted in</td>
+<td><em>0 accounts</em>; <strong>EXPORT NOW</strong> is disabled. Tick the choice on the practice account and come back: 1 account; the export builds, downloads, and the account's dialectic shows a <em>records</em> entry under <em>Owner agreed to analysis</em></td>
+</tr>
+<tr>
+<td>From one of your own dialectics, press <strong>Records</strong> in the top bar</td>
+<td>An archive downloads: the position, the conversation, the turn log, the state events</td>
+</tr>
+<tr>
+<td><strong>System</strong> → <em>Consistency check</em></td>
+<td>Everything registered has a file, every file is registered, and no session is held by anyone but a dialectic's owner</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-you-cant-probe-from-the-browser">What you can't probe from the browser</h2>
+<p>These need the server, so they are the admin's or the study lead's, and
+worth asking about rather than assuming:</p>
+<ul>
+<li>What happens to a participant mid-turn when the <strong>service restarts</strong>
+  (an upgrade, a reboot).</li>
+<li>A <strong>restore</strong> from backup, and whether the restore drill has been done.</li>
+<li><strong>Email</strong> — on the practice site the mail provider is sandboxed, so
+  invitations and reset links are not emailed to anyone but the account
+  owner; the Invites tab tells you so each time. The real site will
+  differ.</li>
+<li>The <strong>server clock</strong>, which stamps everything (the System tab shows
+  it).</li>
+</ul>
+<p>If something on this page turns out not to be true, that too is a
+finding.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 University of Amsterdam
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
