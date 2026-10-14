@@ -74,7 +74,7 @@ FastAPI application. Manages a cache of open `DialecticalState` instances (`_sta
 
 ### pdf_report.py
 
-Generates PDF reports using fpdf2. Includes LLM-generated analytical summary, bilateral position with atom IDs, sequent cards for tensions and implications, and the full conversation transcript.
+Generates PDF reports using fpdf2. Includes LLM-generated analytical summary, bilateral position with atom IDs, implication cards for open tensions and accepted implications, and the full conversation transcript.
 
 - `_md_to_html()` converts Markdown to simple HTML for fpdf2's `write_html()`
 - `_parse_assistant_content()` extracts the natural language response from raw LLM JSON stored in conversation history

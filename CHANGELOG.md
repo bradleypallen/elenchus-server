@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Sequents pane is the Implications pane.** The right-hand pane of
+  the dialectic interface, its top-bar toggle (now `IMPLICATIONS T:… I:…`),
+  its empty state and the PDF report's section are named for what they
+  hold — the open tension and the accepted material implications — rather
+  than for the sequent form they are written in. The guide and the
+  architecture page follow. Nothing in the data or the API changes.
+
 ## [0.14.0] — 2026-10-07
 
 ### Changed

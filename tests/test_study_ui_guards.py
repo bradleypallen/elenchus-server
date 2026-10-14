@@ -4,10 +4,10 @@ source: they pin the invariants a browser session confirmed, and fail
 loudly if a later edit re-introduces a leak.
 
 The baseline condition must show no formal apparatus — no position or
-sequents pane, no badges to open them — whatever this browser's stored
+implications pane, no badges to open them — whatever this browser's stored
 preference says. The panes' open state is a `localStorage` preference,
 so without this a crossover participant who opened a pane in their
-Elenchus session saw empty "Commitments" / "No sequents yet" panes in
+Elenchus session saw empty "Commitments" / "No implications yet" panes in
 their baseline session, with no way to close them.
 """
 
@@ -40,6 +40,6 @@ def test_baseline_never_shows_the_formal_panes():
 def test_baseline_has_no_pane_badges():
     src = _source()
     # The two header badges are each inside a `!isBaseline` guard.
-    for title in ("Show position pane", "Show sequents pane"):
+    for title in ("Show position pane", "Show implications pane"):
         at = src.index(title)
         assert "{!isBaseline && (" in src[at - 400 : at], title
