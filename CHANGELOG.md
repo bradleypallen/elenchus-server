@@ -5,6 +5,38 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The dialogue column can no longer be squeezed out** (#48). Each side
+  pane could take 40% of the window and the writing pane another 40%,
+  leaving the dialogue a sliver and pushing the right divider off-screen
+  where it couldn't be dragged back. The panes are now fitted so the
+  dialogue keeps at least 320 px — the pane not being dragged gives way
+  first — and refitted when the window or the set of visible panes
+  changes, since stored widths may come from a wider browser.
+- **A way out of the study screens** (#49, #50). A study link signs the
+  browser in as that session's own passwordless participant, so once the
+  session was over the root URL showed *No active session* (or *All done*)
+  and nothing else — including to a researcher who had opened a
+  participant's link in their own browser, who then took it for a caching
+  fault. Those screens now carry a *sign out* link back to the sign-in
+  page, and *No active session* says what happened.
+- **An invite's kind must be chosen** (#51). The Invites form had quietly
+  defaulted to `user`, so a judge's invite could go out as a user's. There
+  is no default now, each kind says what it can do, and ISSUE stays off
+  until one is picked.
+
+### Changed
+
+- **American spelling in the docs and the interface** (#47): *enroll*,
+  *enrollment*. Code identifiers, routes and the data model are unchanged.
+- **High contrast theme and a front-page text-size control** (#45). A
+  third theme — white on black, no greyed text, bright borders, a yellow
+  accent — beside light and dark; and the theme and text size are now on
+  the sign-in page and every study screen, not only in the settings
+  modal, so a participant can set them before anything else. Both are
+  applied before the page renders, so a reload doesn't flash.
+
 ## [0.14.1] — 2026-10-13
 
 ### Changed

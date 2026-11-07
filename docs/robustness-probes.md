@@ -55,7 +55,7 @@ the line).
 
 ## The participant's session under bad conditions
 
-Enrol a practice person and work through session 1 as them.
+Enroll a practice person and work through session 1 as them.
 
 | Do | Expect | Look |
 |---|---|---|
@@ -83,9 +83,9 @@ Enrol a practice person and work through session 1 as them.
 | **Void** a link from the list and open it | Refused; the list shows `voided`. Void the *first* link of a pair: does the second still open? (It should — a voided first token doesn't hold the second.) |
 | Open one link in **two browsers** at once | Both show the same session; no second session is created |
 | Close an in-progress session with **Close as interrupted**, then open its link | Refused; the list shows `interrupted`; **everything captured so far is in the export** |
-| In a study with an **allocation seed**, enrol someone and look for their order or their links anywhere — the roster, the balance line, the export | Nothing until you press **Schedule session 1**; then the order and both links appear, and the export's `allocation.json` gives their sequence letter |
+| In a study with an **allocation seed**, enroll someone and look for their order or their links anywhere — the roster, the balance line, the export | Nothing until you press **Schedule session 1**; then the order and both links appear, and the export's `allocation.json` gives their sequence letter |
 | Try to set the seed **twice**, or after someone is enrolled | Refused, with the reason |
-| Make a **typo in a topic** after someone is enrolled, then enrol another | The first keeps the old wording; the new one gets the new. (The runbook says: tell the study lead first.) |
+| Make a **typo in a topic** after someone is enrolled, then enroll another | The first keeps the old wording; the new one gets the new. (The runbook says: tell the study lead first.) |
 
 ## When the AI fails
 
@@ -108,7 +108,7 @@ put it back.
    attempt** with `outcome: llm_error`, and the Costs tab's *waste*
    figure counts them.
 
-Also worth doing once: enrol two practice people, note which
+Also worth doing once: enroll two practice people, note which
 **condition** each has first, and do a session in each. In the
 *elenchus* condition the AI proposes tensions and there are accept /
 contest buttons; in *baseline* it is an ordinary assistant and there
@@ -200,7 +200,7 @@ copy**.
 | Filter to **Study records** and try to open one | No *View* at all: the row says *via export* |
 | Set up a study with **Development study** ticked, run a session in it yourself, then find it under **Study records** | The kind reads *study · task (development)* and **View** is there; it opens under a reason, and the access log entry says *(development study)* |
 | On that development study, try **Set seed**; on a study that has a seed, try to tick **Development study** | Both refused: a development study never carries a seed, and a seeded study is a registered one |
-| Enrol someone in an ordinary practice study, then try to tick **Development study** on it | Refused: the choice is fixed once anyone is enrolled |
+| Enroll someone in an ordinary practice study, then try to tick **Development study** on it | Refused: the choice is fixed once anyone is enrolled |
 | Open one of **your own** dialectics from the list | No reason asked, and no entry in the log |
 | View another account's practice dialectic under a reason, press **DELETE**, and submit with the reason box empty, then with the name mistyped | Refused both times; the dialectic is still there and the log shows only the view |
 | Give a reason for the deletion and type the name exactly | The dialectic is gone from the list and from its owner's home page; the log has a *delete* entry with your reason, and it stays there |
