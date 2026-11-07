@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-11-07
+
 ### Fixed
 
 - **The dialogue column can no longer be squeezed out** (#48). Each side
