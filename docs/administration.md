@@ -15,7 +15,7 @@ lower study roles it supervises.
 | Kind | Can do | Gating |
 |---|---|---|
 | `admin` | Everything: issue invites, manage users and their roles, set the LLM provider and key, see costs, back up, audit, plus all researcher powers | `require_admin` |
-| `researcher` | Run studies: set a study up, enrol participants, assign texts to judges, export study data | `require_researcher` (admin or researcher) |
+| `researcher` | Run studies: set a study up, enroll participants, assign texts to judges, export study data | `require_researcher` (admin or researcher) |
 | `user` | Create and work in their own dialectics | authenticated |
 | `judge` | See the blinded texts assigned to them and rate each one | `require_judge` (admin or judge) |
 | `participant` | Passwordless study participant; the study token is the only credential | token only |
@@ -46,12 +46,14 @@ Migrating a pre-0.2 single-user install? Run `elenchus migrate-legacy
 Admins see an **ADMIN** button in the home header. It opens a dashboard
 with seven tabs:
 
-- **Invites** — issue an invite (pick a role, optionally pin it to an
-  email), list outstanding/consumed/expired invites, and revoke unused
-  ones.
+- **Invites** — issue an invite (choose the kind of account — there is
+  no default, so a judge can't be issued a `user` invite by oversight —
+  optionally pin it to an email), list outstanding/consumed/expired
+  invites, and revoke unused ones. The account takes the invite's kind
+  when it is created.
 - **Users** — list every actor with id, kind, email, display name, and
   active/deactivated status (admins marked ★).
-- **Study** — set a study up (its two topics), enrol participants (one
+- **Study** — set a study up (its two topics), enroll participants (one
   step issues both of a person's session links, with a balanced random
   allocation), watch the roster, close an abandoned session, and export.
   (See [Running a Study](study.md) and the [Study Runbook](study-runbook.md).)
@@ -564,7 +566,7 @@ All routes require `require_admin` unless marked *(researcher)*.
 | `PUT`/`GET /api/admin/study/{study_id}/config` *(researcher)* | Set up / read a study (topics, session gap, task length) |
 | `GET /api/admin/study/{study_id}/exports` · `…/{name}` *(researcher)* | List a study's exports / download an archive |
 | `GET /api/admin/study/{study_id}/exports/{name}/pseudonyms` | Download the names key for an export (**admin only**) |
-| `POST`/`GET /api/admin/study/{study_id}/participants` *(researcher)* | Enrol a participant (both links) / roster |
+| `POST`/`GET /api/admin/study/{study_id}/participants` *(researcher)* | Enroll a participant (both links) / roster |
 | `POST /api/admin/study/sessions/{id}/interrupt` *(researcher)* | Close an abandoned session |
 | `GET /api/admin/study/judges` *(researcher)* | Judge accounts |
 | `GET /api/admin/study/{study_id}/texts` · `POST …/text-assignments` *(researcher)* | Submitted texts + panel progress / assign texts to a judge |

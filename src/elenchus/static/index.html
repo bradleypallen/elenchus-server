@@ -24,8 +24,21 @@
   (function() {
     try {
       var prefs = JSON.parse(localStorage.getItem('elenchus-display'));
-      if (!prefs || prefs.theme !== 'dark') {
-        var s = document.documentElement.style;
+      var s = document.documentElement.style;
+      var theme = prefs && prefs.theme;
+      if (theme === 'contrast') {
+        // Mirrors THEMES.contrast below.
+        s.setProperty('--bg', '#000000');
+        s.setProperty('--surface', '#0a0a0a');
+        s.setProperty('--surface2', '#161616');
+        s.setProperty('--border', '#9a9a9a');
+        s.setProperty('--border-focus', '#ffffff');
+        s.setProperty('--text', '#ffffff');
+        s.setProperty('--text-dim', '#eaeaea');
+        s.setProperty('--text-muted', '#c8c8c8');
+        s.setProperty('--accent', '#ffd60a');
+        s.setProperty('--respondent-text', '#ffffff');
+      } else if (theme !== 'dark') {
         s.setProperty('--bg', '#f5f5f7');
         s.setProperty('--surface', '#ffffff');
         s.setProperty('--surface2', '#eeeef2');
@@ -35,6 +48,11 @@
         s.setProperty('--text-dim', '#4a4a68');
         s.setProperty('--text-muted', '#8888a0');
         s.setProperty('--respondent-text', '#4a5568');
+      }
+      // The font scale is a preference too; apply it before React so the
+      // sign-in page doesn't jump (issue #45).
+      if (prefs && prefs.fontScale > 0) {
+        document.documentElement.style.setProperty('--font-scale', String(prefs.fontScale));
       }
     } catch(e) {}
   })();
@@ -126,8 +144,19 @@ const THEMES = {
     '--text': '#1a1a2e', '--text-dim': '#4a4a68', '--text-muted': '#8888a0',
     '--contested': '#64748b', '--accent': '#818cf8',
     '--respondent-text': '#4a5568',
+  },
+  // High contrast (issue #45): white on black, no greyed-out text —
+  // every tier of text clears WCAG AAA (7:1) on every surface — bright
+  // borders, and a yellow accent that keeps dark button text readable.
+  contrast: {
+    '--bg': '#000000', '--surface': '#0a0a0a', '--surface2': '#161616',
+    '--border': '#9a9a9a', '--border-focus': '#ffffff',
+    '--text': '#ffffff', '--text-dim': '#eaeaea', '--text-muted': '#c8c8c8',
+    '--contested': '#c8c8c8', '--accent': '#ffd60a',
+    '--respondent-text': '#ffffff',
   }
 };
+const THEME_LABELS = { dark: 'dark', light: 'light', contrast: 'high contrast' };
 
 const FONT_SCALES = [
   { label: 'S', value: 0.85 },
@@ -162,8 +191,74 @@ function applyDisplayPrefs(prefs) {
 
   // Set body font size
   document.body.style.fontSize = `${12 * (prefs.fontScale || 1.0)}px`;
+  root.style.setProperty('--font-scale', String(prefs.fontScale || 1.0));
 
   console.log('[elenchus] Display prefs applied:', JSON.stringify(prefs));
+}
+
+// The stored display preferences, merged over the defaults.
+function loadDisplayPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('elenchus-display'));
+    if (saved) {
+      return { ...DEFAULT_DISPLAY, ...saved, colors: { ...DEFAULT_DISPLAY.colors, ...(saved.colors || {}) } };
+    }
+  } catch (e) {}
+  return DEFAULT_DISPLAY;
+}
+
+// Save, apply and announce a change to the display preferences. The
+// sign-in page and the study screens change them from outside the main
+// app's state (issue #45: the font size has to be reachable before and
+// without signing in), so the app listens for the event and follows.
+function saveDisplayPrefs(prefs) {
+  try { localStorage.setItem('elenchus-display', JSON.stringify(prefs)); } catch (e) {}
+  applyDisplayPrefs(prefs);
+  window.dispatchEvent(new CustomEvent('elenchus:display', { detail: prefs }));
+}
+
+// A font size that follows the text-size preference without a React
+// re-render: the sign-in page is rendered before the app's own state
+// exists, so its sizes are CSS calc() over the --font-scale variable
+// that applyDisplayPrefs (and the pre-React script) set on :root.
+const afs = (px) => `calc(${px}px * var(--font-scale, 1))`;
+
+// Font size and theme, as a compact control for pages that have no
+// settings modal: the sign-in page and the study screens. Reads and
+// writes the same stored preference as the modal.
+function DisplayQuickPrefs() {
+  const fs = afs;
+  const [prefs, setPrefs] = useState(loadDisplayPrefs);
+  useEffect(() => {
+    const onChange = (e) => setPrefs(e.detail);
+    window.addEventListener('elenchus:display', onChange);
+    return () => window.removeEventListener('elenchus:display', onChange);
+  }, []);
+  const update = (patch) => saveDisplayPrefs({ ...prefs, ...patch });
+  const seg = (active) => ({
+    padding: `${fs(4)} ${fs(8)}`, border: 'none', cursor: 'pointer',
+    background: active ? 'var(--accent)' : 'var(--surface2)',
+    color: active ? '#111' : 'var(--text-dim)',
+    fontSize: fs(10), letterSpacing: 1, fontFamily: 'var(--mono)',
+  });
+  const group = { display: 'inline-flex', borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' };
+  return (
+    <div role="group" aria-label="Display" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', alignItems: 'center' }}>
+      <span style={{ fontSize: fs(10), letterSpacing: 1, color: 'var(--text-muted)' }}>TEXT SIZE</span>
+      <div style={group}>
+        {FONT_SCALES.map(sc => (
+          <button key={sc.value} onClick={() => update({ fontScale: sc.value })}
+            aria-pressed={prefs.fontScale === sc.value} style={seg(prefs.fontScale === sc.value)}>{sc.label}</button>
+        ))}
+      </div>
+      <div style={group}>
+        {Object.keys(THEMES).map(t => (
+          <button key={t} onClick={() => update({ theme: t })}
+            aria-pressed={prefs.theme === t} style={{ ...seg(prefs.theme === t), textTransform: 'uppercase' }}>{THEME_LABELS[t]}</button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── API helpers ──
@@ -420,7 +515,7 @@ function FundingLine({ funding }) {
   const { text, link_text: linkText, url } = funding;
   const at = linkText && url ? text.indexOf(linkText) : -1;
   return (
-    <div style={{ marginTop: 16, color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: 11, lineHeight: 1.6 }}>
+    <div style={{ marginTop: 16, color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: afs(11), lineHeight: 1.6 }}>
       {at < 0 ? text : (
         <>
           {text.slice(0, at)}
@@ -449,7 +544,7 @@ function PartnerStrip({ style }) {
   return (
     <nav aria-label="Partner institutions and funding" style={{ textAlign: 'center', ...style }}>
       {config.label && (
-        <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase',
+        <div style={{ fontSize: afs(9), letterSpacing: 2, textTransform: 'uppercase',
                       color: 'var(--text-muted)', marginBottom: 12 }}>{config.label}</div>
       )}
       {partners.some(pt => pt.logo) ? (
@@ -460,7 +555,7 @@ function PartnerStrip({ style }) {
         // Names only: full institution names are long, and a flex row
         // breaks wherever it runs out of room — typically orphaning the
         // last name. As running text the browser can balance the lines.
-        <div style={{ textWrap: 'balance', lineHeight: 2.1, fontFamily: 'var(--sans)', fontSize: 12 }}>
+        <div style={{ textWrap: 'balance', lineHeight: 2.1, fontFamily: 'var(--sans)', fontSize: afs(12) }}>
           {partners.map((pt, i) => (
             <React.Fragment key={pt.name}>
               {/* A real space between items: adjacent inline elements give
@@ -486,12 +581,12 @@ function AuthShell({ children, footer, error, title }) {
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ maxWidth: 420, width: '100%', padding: 48 }}>
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{ fontSize: 11, letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
+          <div style={{ fontSize: afs(11), letterSpacing: 8, color: 'var(--text-muted)', marginBottom: 16 }}>
             ἜΛΕΓΧΟΣ
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: -0.5 }}>Elenchus</h1>
+          <h1 style={{ fontSize: afs(28), fontWeight: 300, letterSpacing: -0.5 }}>Elenchus</h1>
           {title && (
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 10,
+            <div style={{ fontSize: afs(13), color: 'var(--text-muted)', marginTop: 10,
                           fontFamily: 'var(--sans)' }}>
               {title}
             </div>
@@ -501,16 +596,17 @@ function AuthShell({ children, footer, error, title }) {
         {error && (
           <div style={{ marginTop: 14, padding: 10, borderRadius: 6,
                         background: '#ef444420', border: '1px solid #ef444440',
-                        color: '#ef4444', fontSize: 12, fontFamily: 'var(--sans)' }}>
+                        color: '#ef4444', fontSize: afs(12), fontFamily: 'var(--sans)' }}>
             {error}
           </div>
         )}
         {footer && (
-          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11,
+          <div style={{ marginTop: 20, textAlign: 'center', fontSize: afs(11),
                         color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
             {footer}
           </div>
         )}
+        <div style={{ marginTop: 28 }}><DisplayQuickPrefs /></div>
       </div>
     </div>
     <PartnerFooter />
@@ -521,7 +617,7 @@ function AuthShell({ children, footer, error, title }) {
 const authInputStyle = {
   width: '100%', padding: '11px 13px', marginBottom: 10,
   background: 'var(--surface)', border: '1px solid var(--border)',
-  borderRadius: 6, color: 'var(--text)', fontSize: 13, outline: 'none',
+  borderRadius: 6, color: 'var(--text)', fontSize: afs(13), outline: 'none',
   fontFamily: 'var(--sans)',
 };
 
@@ -529,13 +625,13 @@ const authButtonStyle = (enabled) => ({
   width: '100%', padding: '11px 16px',
   background: enabled ? 'var(--accent)' : 'var(--surface)',
   border: 'none', borderRadius: 6, color: '#111',
-  fontSize: 12, cursor: enabled ? 'pointer' : 'default',
+  fontSize: afs(12), cursor: enabled ? 'pointer' : 'default',
   letterSpacing: 1, fontWeight: 500, opacity: enabled ? 1 : 0.3,
 });
 
 const authLinkStyle = {
   background: 'none', border: 'none', color: 'var(--accent)',
-  cursor: 'pointer', fontSize: 11, padding: '4px 6px',
+  cursor: 'pointer', fontSize: afs(11), padding: '4px 6px',
   fontFamily: 'var(--sans)', textDecoration: 'underline',
 };
 
@@ -650,7 +746,7 @@ function Signup({ initialToken, onAuthed, onSwitchLogin }) {
       {invited ? (
         // Arrived via an invite link: the token is already in hand, so
         // don't make the user look at it — just have them set up the account.
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14,
+        <div style={{ fontSize: afs(12), color: 'var(--text-muted)', marginBottom: 14,
                       textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
           You've been invited. Choose a display name and a password to finish
           setting up your account.
@@ -714,7 +810,7 @@ function MagicLink({ onSwitchLogin }) {
     >
       <NoEmailNotice what="a login link" />
       {sent ? (
-        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
+        <div style={{ textAlign: 'center', fontSize: afs(13), color: 'var(--text-dim)',
                       fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '20px 8px' }}>
           If <span style={{ color: 'var(--text)' }}>{email}</span> is registered, a magic link has been sent.
           Check your inbox.
@@ -757,7 +853,7 @@ function ForgotPassword({ onSwitchLogin }) {
     >
       <NoEmailNotice what="a reset link" />
       {sent ? (
-        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
+        <div style={{ textAlign: 'center', fontSize: afs(13), color: 'var(--text-dim)',
                       fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '20px 8px' }}>
           If <span style={{ color: 'var(--text)' }}>{email}</span> is registered, a
           password-reset link has been sent. Check your inbox.
@@ -830,7 +926,7 @@ function ResetPassword({ token, onSwitchLogin }) {
       footer={<button style={authLinkStyle} onClick={onSwitchLogin}>back to sign in</button>}
     >
       {done ? (
-        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)',
+        <div style={{ textAlign: 'center', fontSize: afs(13), color: 'var(--text-dim)',
                       fontFamily: 'var(--sans)', lineHeight: 1.6, padding: '16px 8px' }}>
           Your password has been updated.{' '}
           <button style={authLinkStyle} onClick={onSwitchLogin}>Sign in</button>
@@ -870,7 +966,7 @@ function ForceSetPassword({ onDone, logout }) {
       title="Set a new password to continue"
       footer={<button style={authLinkStyle} onClick={logout}>sign out</button>}
     >
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14,
+      <div style={{ fontSize: afs(12), color: 'var(--text-muted)', marginBottom: 14,
                     textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
         Your administrator requires you to choose a new password before continuing.
       </div>
@@ -888,7 +984,7 @@ function ForceSetPassword({ onDone, logout }) {
 // on the sign-up form and, for an account that predates it or a reworded
 // notice, as a gate on first sign-in. Participants never see it.
 function NoticeBlock({ notice, accepted, onAccepted, researchUse, onResearchUse, compact }) {
-  const text = { fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--sans)', lineHeight: 1.6 };
+  const text = { fontSize: afs(12), color: 'var(--text-dim)', fontFamily: 'var(--sans)', lineHeight: 1.6 };
   const box = { maxHeight: compact ? 160 : 220, overflowY: 'auto', padding: '10px 12px', marginBottom: 10,
                 borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface2, var(--surface))' };
   const check = { display: 'flex', gap: 8, alignItems: 'flex-start', ...text, color: 'var(--text)', marginBottom: 8, cursor: 'pointer' };
@@ -931,7 +1027,7 @@ function NoticeGate({ actor, onDone, logout }) {
   return (
     <AuthShell error={error} title={actor.terms_version ? 'The notice has changed' : 'Before you continue'}
       footer={<button style={authLinkStyle} onClick={logout}>sign out</button>}>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
+      <div style={{ fontSize: afs(12), color: 'var(--text-muted)', marginBottom: 12, textAlign: 'center', fontFamily: 'var(--sans)', lineHeight: 1.5 }}>
         {actor.terms_version
           ? 'The notice about what Elenchus records and who can see it has been reworded. Please read it again.'
           : 'Elenchus now tells every account holder what it records and who can see it. Please read it once.'}
@@ -1253,15 +1349,14 @@ function App() {
     && (studySession?.state === 'tutorial' || studySession?.state === 'active')
     && studySession?.positum_done === false;
   const isBaseline = studySession?.condition === 'baseline';
-  const [displayPrefs, setDisplayPrefs] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('elenchus-display'));
-      if (saved) {
-        return { ...DEFAULT_DISPLAY, ...saved, colors: { ...DEFAULT_DISPLAY.colors, ...(saved.colors || {}) } };
-      }
-    } catch (e) {}
-    return DEFAULT_DISPLAY;
-  });
+  const [displayPrefs, setDisplayPrefs] = useState(loadDisplayPrefs);
+  // The sign-in page and the study screens change the preferences
+  // outside this state (DisplayQuickPrefs); follow them.
+  useEffect(() => {
+    const onChange = (e) => setDisplayPrefs(e.detail);
+    window.addEventListener('elenchus:display', onChange);
+    return () => window.removeEventListener('elenchus:display', onChange);
+  }, []);
   const msgEnd = useRef(null);
   const inputRef = useRef(null);
 
@@ -1289,18 +1384,61 @@ function App() {
   const showRight = rightVisible && !isBaseline;
   const dragging = useRef(null); // 'left' | 'right' | null
 
+  // The dialogue column must stay usable whatever the panes do (issue
+  // #48: two side panes at their 40% maximum plus the writing pane left
+  // it a sliver, and pushed the right drag handle off-screen, so it
+  // could not be widened again). Every width goes through `fitPanes`,
+  // which keeps the dialogue column at least PANE_MIN_CENTER wide by
+  // shrinking the side panes — and runs again when the window or the
+  // set of visible columns changes, since stored widths come from a
+  // browser that may have been wider.
+  const PANE_MIN = 160;
+  const PANE_MIN_CENTER = 320;
+  // Participants write their text beside the dialogue, in the tutorial
+  // (to practise) and in the main task.
+  const showWritingPane = isParticipant &&
+    (studySession?.state === 'tutorial' || studySession?.state === 'active');
+  // The latest layout, readable from the window listeners below (which
+  // are registered once and would otherwise close over stale state).
+  const layoutRef = useRef({});
+  layoutRef.current = { showLeft, showRight, showWritingPane, leftWidth, rightWidth };
+  const fitPanes = (left, right) => {
+    const W = window.innerWidth;
+    const { showLeft: l, showRight: r, showWritingPane: wp } = layoutRef.current;
+    // The writing pane's own column is minmax(340px, 40%).
+    const writing = wp ? Math.max(340, W * 0.4) + 1 : 0;
+    const cap = Math.max(PANE_MIN, Math.floor(W * 0.4));
+    let L = Math.min(Math.max(PANE_MIN, left), cap);
+    let R = Math.min(Math.max(PANE_MIN, right), cap);
+    let spare = W - writing - PANE_MIN_CENTER - (l ? L + 4 : 0) - (r ? R + 4 : 0);
+    // Shrink the pane not being dragged first, then the dragged one.
+    const order = dragging.current === 'right' ? ['left', 'right'] : ['right', 'left'];
+    for (const side of order) {
+      if (spare >= 0) break;
+      if (side === 'left' && l) { const give = Math.min(-spare, L - PANE_MIN); L -= give; spare += give; }
+      if (side === 'right' && r) { const give = Math.min(-spare, R - PANE_MIN); R -= give; spare += give; }
+    }
+    return [L, R];
+  };
+  const applyFit = (left, right) => {
+    const [L, R] = fitPanes(left, right);
+    if (L !== layoutRef.current.leftWidth) setLeftWidth(L);
+    if (R !== layoutRef.current.rightWidth) setRightWidth(R);
+  };
+
   useEffect(() => {
     const onMouseMove = (e) => {
       if (!dragging.current) return;
       e.preventDefault();
-      if (dragging.current === 'left') {
-        const w = Math.max(160, Math.min(e.clientX, window.innerWidth * 0.4));
-        setLeftWidth(w);
-      } else {
-        const w = Math.max(160, Math.min(window.innerWidth - e.clientX, window.innerWidth * 0.4));
-        setRightWidth(w);
-      }
+      const { leftWidth: L, rightWidth: R } = layoutRef.current;
+      if (dragging.current === 'left') applyFit(e.clientX, R);
+      else applyFit(L, window.innerWidth - e.clientX);
     };
+    const onResize = () => {
+      const { leftWidth: L, rightWidth: R } = layoutRef.current;
+      applyFit(L, R);
+    };
+    window.addEventListener('resize', onResize);
     const onMouseUp = () => {
       if (dragging.current) {
         document.body.style.cursor = '';
@@ -1310,8 +1448,14 @@ function App() {
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
+  // A pane opening, or the writing pane appearing, changes what fits.
+  useEffect(() => { applyFit(leftWidth, rightWidth); }, [showLeft, showRight, showWritingPane]);
 
   useEffect(() => {
     if (current) localStorage.setItem('elenchus-current', current);
@@ -1836,15 +1980,15 @@ function App() {
             THEME
           </label>
           <div style={{ display: 'flex', borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {['dark', 'light'].map(t => (
+            {Object.keys(THEMES).map(t => (
               <button key={t} onClick={() => setDisplayPrefs(p => ({ ...p, theme: t }))}
                 style={{
                   flex: 1, padding: `${fs(6)}px ${fs(14)}px`, border: 'none', cursor: 'pointer',
                   background: displayPrefs.theme === t ? 'var(--accent)' : 'var(--surface2)',
-                  color: displayPrefs.theme === t ? '#fff' : 'var(--text-dim)',
+                  color: displayPrefs.theme === t ? '#111' : 'var(--text-dim)',
                   fontSize: fs(10), letterSpacing: 1, textTransform: 'uppercase',
                   fontFamily: 'var(--mono)',
-                }}>{t}</button>
+                }}>{THEME_LABELS[t]}</button>
             ))}
           </div>
         </div>
@@ -1860,7 +2004,7 @@ function App() {
                 style={{
                   flex: 1, padding: `${fs(6)}px 0`, border: 'none', cursor: 'pointer',
                   background: displayPrefs.fontScale === sc.value ? 'var(--accent)' : 'var(--surface2)',
-                  color: displayPrefs.fontScale === sc.value ? '#fff' : 'var(--text-dim)',
+                  color: displayPrefs.fontScale === sc.value ? '#111' : 'var(--text-dim)',
                   fontSize: fs(10), letterSpacing: 1,
                   fontFamily: 'var(--mono)',
                 }}>{sc.label}</button>
@@ -1916,11 +2060,16 @@ function App() {
     const sState = studySession?.state;
     if (!studySession) {
       return (
-        <StudyShell fs={fs} title="No active session">
-          <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
+        <StudyShell fs={fs} title="No active session" footer={<StudySignOut fs={fs} logout={logout} />}>
+          <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8, marginBottom: 12 }}>
             You don't have an active study session. If you arrived here from a
             study link, the session may have ended — please contact the
             researcher who sent you the link.
+          </p>
+          <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--sans)', fontSize: fs(12), lineHeight: 1.8 }}>
+            If you have an Elenchus account and opened a study link in this
+            browser, the link signed you in as that session's participant.
+            Sign out below to get back to your own account.
           </p>
         </StudyShell>
       );
@@ -1995,10 +2144,11 @@ function App() {
     }
     if (sState === 'complete' || sState === 'expired' || sState === 'interrupted') {
       return (
-        <StudyShell fs={fs} title={sState === 'complete' ? 'All done — thank you!' : 'Session ended'}>
+        <StudyShell fs={fs} title={sState === 'complete' ? 'All done — thank you!' : 'Session ended'}
+                    footer={<StudySignOut fs={fs} logout={logout} />}>
           <p style={{ color: 'var(--text-dim)', fontFamily: 'var(--sans)', fontSize: fs(13), lineHeight: 1.8 }}>
             {sState === 'complete'
-              ? 'Your session is complete and everything has been recorded. You can close this window.'
+              ? 'Your session is complete and everything has been recorded. You can close this window, or sign out below.'
               : 'This session has ended. Please contact the researcher if you have questions.'}
           </p>
         </StudyShell>
@@ -2249,16 +2399,13 @@ function App() {
   const leftCount = s.commitments.length + s.denials.length;
   const rightCount = openTensionCount + s.implications.length;
 
-  // Participants write their text beside the dialogue, in the tutorial
-  // (to practise) and in the main task.
-  const showWritingPane = isParticipant &&
-    (studySession?.state === 'tutorial' || studySession?.state === 'active');
-
   // Build grid template: omit hidden columns and their drag handles.
+  // The dialogue column is minmax(0, 1fr): its floor is kept by
+  // `fitPanes` (above), never by letting the grid overflow the window.
   const gridCols = [
     showLeft ? `${leftWidth}px` : null,
     showLeft ? '4px' : null,
-    '1fr',
+    'minmax(0, 1fr)',
     showRight ? '4px' : null,
     showRight ? `${rightWidth}px` : null,
     showWritingPane ? '1px' : null,
@@ -2793,7 +2940,11 @@ function AdminInvitesTab({ fs }) {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ role: 'user', intended_email: '' });
+  // No default kind (issue #51: a judge's invite went out as `user`
+  // because the menu had quietly stayed on its first entry). The
+  // admin chooses the kind for every invite, and the form says what
+  // each kind can do.
+  const [form, setForm] = useState({ role: '', intended_email: '' });
   const [creating, setCreating] = useState(false);
   const [lastIssued, setLastIssued] = useState(null);
 
@@ -2817,7 +2968,7 @@ function AdminInvitesTab({ fs }) {
         method: 'POST', body: JSON.stringify(body),
       });
       setLastIssued(res);
-      setForm({ role: 'user', intended_email: '' });
+      setForm({ role: '', intended_email: '' });
       await load();
     } catch (e) { setError(e.message); }
     setCreating(false);
@@ -2853,10 +3004,11 @@ function AdminInvitesTab({ fs }) {
               color: 'var(--text)', fontSize: fs(12), fontFamily: 'var(--sans)',
             }}
           >
-            <option value="user">user</option>
-            <option value="researcher">researcher</option>
-            <option value="judge">judge</option>
-            <option value="admin">admin</option>
+            <option value="" disabled>kind of account…</option>
+            <option value="user">user — their own dialectics only</option>
+            <option value="researcher">researcher — runs the study</option>
+            <option value="judge">judge — rates texts, blinded</option>
+            <option value="admin">admin — everything</option>
           </select>
           <input
             value={form.intended_email}
@@ -2870,12 +3022,13 @@ function AdminInvitesTab({ fs }) {
             }}
           />
           <button
-            onClick={issue} disabled={creating}
+            onClick={issue} disabled={creating || !form.role}
             style={{
               padding: '8px 16px', background: 'var(--accent)',
               border: 'none', borderRadius: 4, color: '#111',
               fontSize: fs(11), letterSpacing: 1, fontWeight: 500,
-              cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.5 : 1,
+              cursor: creating || !form.role ? 'default' : 'pointer',
+              opacity: creating || !form.role ? 0.5 : 1,
             }}
           >{creating ? '…' : 'ISSUE'}</button>
         </div>
@@ -3159,8 +3312,8 @@ function AdminUsersTab({ fs }) {
   );
 }
 
-// Study setup + enrolment. A participant does two sessions — one per
-// condition, a different topic each time — so the researcher enrols a
+// Study setup + enrollment. A participant does two sessions — one per
+// condition, a different topic each time — so the researcher enrolls a
 // *person* and gets both links at once; the server draws which condition
 // and topic come first (permuted blocks), which keeps the four cells
 // balanced and the two sessions linked in the data.
@@ -3174,7 +3327,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
   const [name, setName] = useState('');
   const [manual, setManual] = useState(false);
   const [cell, setCell] = useState({ first_condition: 'elenchus', first_topic: 'A' });
-  // Screening covariates, recorded at enrolment and exported beside the code.
+  // Screening covariates, recorded at enrollment and exported beside the code.
   const blankScreening = { ontology_experience: '', prior_llm_use: '', nominated_topic: false };
   // The allocation seed (set once per study; the seed never comes back from the server).
   const [seedForm, setSeedForm] = useState({ seed: '', planned_n: 48 });
@@ -3234,7 +3387,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
     setBusy(false);
   };
 
-  const enrol = async () => {
+  const enroll = async () => {
     if (busy || !studyId || !name.trim()) return;
     setBusy(true); setError(null);
     try {
@@ -3402,12 +3555,12 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
                   <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>These two hashes are what is deposited with the registration.</div>
                 </div>
               ) : cfg.development ? (
-                <div>A development study carries no allocation seed: enrolment draws each cell and shows it at once.</div>
+                <div>A development study carries no allocation seed: enrollment draws each cell and shows it at once.</div>
               ) : (
                 <div>
                   <div style={{ marginBottom: 6 }}>
                     <b>For the real study:</b> a team member who will <b>not</b> run sessions enters a seed here, once, before
-                    the first enrolment. The platform fixes every participant's sequence from it and keeps each one hidden
+                    the first enrollment. The platform fixes every participant's sequence from it and keeps each one hidden
                     until <i>Schedule session 1</i> is pressed; the two hashes it shows are deposited with the registration.
                     Leave this empty for a practice study.
                   </div>
@@ -3427,7 +3580,7 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
               )}
             </div>
             <div style={{ fontSize: fs(10), fontFamily: 'var(--sans)', color: 'var(--text-muted)' }}>
-              Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrolments only.
+              Topic wording is copied onto a participant's links when they are enrolled — edits apply to later enrollments only.
               The task length is a hard stop: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant’s text is submitted as it stands. Set it before the first
               participant starts and leave it alone afterwards.
             </div>
@@ -3439,18 +3592,18 @@ function AdminEnrolmentPanel({ fs, onChanged }) {
         )}
       </div>
 
-      {/* Enrol */}
+      {/* Enroll */}
       {studyId && (
         <div style={card}>
-          <div style={heading}>ENROL PARTICIPANT — issues both session links</div>
+          <div style={heading}>ENROLL PARTICIPANT — issues both session links</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <input value={name} onChange={e => setName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') enrol(); }}
+              onKeyDown={e => { if (e.key === 'Enter') enroll(); }}
               placeholder="participant name or label (never exported)" style={{ ...input, flex: '1 1 220px' }} />
-            <button onClick={enrol} disabled={busy || !name.trim()} style={{
+            <button onClick={enroll} disabled={busy || !name.trim()} style={{
               padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#111',
               fontSize: fs(11), letterSpacing: 1, fontWeight: 500, cursor: 'pointer',
-              opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? '…' : 'ENROL'}</button>
+              opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? '…' : 'ENROLL'}</button>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8,
                         fontSize: fs(11), fontFamily: 'var(--sans)', color: 'var(--text-dim)' }}>
@@ -5741,7 +5894,7 @@ function WritingPane({ fs, studySession, text, setText, flushRef, onBeginDialogu
   );
 }
 
-function StudyShell({ fs, title, children }) {
+function StudyShell({ fs, title, children, footer }) {
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -5753,10 +5906,32 @@ function StudyShell({ fs, title, children }) {
           <h1 style={{ fontSize: fs(24), fontWeight: 300, letterSpacing: -0.5 }}>{title}</h1>
         </div>
         {children}
+        {footer && (
+          <div style={{ marginTop: 24, textAlign: 'center', fontSize: fs(11),
+                        color: 'var(--text-muted)', fontFamily: 'var(--sans)' }}>
+            {footer}
+          </div>
+        )}
+        <div style={{ marginTop: 28 }}><DisplayQuickPrefs /></div>
       </div>
     </div>
     <PartnerFooter />
     </div>
+  );
+}
+
+// The way out of a study screen that has nothing more to do (issues
+// #49 and #50). A study link signs the browser in as that session's
+// own passwordless participant, so once the session is over the root
+// URL shows these screens and nothing else — including to a researcher
+// who opened a participant's link in their own browser. Signing out
+// clears that cookie and returns to the sign-in page; a participant
+// has no account to go back to, so there is nothing else to offer.
+function StudySignOut({ fs, logout }) {
+  return (
+    <button onClick={logout} style={{ ...authLinkStyle, fontSize: fs(11) }}>
+      sign out and return to the Elenchus sign-in page
+    </button>
   );
 }
 

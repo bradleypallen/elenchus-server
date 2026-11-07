@@ -186,9 +186,15 @@ Display preferences below are per-browser and available to everyone.
 
 Also in the settings area:
 
-- **Theme** — dark or light mode
+- **Theme** — light, dark, or high contrast (white on black, no greyed
+  text, bright borders)
 - **Font size** — S, M, L, XL
 - **Colors** — customizable colors for commitments, denials, tensions, implications, and opponent messages
+
+The theme and font size are also on the **sign-in page** and on every
+study screen, under the form, so they can be set before signing in and
+without opening the settings modal. All of these are remembered by the
+browser, not the account.
 
 ## CLI Usage
 
