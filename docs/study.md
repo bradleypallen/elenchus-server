@@ -92,13 +92,13 @@ interrelated core concepts and at least one contested boundary; the two
 should be of comparable difficulty and not overlap.
 
 Topic wording is **copied onto a participant's links when they are
-enrolled**. Editing a topic later changes future enrolments only — a
+enrolled**. Editing a topic later changes future enrollments only — a
 participant already holding links keeps the wording they were issued. The
 gap, by contrast, is read at the moment a second link is opened.
 
-## 2. Enrol participants
+## 2. Enroll participants
 
-Enrol a **person**, not a session (**Study → Enrol participant**, or
+Enroll a **person**, not a session (**Study → Enroll participant**, or
 `POST /api/admin/study/{study_id}/participants`). One step:
 
 - gives them a code — `P01`, `P02`, … — that links their two sessions in
@@ -109,7 +109,7 @@ Enrol a **person**, not a session (**Study → Enrol participant**, or
 ### Counterbalancing
 
 **Randomization.** With an **allocation seed** set on the study (once,
-before the first enrolment, by a team member who will not administer
+before the first enrollment, by a team member who will not administer
 sessions), the platform fixes the whole allocation list from the seed —
 permuted blocks of four, regenerable from the seed and checkable against
 the list hash it reports — and keeps each participant's sequence hidden
@@ -117,7 +117,7 @@ from the session administrator until *Schedule session 1* reveals it and
 issues the links. The seed never leaves the server through the API; the
 export carries the seed's hash, the list's hash and each participant's
 sequence letter (A–D), and the seed itself sits in the names-key side
-file. Without a seed, enrolment draws the cell at once from the
+file. Without a seed, enrollment draws the cell at once from the
 platform's own random source and reveals it — the practice study.
 
 
@@ -126,7 +126,7 @@ which *condition* comes first (practice and fatigue carry over), and which
 *topic* is met in which condition (topics differ in difficulty however
 carefully matched). Crossing them gives four cells. Participants are
 allocated by **permuted-block randomization**: every consecutive block of
-four enrolments contains each cell exactly once, in random order. The
+four enrollments contains each cell exactly once, in random order. The
 cells therefore stay balanced at every point in recruitment, and the next
 allocation can't be predicted. The roster shows the running count per
 cell.
@@ -330,7 +330,7 @@ Run before the first real participant (full version in [Operations
 Runbook §10](OPERATIONS.md)):
 
 - [ ] `elenchus sim` (scripted) passes end-to-end through every role —
-      setup, enrolment, both sessions per participant, the panel — including
+      setup, enrollment, both sessions per participant, the panel — including
       the access probes (tenant isolation, single-use links, the early
       second link, no task exit without a text, judge-view blinding).
 - [ ] `elenchus sim --driver llm` dress rehearsal against the production
@@ -379,7 +379,7 @@ Researcher routes (admin or researcher):
 |---|---|
 | `GET /api/admin/study/configs` | Studies that have been set up |
 | `PUT` / `GET /api/admin/study/{study_id}/config` | Set / read a study's topics and gap |
-| `POST /api/admin/study/{study_id}/participants` | Enrol a person: allocate, issue both links |
+| `POST /api/admin/study/{study_id}/participants` | Enroll a person: allocate, issue both links |
 | `GET /api/admin/study/{study_id}/participants` | Roster, session status, cell balance |
 | `POST /api/admin/study/sessions/{session_id}/interrupt` | Close an abandoned session |
 | `POST` / `GET` / `DELETE /api/admin/study/tokens[/{token}]` | Issue / list / void a single link (test links, one-offs) |

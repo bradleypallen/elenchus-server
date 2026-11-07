@@ -22,7 +22,7 @@ site's address with your email and password.
 | `researcher` | **STUDY** | two tabs: **Study** and **Judging** — everything in sections 1–10 |
 | `admin` | **ADMIN** | seven tabs: the same two, plus **Invites**, **Users**, **Dialectics**, **Costs** and **System** — see [If you are the admin](#if-you-are-the-admin) |
 
-**A researcher can:** set up a study, enrol participants, watch their
+**A researcher can:** set up a study, enroll participants, watch their
 progress, close an abandoned session, assign texts to judges, export and
 download the data.
 **Only an admin can:** create accounts (including judges'), reset a
@@ -52,27 +52,27 @@ itself if nothing has been set up yet).
 | Topic A / Topic B — brief | One or two sentences of framing, shown under the title. |
 | Minimum hours between sessions | How long a participant's second link stays shut after their first session ends. `48` = two days. |
 | Maximum days between a participant's two sessions | `21` unless the study lead says otherwise. **Not enforced** — the second link still opens — but a pair outside it is flagged in the list and in the export, for the analysis. `0` = no maximum. |
-| Allocation seed | **For the real study only**, and **not by you** if you will run sessions: a team member who won't administer sessions enters any phrase here, once, before the first enrolment, writes it down, and deposits the two hashes the page then shows (of the seed, and of the list it fixes) with the registration. From then on each participant's order and topics are fixed by the list and **hidden from you until you press Schedule session 1**. Leave it empty for a practice study. |
+| Allocation seed | **For the real study only**, and **not by you** if you will run sessions: a team member who won't administer sessions enters any phrase here, once, before the first enrollment, writes it down, and deposits the two hashes the page then shows (of the seed, and of the list it fixes) with the registration. From then on each participant's order and topics are fixed by the list and **hidden from you until you press Schedule session 1**. Leave it empty for a practice study. |
 | Length of the main task, in minutes | Leave **empty** for the real study (the usual 60). For a practice study, enter `5`. It is a **hard stop**: the clock shows it, reminders come ten minutes before and at the limit, and when it is reached the participant's text is submitted as it stands and their session moves on. Set it before the first participant starts and don't change it afterwards. |
 | Development study | **Leave unticked for the real study.** Tick it for a study the team runs *on itself* to tune the system (for instance `DEV`): its sessions work exactly like a participant's, but their records can be opened in the **Dialectics** tab under a reason, logged. It can't carry an allocation seed, and the choice is fixed once anyone is enrolled — a real study can never be made into one later. |
 
 Press **Save study**.
 
-> **Get the topic wording right before you enrol anyone.** The wording is
-> copied onto a participant's links at enrolment. If you edit a topic
+> **Get the topic wording right before you enroll anyone.** The wording is
+> copied onto a participant's links at enrollment. If you edit a topic
 > later, people already enrolled keep the *old* wording; only later
-> enrolments get the new one.
+> enrollments get the new one.
 
-## 3. Enrol a participant
+## 3. Enroll a participant
 
-**Study** tab → *Enrol participant*. Type the person's name (or whatever
+**Study** tab → *Enroll participant*. Type the person's name (or whatever
 label your tracking sheet uses). Under *From screening*, record what you
 learned when you screened them — their hands-on ontology-engineering
 experience, how much they use LLM tools, and whether they nominated a
 topic; these go into the data beside their code, never their name. Then
-press **Enrol**.
+press **Enroll**.
 
-> Use the **ENROL button** — and enrol each person **once**. Every press
+> Use the **ENROLL button** — and enroll each person **once**. Every press
 > creates a new participant and uses up a place in the randomization.
 
 The platform then:
@@ -103,7 +103,7 @@ only then.
 
 **Replacing a drop-out.** Tick **Place by hand** and choose the same
 "first condition" and "first topic" as the person being replaced, then
-Enrol. Only do this for replacements.
+Enroll. Only do this for replacements.
 
 **"balance across the four order × topic cells: 3 / 2 / 3 / 2"** next to
 the study name is how many people are in each of the four combinations.
@@ -186,7 +186,7 @@ Reload the page to refresh the list.
 | "I closed the window / my laptop died." | Nothing is lost; the text autosaves. | They open the **same link** again. |
 | "The AI isn't answering" / "Couldn't reach the AI service…" / "Something went wrong. Please try again." | A temporary problem reaching the AI. Their text is safe, and the failed message is logged. | Ask them to wait a minute and send the message again. If it persists for more than a few minutes, contact the admin — and note the time. The clock keeps running, so tell the study lead how long they lost. |
 | "This study link has already been used." | The session behind that link is finished. | Expected once they're done. If they *weren't* done, contact the admin with the participant's code. |
-| "I pressed Finish by mistake." | The text they had at that moment was submitted. **It can't be reopened.** | Tell the study lead, with the code and session number. Don't enrol them again. |
+| "I pressed Finish by mistake." | The text they had at that moment was submitted. **It can't be reopened.** | Tell the study lead, with the code and session number. Don't enroll them again. |
 | You enrolled the wrong person / a duplicate. | A participant row can't be deleted. | Leave their links unsent. Tell the study lead so the code can be excluded — and so the randomization record stays honest. |
 | A typo in a topic, found after enrolling people. | Enrolled participants keep the old wording. | Tell the study lead before changing anything. |
 | The list shows nothing / "Researcher privilege required". | You're signed out, or signed in with a non-researcher account. | Sign in again. |
@@ -249,7 +249,7 @@ Exports also stay on the server, so you can download one again later.
 
 ## 10. Ground rules
 
-- Enrol each person once. Never choose anyone's condition or topic except
+- Enroll each person once. Never choose anyone's condition or topic except
   to replace a drop-out.
 - Links are keys. One person, private channel.
 - Don't tell participants which condition is which, or what we hope to
@@ -273,7 +273,7 @@ takes about half an hour, and nothing in it needs anyone else's help.
 1. Sign in → **STUDY** (or **ADMIN**) → **Study** tab. Set up a study
    called `TRAINING` with two topics, a gap of `0` hours and a task length
    of `5` minutes.
-2. Enrol "Practice Person". Note their code, which condition is first,
+2. Enroll "Practice Person". Note their code, which condition is first,
    and that session 2 says *waiting: session 1 not started*.
 3. Copy **session 2's** link and open it in a **private / incognito
    window**. Read the refusal. Close it.
@@ -302,7 +302,7 @@ takes about half an hour, and nothing in it needs anyone else's help.
     behaves differently. This time end the task yourself: press **Finish
     session** with a very short text, read the warning about its length,
     and confirm. Then the questionnaires again.
-11. Enrol "Drop Out", open their session 1 link, stop at the tutorial.
+11. Enroll "Drop Out", open their session 1 link, stop at the tutorial.
     Back in the list, press **Close as interrupted**.
 12. A practice judge. If you are an admin, [create one](#creating-a-judges-account)
     and open its invitation link in a private window to sign up — under
