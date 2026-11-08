@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from elenchus import text_judging
+
 INDEX = Path(__file__).resolve().parents[1] / "src" / "elenchus" / "static" / "index.html"
 
 
@@ -43,3 +45,27 @@ def test_baseline_has_no_pane_badges():
     for title in ("Show position pane", "Show implications pane"):
         at = src.index(title)
         assert "{!isBaseline && (" in src[at - 400 : at], title
+
+
+def test_task_brief_names_the_four_rating_dimensions():
+    """The registration (§2.5) says participants are told the four rating
+    dimensions in the task brief. The brief must name them in the rubric's
+    own words, and the welcome page must carry the same sentence, so a
+    dimension can't be renamed without the brief following."""
+    src = _source()
+    at = src.index("const STUDY_RATED_ON =")
+    sentence = src[at : src.index(";", at)].lower()
+    phrases = {
+        "coverage": "coverage",
+        "correctness": "correctness",
+        "concision": "concision",
+        "reasoning": "reasoning holds together",
+    }
+    assert {d["key"] for d in text_judging.DIMENSIONS} == set(phrases)
+    for key, phrase in phrases.items():
+        assert phrase in sentence, key
+    # The brief beside the editor ends with the sentence ...
+    at = src.index("const STUDY_TASK_INSTRUCTION =")
+    assert "+ STUDY_RATED_ON;" in src[at : src.index(";", at) + 1]
+    # ... and the welcome page says it before the tutorial.
+    assert "the finished text is yours. {STUDY_RATED_ON}" in src

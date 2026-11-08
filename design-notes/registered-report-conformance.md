@@ -36,6 +36,7 @@ of record.
 | G5 | Condition-specific briefing sentence | **Built.** |
 | G6 | Analyst's A/B-coded labels | **Open** — the analysis script's job; the export stays unblinded. |
 | G7 | Versions in the manifest | **Built** (with D5). |
+| G8 | Four dimensions named in the task brief (§2.5 "[Set: confirm four]"; found in the review of 2026-11-07) | **Built** after 0.14.2: the brief beside the editor and the welcome page name coverage, correctness, concision and whether the reasoning holds together, in the rubric's words; `tests/test_study_ui_guards.py` ties the sentence to `text_judging.DIMENSIONS`. |
 
 §2–§4 below are kept as the record of what the comparison found in
 0.8.4; each item in §3 ends with what was built. The layout fix of 0.9.1
@@ -74,7 +75,7 @@ walk-through of both conditions on 2026-09-26.
 | §2.4 Topic revealed at briefing/tutorial, not before | Shown when the main task starts; the tutorial uses a practice topic | browser |
 | §2.4 One plain text editor, open throughout, submitted at the end | Autosaved append-only drafts; a `submit` snapshot; `post_session` refuses to advance without a text. **From 0.14.0 the task opens on the editor and the first draft is the positum** — the dialogue is locked until it exists and every turn sees the current draft ([text-as-positum](text-as-positum.md)); the editor is still the one editor, open throughout | code, browser |
 | §2.4 Two artifacts per Elenchus session: text and material base, the base built move by move | The per-base DuckDB file is the dialogue state; `state_events` records every accept, contest, retract and commitment with `source` and timestamp — from 0.14.0 `source = 'text'` for a move the opponent read off a change in the draft, so the base is built from the text and the conversation together | code |
-| §2.5 Four holistic dimensions, 1–7: coverage, correctness, concision, reasoning coherence | `text_judging.DIMENSIONS`, `RUBRIC_VERSION` stamped on every rating | code |
+| §2.5 Four holistic dimensions, 1–7: coverage, correctness, concision, reasoning coherence | `text_judging.DIMENSIONS`, `RUBRIC_VERSION` stamped on every rating; the task brief and the welcome page name the four (`STUDY_RATED_ON`, guarded by `tests/test_study_ui_guards.py`) | code |
 | §2.6 Fully crossed panel; each judge in their own order; judging separate from construction | Assignment defaults to every submitted text; random `position` per assignment; a judge cannot hold a research role, and a judge with assignments cannot be re-roled | code, tests |
 | §2.6 Condition guess with confidence | In the rubric block, the only place the condition vocabulary appears | code |
 | §2.6 Judging begins after all sessions | Researcher-controlled; nothing forces early assignment | — |

@@ -68,6 +68,10 @@ rating:
 | **Concision** | Does it say what it needs to say without redundancy, padding or digression? |
 | **Reasoning holds together** | Are the distinctions it draws motivated, its claims consistent with one another, and the consequences of drawing the boundaries where it does followed through? |
 
+The writers were told in their task brief that the text would be rated on
+these four things, named this way, so you are rating what they were asked
+for.
+
 The sentences matter: they are read when the ratings are analysed, and
 they are what lets the study team see whether the panel is reacting to
 substance or to style. A sentence per dimension is required.

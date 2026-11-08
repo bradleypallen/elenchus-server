@@ -29,7 +29,10 @@ Each participant is given a **topic** — a named area of their field's
 conceptual vocabulary — and about sixty minutes with an LLM to **write a
 short introduction to it**: the kind a well-informed colleague would want
 to read before working in the area. Two or three paragraphs, in their own
-words, with no preparation and no reference material.
+words, with no preparation and no reference material. The brief names
+the four things the text will be rated on — coverage, correctness,
+concision and whether its reasoning holds together — which are the
+panel's four dimensions (below).
 
 They do this **twice**, in two sessions at least a couple of days apart —
 once in each **condition**, on a **different topic** each time:
