@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The task brief names the four rating dimensions.** Participants are
+  told, on the welcome page and at the end of the brief beside the
+  editor, that the text will be rated on coverage, correctness,
+  concision and whether the reasoning holds together — the panel's four
+  dimensions in the rubric's own words. The Registered Report (§2.5)
+  says they are told this; the brief had not said it. A static test
+  (`tests/test_study_ui_guards.py`) ties the sentence to
+  `text_judging.DIMENSIONS`, so a dimension can't be renamed without the
+  brief following. The judge guide tells the panel the writers were
+  told.
+
 ## [0.14.2] — 2026-11-07
 
 ### Fixed

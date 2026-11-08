@@ -2088,7 +2088,7 @@ function App() {
               in your own words. There is nothing to prepare and no reference
               material: what we want on the page is what you actually believe
               about how the concepts fit together. The AI is a working
-              partner, not a source; the finished text is yours.
+              partner, not a source; the finished text is yours. {STUDY_RATED_ON}
             </p>
             <p style={{ marginBottom: 12 }}>The session has three parts:</p>
             <ol style={{ paddingLeft: 22, marginBottom: 12 }}>
@@ -5607,13 +5607,20 @@ function AdminDashboard({ fs, actor, onBack }) {
 // wording — so nothing about the editor tells a judge (or the
 // participant) which condition a text came from.
 
+// The four things the panel rates (text_judging.DIMENSIONS), in the rubric's own
+// words: the registration (§2.5) says participants are told them in the task brief.
+// Shown on the welcome page and at the end of the brief beside the editor.
+const STUDY_RATED_ON =
+  'Your text will be rated on four things: coverage (the concepts and relationships a ' +
+  'colleague new to the topic would need), correctness, concision, and whether the ' +
+  'reasoning holds together.';
 const STUDY_TASK_INSTRUCTION =
   'Write the kind of introduction a well-informed colleague would want to read before ' +
   'working in this area. What are the key concepts? How is each defined? How do they ' +
   'relate to one another? Where do the boundaries lie, and what follows from drawing ' +
   'them where you do? Two or three paragraphs is the target, in your own words — what ' +
   'you actually believe about how these concepts fit together, including where you ' +
-  'think usage is unsettled.';
+  'think usage is unsettled. ' + STUDY_RATED_ON;
 
 function fmtClock(totalSeconds) {
   const m = Math.floor(totalSeconds / 60), sec = totalSeconds % 60;
